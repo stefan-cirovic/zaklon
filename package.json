@@ -1,0 +1,15 @@
+{
+  "name": "zaklon",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Offline home base: knowledge, maps, supplies and a local AI assistant.",
+  "license": "GPL-3.0-or-later",
+  "scripts": {
+    "ui:dev": "pnpm --filter ui dev",
+    "ui:build": "pnpm --filter ui build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

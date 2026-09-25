@@ -1,0 +1,23 @@
+[package]
+name = "zaklon-core"
+description = "Shared data model, storage, pairing and configuration for Zaklon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rusqlite.workspace = true
+rand.workspace = true
+sha2.workspace = true
+base64.workspace = true
+uuid.workspace = true
+time.workspace = true
+argon2.workspace = true
+rcgen.workspace = true
+tracing.workspace = true
