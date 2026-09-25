@@ -1,0 +1,33 @@
+# Private working notes (Serbian) - never published
+notes/
+
+# Rust
+target/
+**/*.rs.bk
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Tauri
+apps/*/src-tauri/gen/schemas/
+apps/*/src-tauri/gen/android/.gradle/
+apps/*/src-tauri/gen/android/app/build/
+apps/*/src-tauri/gen/android/build/
+*.keystore
+*.jks
+
+# Local data and secrets
+/data/
+*.local.*
+.env
+minisign.key
+*.pem
+!**/fixtures/**/*.pem
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
