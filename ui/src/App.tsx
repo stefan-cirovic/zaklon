@@ -60,11 +60,12 @@ export default function App() {
     });
   }, []);
 
+  // Poll quickly until the hub answers for the first time, then every 10 s.
   useEffect(() => {
     refresh();
-    const id = setInterval(refresh, 10000);
+    const id = setInterval(refresh, status ? 10000 : 2000);
     return () => clearInterval(id);
-  }, [refresh]);
+  }, [refresh, status]);
 
   useEffect(() => {
     document.documentElement.dataset.accent = accent;
