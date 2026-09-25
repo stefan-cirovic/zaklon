@@ -104,3 +104,7 @@ label.field { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
 .status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); display: inline-block; }
 .status-dot.off { background: var(--warn); }
 .error { color: var(--warn); }
+
+/* Progress */
+.bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 4px 0; }
+.bar > i { display: block; height: 100%; background: var(--accent); }

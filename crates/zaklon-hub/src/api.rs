@@ -35,6 +35,13 @@ pub fn router(state: Arc<HubState>) -> Router {
         .route("/api/devices", get(list_devices))
         .route("/api/devices/{id}", axum::routing::patch(rename_device).delete(delete_device))
         .route("/api/me", get(me))
+        .route("/api/catalog", get(catalog))
+        .route("/api/system", get(system))
+        .route("/api/packs/import", post(packs_import))
+        .route("/api/packs/{id}", axum::routing::delete(pack_remove))
+        .route("/api/packs/{id}/download", post(pack_download))
+        .route("/api/packs/{id}/pause", post(pack_pause))
+        .route("/api/packs/{id}/export", post(pack_export))
         .fallback(crate::ui::serve)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -407,4 +414,74 @@ async fn me(caller: Caller) -> Result<Json<serde_json::Value>, ApiError> {
         Caller::Local => Ok(Json(serde_json::json!({ "kind": "laptop" }))),
         Caller::Device(d) => Ok(Json(serde_json::json!({ "kind": "device", "device": d }))),
     }
+}
+
+// ---- add-ons ----------------------------------------------------------------
+
+#[derive(Serialize)]
+struct CatalogReply {
+    packs: Vec<crate::downloads::PackView>,
+    system: crate::downloads::SystemInfo,
+}
+
+async fn catalog(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<CatalogReply>, ApiError> {
+    let d = &state.downloads;
+    Ok(Json(CatalogReply { packs: d.snapshot(), system: crate::downloads::system_info(d.library_dir()) }))
+}
+
+async fn system(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<crate::downloads::SystemInfo>, ApiError> {
+    Ok(Json(crate::downloads::system_info(state.downloads.library_dir())))
+}
+
+async fn pack_download(State(state): State<Arc<HubState>>, _caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
+    // Knowledge packs need the library engine; queue it first if it is missing.
+    if let Some(pack) = state.downloads.catalog().pack(&id) {
+        if pack.category == zaklon_core::catalog::Category::Knowledge && !state.downloads.is_installed("kiwix-tools") {
+            let _ = state.downloads.enqueue("kiwix-tools");
+        }
+    }
+    state.downloads.enqueue(&id).map_err(|e| bad(&e))?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+async fn pack_pause(State(state): State<Arc<HubState>>, _caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
+    state.downloads.pause(&id).map_err(|e| bad(&e))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn pack_remove(State(state): State<Arc<HubState>>, caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
+    tracing::info!(by = %caller.actor(), pack = %id, "pack removed");
+    state.downloads.remove(&id).map_err(|e| bad(&e))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct DirBody {
+    dir: String,
+}
+
+async fn packs_import(State(state): State<Arc<HubState>>, _: Local, Json(body): Json<DirBody>) -> Result<Json<serde_json::Value>, ApiError> {
+    let dir = std::path::PathBuf::from(body.dir.trim());
+    if !dir.is_dir() {
+        return Err(bad("that folder does not exist"));
+    }
+    let d = state.downloads.clone();
+    let imported = tokio::task::spawn_blocking(move || d.import_from_dir(&dir))
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?
+        .map_err(|e| bad(&e))?;
+    Ok(Json(serde_json::json!({ "imported": imported })))
+}
+
+async fn pack_export(State(state): State<Arc<HubState>>, _: Local, Path(id): Path<String>, Json(body): Json<DirBody>) -> Result<Json<serde_json::Value>, ApiError> {
+    let dir = std::path::PathBuf::from(body.dir.trim());
+    if !dir.is_dir() {
+        return Err(bad("that folder does not exist"));
+    }
+    let d = state.downloads.clone();
+    let target = tokio::task::spawn_blocking(move || d.export_to_dir(&id, &dir))
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?
+        .map_err(|e| bad(&e))?;
+    Ok(Json(serde_json::json!({ "exported_to": target.display().to_string() })))
 }

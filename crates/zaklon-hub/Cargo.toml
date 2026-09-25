@@ -34,3 +34,10 @@ rust-embed = { version = "8", features = ["include-exclude"] }
 mime_guess = "2"
 mdns-sd = "0.13"
 local-ip-address = "0.6"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+futures-util = "0.3"
+fs4 = { version = "0.12", features = ["sync"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Power"] }

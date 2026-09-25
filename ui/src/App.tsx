@@ -5,6 +5,7 @@ import Home from "./screens/Home";
 import Household from "./screens/Household";
 import Connect from "./screens/Connect";
 import Placeholder from "./screens/Placeholder";
+import Addons from "./screens/Addons";
 
 const TABS: { id: string; key: Key; ico: string }[] = [
   { id: "home", key: "home", ico: "⌂" },
@@ -113,7 +114,7 @@ export default function App() {
         {tab === "maps" && <Placeholder title={t("maps")} text={t("comingSoon")} />}
         {tab === "supplies" && <Placeholder title={t("supplies")} text={t("comingSoon")} />}
         {tab === "assistant" && <Placeholder title={t("assistant")} text={t("comingSoon")} />}
-        {tab === "addons" && <Placeholder title={t("addons")} text={t("comingSoon")} />}
+        {tab === "addons" && <Addons t={t} lang={lang} isHub={mode?.mode === "hub"} />}
         {mode && (
           <p className="muted" style={{ marginTop: 32, fontSize: 12 }}>
             {mode.mode} · {mode.platform} · {mode.version}

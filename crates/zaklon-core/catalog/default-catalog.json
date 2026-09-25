@@ -1,0 +1,313 @@
+{
+  "version": 1,
+  "generated": "2026-09-26",
+  "packs": [
+    {
+      "id": "wikipedia-sr-maxi",
+      "title": {
+        "en": "Wikipedia in Serbian (with pictures)",
+        "sr": "Vikipedija na srpskom (sa slikama)"
+      },
+      "description": {
+        "en": "The full Serbian Wikipedia with images.",
+        "sr": "Cela srpska Vikipedija sa slikama."
+      },
+      "category": "knowledge",
+      "version": "2026-09-14",
+      "size": 11819209331,
+      "languages": [
+        "srp"
+      ],
+      "recommended_for": [
+        "sr"
+      ],
+      "license": "CC BY-SA 4.0",
+      "attribution": "Wikipedia contributors",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/wikipedia_sr_all_maxi_2026-09.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_sr_all_maxi_2026-09.zim",
+            "https://kiwix.org",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_sr_all_maxi_2026-09.zim"
+          ],
+          "sha256": "29e4a604c3037d17ee0c1518282138753b8f064c7e61464ce4a8403056dc2b5d",
+          "size": 11819209331
+        }
+      ]
+    },
+    {
+      "id": "wikipedia-sr-nopic",
+      "title": {
+        "en": "Wikipedia in Serbian (text only)",
+        "sr": "Vikipedija na srpskom (samo tekst)"
+      },
+      "description": {
+        "en": "The full Serbian Wikipedia without images.",
+        "sr": "Cela srpska Vikipedija bez slika."
+      },
+      "category": "knowledge",
+      "version": "2026-09-14",
+      "size": 6897076901,
+      "languages": [
+        "srp"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-SA 4.0",
+      "attribution": "Wikipedia contributors",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/wikipedia_sr_all_nopic_2026-09.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_sr_all_nopic_2026-09.zim",
+            "https://kiwix.org",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_sr_all_nopic_2026-09.zim"
+          ],
+          "sha256": "ffb274f9e4e80350f0bbe62cac7b503244e3e30d7c04710df3b27869ce86c150",
+          "size": 6897076901
+        }
+      ]
+    },
+    {
+      "id": "wikipedia-sr-mini",
+      "title": {
+        "en": "Wikipedia in Serbian (summaries)",
+        "sr": "Vikipedija na srpskom (sažeci)"
+      },
+      "description": {
+        "en": "Introductions of every Serbian Wikipedia article. Small and fast.",
+        "sr": "Uvodi svih članaka srpske Vikipedije. Malo i brzo."
+      },
+      "category": "knowledge",
+      "version": "2026-09-14",
+      "size": 2029773550,
+      "languages": [
+        "srp"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-SA 4.0",
+      "attribution": "Wikipedia contributors",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/wikipedia_sr_all_mini_2026-09.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_sr_all_mini_2026-09.zim",
+            "https://kiwix.org",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_sr_all_mini_2026-09.zim"
+          ],
+          "sha256": "3ff7fbae92c6eb911b0c1700eb589148d6ab2ed76e8225c3b7a5cf48081cc179",
+          "size": 2029773550
+        }
+      ]
+    },
+    {
+      "id": "wiktionary-sr",
+      "title": {
+        "en": "Serbian dictionary (Wiktionary)",
+        "sr": "Srpski rečnik (Vikirečnik)"
+      },
+      "description": {
+        "en": "Serbian Wiktionary: definitions, translations, grammar.",
+        "sr": "Srpski Vikirečnik: definicije, prevodi, gramatika."
+      },
+      "category": "knowledge",
+      "version": "2026-07-14",
+      "size": 332858392,
+      "languages": [
+        "srp"
+      ],
+      "recommended_for": [
+        "sr"
+      ],
+      "license": "CC BY-NC-SA 3.0",
+      "attribution": "iFixit",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/wiktionary_sr_all_nopic_2026-07.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/wiktionary/wiktionary_sr_all_nopic_2026-07.zim",
+            "https://kiwix.org",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/wiktionary/wiktionary_sr_all_nopic_2026-07.zim"
+          ],
+          "sha256": "c34f0a957aaa8947e6ce20798d7bd216637688dee1ba8785c974804a217bd66e",
+          "size": 332858392
+        }
+      ]
+    },
+    {
+      "id": "wikimed-en",
+      "title": {
+        "en": "Medical Wikipedia (English)",
+        "sr": "Medicinska Vikipedija (engleski)"
+      },
+      "description": {
+        "en": "All medical articles from English Wikipedia, curated by WikiProject Medicine.",
+        "sr": "Svi medicinski članci engleske Vikipedije, odabrani u projektu WikiProject Medicine."
+      },
+      "category": "knowledge",
+      "version": "2026-04-11",
+      "size": 2215520569,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [
+        "sr",
+        "en"
+      ],
+      "license": "CC BY-SA 4.0",
+      "attribution": "Wikipedia contributors",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/wikipedia_en_medicine_maxi_2026-04.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_en_medicine_maxi_2026-04.zim",
+            "https://kiwix.org",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_en_medicine_maxi_2026-04.zim"
+          ],
+          "sha256": "6f67340a7cd7665bb57c27d2bbff97e26f2037477c9ea597345a118286820331",
+          "size": 2215520569
+        }
+      ]
+    },
+    {
+      "id": "ifixit-en",
+      "title": {
+        "en": "iFixit repair guides (English)",
+        "sr": "iFixit uputstva za popravke (engleski)"
+      },
+      "description": {
+        "en": "Step-by-step repair guides for phones, laptops, appliances and more.",
+        "sr": "Uputstva korak po korak za popravku telefona, laptopova, aparata i drugog."
+      },
+      "category": "knowledge",
+      "version": "2025-12-21",
+      "size": 3570695757,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [
+        "sr",
+        "en"
+      ],
+      "license": "CC BY-NC-SA 3.0",
+      "attribution": "iFixit",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/ifixit_en_all_2025-12.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/ifixit/ifixit_en_all_2025-12.zim",
+            "https://kiwix.org",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/ifixit/ifixit_en_all_2025-12.zim"
+          ],
+          "sha256": "9bb5f3408707fd0300c6ef47a425c3217187f144cd9154a928183816aa72eead",
+          "size": 3570695757
+        }
+      ]
+    },
+    {
+      "id": "wikipedia-en-mini",
+      "title": {
+        "en": "Wikipedia in English (summaries)",
+        "sr": "Vikipedija na engleskom (sažeci)"
+      },
+      "description": {
+        "en": "Introductions of every English Wikipedia article.",
+        "sr": "Uvodi svih članaka engleske Vikipedije."
+      },
+      "category": "knowledge",
+      "version": "2026-09-09",
+      "size": 14386799064,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [
+        "en"
+      ],
+      "license": "CC BY-SA 4.0",
+      "attribution": "Wikipedia contributors",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/wikipedia_en_all_mini_2026-09.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_en_all_mini_2026-09.zim",
+            "https://kiwix.org",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_en_all_mini_2026-09.zim"
+          ],
+          "sha256": "350d8956ee3d7abe2839c464c3a983f93d6934a16c7f04b10715b49439dfd349",
+          "size": 14386799064
+        }
+      ]
+    },
+    {
+      "id": "wikipedia-en-nopic",
+      "title": {
+        "en": "Wikipedia in English (text only)",
+        "sr": "Vikipedija na engleskom (samo tekst)"
+      },
+      "description": {
+        "en": "The full English Wikipedia without images. Large.",
+        "sr": "Cela engleska Vikipedija bez slika. Veliko."
+      },
+      "category": "knowledge",
+      "version": "2026-06-17",
+      "size": 52690706555,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-SA 4.0",
+      "attribution": "Wikipedia contributors",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/wikipedia_en_all_nopic_2026-06.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_en_all_nopic_2026-06.zim",
+            "https://kiwix.org",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_en_all_nopic_2026-06.zim"
+          ],
+          "sha256": "441a56d9e05b2d98f8ae9acb7986a513ed47904d73852c92dc6b7d50baa122e5",
+          "size": 52690706555
+        }
+      ]
+    },
+    {
+      "id": "kiwix-tools",
+      "title": {
+        "en": "Library engine (Kiwix)",
+        "sr": "Motor biblioteke (Kiwix)"
+      },
+      "description": {
+        "en": "Serves and searches knowledge packs. Needed for the Library; installed automatically with the first knowledge pack.",
+        "sr": "Prikazuje i pretražuje pakete znanja. Potreban za Biblioteku; instalira se automatski uz prvi paket znanja."
+      },
+      "category": "app",
+      "version": "3.8.1",
+      "size": 18301924,
+      "languages": [],
+      "recommended_for": [],
+      "license": "GPL-3.0-or-later",
+      "attribution": "Kiwix",
+      "source": "https://kiwix.org",
+      "files": [
+        {
+          "path": "bin/kiwix-tools_win-x86_64-3.8.1.zip",
+          "urls": [
+            "https://download.kiwix.org/release/kiwix-tools/kiwix-tools_win-x86_64-3.8.1.zip"
+          ],
+          "sha256": "fcd01ed2b93e9a68632c7863c83b9f66bf64406a66357be1df7b8b75596f3e45",
+          "size": 18301924,
+          "unpack": "zip",
+          "unpack_to": "bin/kiwix"
+        }
+      ]
+    }
+  ]
+}

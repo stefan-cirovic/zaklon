@@ -6,6 +6,7 @@
 
 pub mod api;
 pub mod discovery;
+pub mod downloads;
 pub mod install;
 pub mod ui;
 
@@ -17,7 +18,10 @@ use std::time::Instant;
 
 use anyhow::{Context, Result};
 use tracing::info;
+use zaklon_core::catalog::Catalog;
 use zaklon_core::tls::Identity;
+
+use downloads::Downloads;
 use zaklon_core::{Config, Db};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -36,6 +40,7 @@ pub struct HubState {
     pub identity: Identity,
     pub started: Instant,
     pub pairing: Mutex<HashMap<String, PairingSession>>,
+    pub downloads: Arc<Downloads>,
 }
 
 impl HubState {
@@ -75,6 +80,11 @@ impl Hub {
         let db = Db::open(&config.db_path()).context("opening household database")?;
         let identity = zaklon_core::tls::load_or_generate(&config.tls_dir(), &config.hub_name)
             .context("loading TLS identity")?;
+        let downloads = Downloads::new(
+            Catalog::load(&config.catalog_dir()),
+            config.library_dir(),
+            config.catalog_dir().join("state.json"),
+        );
         info!(root = %root.display(), hub = %config.hub_name, fp = %identity.fingerprint_display(), "hub opened");
         Ok(Self {
             state: Arc::new(HubState {
@@ -83,6 +93,7 @@ impl Hub {
                 identity,
                 started: Instant::now(),
                 pairing: Mutex::new(HashMap::new()),
+                downloads,
             }),
         })
     }
@@ -123,6 +134,7 @@ impl Hub {
             .serve(install::router(state.clone()).into_make_service_with_connect_info::<SocketAddr>());
 
         let _discovery = discovery::start(state.clone()).await?;
+        state.downloads.start();
 
         tokio::select! {
             r = tls_srv => r.context("tls server")?,

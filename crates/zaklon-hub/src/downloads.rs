@@ -1,0 +1,649 @@
+//! Add-on downloads: one pack at a time, resumable with HTTP ranges, verified
+//! with SHA-256, optionally unpacked, and importable from or exportable to a
+//! folder (USB stick). State survives restarts in `<root>/catalog/state.json`.
+
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use futures_util::StreamExt;
+use serde::Serialize;
+use sha2::{Digest, Sha256};
+use tokio::sync::Notify;
+use tracing::{info, warn};
+use zaklon_core::catalog::{Catalog, Pack, PackFile, PackState, PackStatus};
+
+/// Downloads stop below this battery level unless the charger is connected (SPEC §6).
+pub const MIN_BATTERY_PERCENT: u8 = 50;
+/// Keep at least this much free after a download.
+const DISK_MARGIN: u64 = 512 * 1024 * 1024;
+const STATE_SAVE_INTERVAL: Duration = Duration::from_secs(2);
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PackView {
+    #[serde(flatten)]
+    pub pack: Pack,
+    pub state: PackState,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SystemInfo {
+    pub disk_free: u64,
+    pub disk_total: u64,
+    pub battery_percent: Option<u8>,
+    pub plugged_in: bool,
+}
+
+enum Outcome {
+    Done,
+    Paused,
+    Failed(String),
+}
+
+pub struct Downloads {
+    catalog: Catalog,
+    library: PathBuf,
+    state_path: PathBuf,
+    states: Mutex<HashMap<String, PackState>>,
+    queue: Mutex<VecDeque<String>>,
+    pause_requests: Mutex<HashSet<String>>,
+    notify: Notify,
+    client: reqwest::Client,
+}
+
+impl Downloads {
+    pub fn new(catalog: Catalog, library: PathBuf, state_path: PathBuf) -> Arc<Self> {
+        let mut states: HashMap<String, PackState> = std::fs::read_to_string(&state_path)
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default();
+        // Nothing is running right after a restart: anything mid-flight waits for a resume.
+        for s in states.values_mut() {
+            if matches!(s.status, PackStatus::Downloading | PackStatus::Verifying | PackStatus::Queued) {
+                s.status = PackStatus::Paused;
+            }
+            s.speed = 0;
+        }
+        for p in &catalog.packs {
+            states.entry(p.id.clone()).or_insert_with(|| PackState::not_installed(p.size));
+        }
+        let client = reqwest::Client::builder()
+            .user_agent(format!("Zaklon/{}", env!("CARGO_PKG_VERSION")))
+            .connect_timeout(Duration::from_secs(15))
+            .build()
+            .expect("http client");
+        Arc::new(Self {
+            catalog,
+            library,
+            state_path,
+            states: Mutex::new(states),
+            queue: Mutex::new(VecDeque::new()),
+            pause_requests: Mutex::new(HashSet::new()),
+            notify: Notify::new(),
+            client,
+        })
+    }
+
+    pub fn catalog(&self) -> &Catalog {
+        &self.catalog
+    }
+
+    /// Spawn the worker that processes the queue. Call from inside a Tokio runtime.
+    pub fn start(self: &Arc<Self>) {
+        let me = self.clone();
+        tokio::spawn(async move {
+            loop {
+                me.notify.notified().await;
+                loop {
+                    // Take the next id in its own statement so the mutex guard is not held across the await.
+                    let next = me.queue.lock().unwrap_or_else(|p| p.into_inner()).pop_front();
+                    let Some(id) = next else { break };
+                    me.run_pack(&id).await;
+                }
+            }
+        });
+    }
+
+    pub fn snapshot(&self) -> Vec<PackView> {
+        let states = self.states.lock().unwrap_or_else(|p| p.into_inner());
+        self.catalog
+            .packs
+            .iter()
+            .map(|p| PackView {
+                pack: p.clone(),
+                state: states.get(&p.id).cloned().unwrap_or_else(|| PackState::not_installed(p.size)),
+            })
+            .collect()
+    }
+
+    pub fn state_of(&self, id: &str) -> Option<PackState> {
+        self.states.lock().unwrap_or_else(|p| p.into_inner()).get(id).cloned()
+    }
+
+    pub fn is_installed(&self, id: &str) -> bool {
+        matches!(self.state_of(id), Some(PackState { status: PackStatus::Installed, .. }))
+    }
+
+    pub fn library_dir(&self) -> &Path {
+        &self.library
+    }
+
+    pub fn enqueue(&self, id: &str) -> Result<(), String> {
+        let pack = self.catalog.pack(id).ok_or("unknown pack")?.clone();
+        {
+            let mut states = self.states.lock().unwrap_or_else(|p| p.into_inner());
+            let st = states.entry(id.to_string()).or_insert_with(|| PackState::not_installed(pack.size));
+            match st.status {
+                PackStatus::Installed => return Err("already installed".into()),
+                PackStatus::Queued | PackStatus::Downloading | PackStatus::Verifying => return Ok(()),
+                _ => {}
+            }
+            st.status = PackStatus::Queued;
+            st.error = None;
+        }
+        self.pause_requests.lock().unwrap_or_else(|p| p.into_inner()).remove(id);
+        self.queue.lock().unwrap_or_else(|p| p.into_inner()).push_back(id.to_string());
+        self.save();
+        self.notify.notify_one();
+        Ok(())
+    }
+
+    pub fn pause(&self, id: &str) -> Result<(), String> {
+        let mut states = self.states.lock().unwrap_or_else(|p| p.into_inner());
+        let st = states.get_mut(id).ok_or("unknown pack")?;
+        match st.status {
+            PackStatus::Queued => {
+                self.queue.lock().unwrap_or_else(|p| p.into_inner()).retain(|q| q != id);
+                st.status = PackStatus::Paused;
+            }
+            PackStatus::Downloading | PackStatus::Verifying => {
+                self.pause_requests.lock().unwrap_or_else(|p| p.into_inner()).insert(id.to_string());
+            }
+            _ => return Err("nothing to pause".into()),
+        }
+        drop(states);
+        self.save();
+        Ok(())
+    }
+
+    /// Delete a pack's files (finished or partial) and forget its state.
+    pub fn remove(&self, id: &str) -> Result<(), String> {
+        let pack = self.catalog.pack(id).ok_or("unknown pack")?;
+        if let Some(st) = self.state_of(id) {
+            if matches!(st.status, PackStatus::Downloading | PackStatus::Verifying) {
+                return Err("pause the download first".into());
+            }
+        }
+        self.queue.lock().unwrap_or_else(|p| p.into_inner()).retain(|q| q != id);
+        for f in &pack.files {
+            let dest = self.library.join(&f.path);
+            let _ = std::fs::remove_file(&dest);
+            let _ = std::fs::remove_file(part_path(&dest));
+            if let Some(dir) = &f.unpack_to {
+                let _ = std::fs::remove_dir_all(self.library.join(dir));
+            }
+        }
+        self.states
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(id.to_string(), PackState::not_installed(pack.size));
+        self.save();
+        Ok(())
+    }
+
+    /// Copy verified pack files out of `dir` (a USB stick) into the library.
+    /// Looks in `dir` itself and in `dir/zaklon-packs`. Returns the pack ids imported.
+    pub fn import_from_dir(&self, dir: &Path) -> Result<Vec<String>, String> {
+        let candidates = [dir.to_path_buf(), dir.join("zaklon-packs")];
+        let mut imported = Vec::new();
+        for pack in &self.catalog.packs {
+            if self.is_installed(&pack.id) {
+                continue;
+            }
+            let mut sources = Vec::new();
+            for f in &pack.files {
+                let name = Path::new(&f.path).file_name().ok_or("bad path")?;
+                match candidates.iter().map(|c| c.join(name)).find(|p| p.is_file()) {
+                    Some(src) => sources.push((f.clone(), src)),
+                    None => break,
+                }
+            }
+            if sources.len() != pack.files.len() {
+                continue;
+            }
+            self.set(&pack.id, |s| {
+                s.status = PackStatus::Verifying;
+                s.bytes_done = 0;
+                s.error = None;
+            });
+            let mut ok = true;
+            for (f, src) in &sources {
+                let dest = self.library.join(&f.path);
+                if let Some(parent) = dest.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                }
+                let tmp = part_path(&dest);
+                let copied = copy_with_hash(src, &tmp).map_err(|e| e.to_string())?;
+                if copied != f.sha256 {
+                    let _ = std::fs::remove_file(&tmp);
+                    self.set(&pack.id, |s| {
+                        s.status = PackStatus::Failed;
+                        s.error = Some(format!("checksum mismatch for {}", f.path));
+                    });
+                    ok = false;
+                    break;
+                }
+                std::fs::rename(&tmp, &dest).map_err(|e| e.to_string())?;
+                if let Err(e) = self.unpack_if_needed(f, &dest) {
+                    self.set(&pack.id, |s| {
+                        s.status = PackStatus::Failed;
+                        s.error = Some(e);
+                    });
+                    ok = false;
+                    break;
+                }
+                self.set(&pack.id, |s| s.bytes_done += f.size);
+            }
+            if ok {
+                let version = pack.version.clone();
+                self.set(&pack.id, |s| {
+                    s.status = PackStatus::Installed;
+                    s.bytes_done = s.bytes_total;
+                    s.installed_version = Some(version.clone());
+                });
+                info!(pack = %pack.id, "imported from folder");
+                imported.push(pack.id.clone());
+            }
+            self.save();
+        }
+        Ok(imported)
+    }
+
+    /// Copy an installed pack's files to `dir/zaklon-packs` (USB stick).
+    pub fn export_to_dir(&self, id: &str, dir: &Path) -> Result<PathBuf, String> {
+        let pack = self.catalog.pack(id).ok_or("unknown pack")?;
+        if !self.is_installed(id) {
+            return Err("pack is not installed".into());
+        }
+        let target = dir.join("zaklon-packs");
+        std::fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+        for f in &pack.files {
+            let src = self.library.join(&f.path);
+            let name = Path::new(&f.path).file_name().ok_or("bad path")?;
+            std::fs::copy(&src, target.join(name)).map_err(|e| format!("copying {}: {e}", f.path))?;
+        }
+        Ok(target)
+    }
+
+    // ---- internals ----------------------------------------------------------
+
+    fn set(&self, id: &str, f: impl FnOnce(&mut PackState)) {
+        let mut states = self.states.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(st) = states.get_mut(id) {
+            f(st);
+        }
+    }
+
+    fn save(&self) {
+        let states = self.states.lock().unwrap_or_else(|p| p.into_inner());
+        if let Ok(json) = serde_json::to_string_pretty(&*states) {
+            if let Some(parent) = self.state_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Err(e) = std::fs::write(&self.state_path, json) {
+                warn!("saving download state: {e}");
+            }
+        }
+    }
+
+    fn pause_requested(&self, id: &str) -> bool {
+        self.pause_requests.lock().unwrap_or_else(|p| p.into_inner()).contains(id)
+    }
+
+    async fn run_pack(&self, id: &str) {
+        let Some(pack) = self.catalog.pack(id).cloned() else { return };
+        let already = pack
+            .files
+            .iter()
+            .map(|f| {
+                let dest = self.library.join(&f.path);
+                if dest.is_file() {
+                    f.size
+                } else {
+                    std::fs::metadata(part_path(&dest)).map(|m| m.len().min(f.size)).unwrap_or(0)
+                }
+            })
+            .sum::<u64>();
+        self.set(id, |s| {
+            s.status = PackStatus::Downloading;
+            s.bytes_done = already;
+            s.bytes_total = pack.size;
+            s.error = None;
+        });
+        self.save();
+
+        let sys = system_info(&self.library);
+        if !sys.plugged_in && sys.battery_percent.map(|p| p < MIN_BATTERY_PERCENT).unwrap_or(false) {
+            self.finish(id, Outcome::Failed(format!("battery below {MIN_BATTERY_PERCENT}%: plug in the charger and resume")));
+            return;
+        }
+        if sys.disk_free < pack.size.saturating_sub(already) + DISK_MARGIN {
+            self.finish(id, Outcome::Failed("not enough free disk space".into()));
+            return;
+        }
+
+        let mut outcome = Outcome::Done;
+        for f in &pack.files {
+            match self.download_file(id, f).await {
+                Outcome::Done => {}
+                other => {
+                    outcome = other;
+                    break;
+                }
+            }
+        }
+        if matches!(outcome, Outcome::Done) {
+            let version = pack.version.clone();
+            self.set(id, |s| {
+                s.installed_version = Some(version.clone());
+                s.bytes_done = s.bytes_total;
+            });
+        }
+        self.finish(id, outcome);
+    }
+
+    fn finish(&self, id: &str, outcome: Outcome) {
+        self.pause_requests.lock().unwrap_or_else(|p| p.into_inner()).remove(id);
+        self.set(id, |s| {
+            s.speed = 0;
+            match outcome {
+                Outcome::Done => {
+                    s.status = PackStatus::Installed;
+                    s.error = None;
+                    info!(pack = id, "installed");
+                }
+                Outcome::Paused => {
+                    s.status = PackStatus::Paused;
+                    info!(pack = id, "paused");
+                }
+                Outcome::Failed(msg) => {
+                    s.status = PackStatus::Failed;
+                    warn!(pack = id, "failed: {msg}");
+                    s.error = Some(msg);
+                }
+            }
+        });
+        self.save();
+    }
+
+    async fn download_file(&self, id: &str, f: &PackFile) -> Outcome {
+        let dest = self.library.join(&f.path);
+        if dest.is_file() {
+            // Already downloaded and verified earlier (finished files are only ever renamed into place).
+            return Outcome::Done;
+        }
+        if let Some(parent) = dest.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                return Outcome::Failed(format!("creating folder: {e}"));
+            }
+        }
+        let part = part_path(&dest);
+        let mut have = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
+        if have > f.size {
+            let _ = std::fs::remove_file(&part);
+            have = 0;
+        }
+
+        if have < f.size {
+            let mut last_err = String::from("no download locations");
+            let mut done = false;
+            for url in &f.urls {
+                match self.fetch_range(id, f, url, &part, &mut have).await {
+                    Ok(true) => {
+                        done = true;
+                        break;
+                    }
+                    Ok(false) => return Outcome::Paused,
+                    Err(e) => {
+                        warn!(pack = id, url, "download error: {e}");
+                        last_err = e;
+                    }
+                }
+            }
+            if !done {
+                return Outcome::Failed(format!("download failed: {last_err}"));
+            }
+        }
+
+        self.set(id, |s| {
+            s.status = PackStatus::Verifying;
+            s.speed = 0;
+        });
+        self.save();
+        let part_clone = part.clone();
+        let hash = match tokio::task::spawn_blocking(move || hash_file(&part_clone)).await {
+            Ok(Ok(h)) => h,
+            Ok(Err(e)) => return Outcome::Failed(format!("reading file: {e}")),
+            Err(e) => return Outcome::Failed(format!("verify task: {e}")),
+        };
+        if hash != f.sha256 {
+            let _ = std::fs::remove_file(&part);
+            self.set(id, |s| s.bytes_done = s.bytes_done.saturating_sub(f.size));
+            return Outcome::Failed("checksum mismatch, the file was discarded; try again".into());
+        }
+        if let Err(e) = std::fs::rename(&part, &dest) {
+            return Outcome::Failed(format!("moving file into place: {e}"));
+        }
+        let f2 = f.clone();
+        let dest2 = dest.clone();
+        let library = self.library.clone();
+        match tokio::task::spawn_blocking(move || unpack(&library, &f2, &dest2)).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => return Outcome::Failed(e),
+            Err(e) => return Outcome::Failed(format!("unpack task: {e}")),
+        }
+        self.set(id, |s| s.status = PackStatus::Downloading);
+        Outcome::Done
+    }
+
+    /// Download `url` into `part` starting at offset `*have`. Ok(true) when the
+    /// file is complete, Ok(false) when paused, Err on a network problem.
+    async fn fetch_range(&self, id: &str, f: &PackFile, url: &str, part: &Path, have: &mut u64) -> Result<bool, String> {
+        let mut req = self.client.get(url);
+        if *have > 0 {
+            req = req.header("range", format!("bytes={}-", *have));
+        }
+        let res = req.send().await.map_err(|e| e.to_string())?;
+        let status = res.status();
+        if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE && *have > 0 {
+            // The server says there is nothing past what we have: let the checksum decide.
+            return Ok(true);
+        }
+        // Trust the server's idea of the total over the catalog; the SHA-256 check is the real authority.
+        let header = |name: &str| res.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string);
+        let server_total: Option<u64> = if status == reqwest::StatusCode::PARTIAL_CONTENT {
+            header("content-range").and_then(|s| s.rsplit('/').next().and_then(|t| t.trim().parse().ok()))
+        } else {
+            header("content-length").and_then(|t| t.trim().parse().ok())
+        };
+        let expected = server_total.unwrap_or(f.size);
+        if expected != f.size {
+            warn!(pack = id, path = %f.path, catalog = f.size, server = expected, "size differs from catalog");
+        }
+        let mut file = if *have > 0 && status == reqwest::StatusCode::PARTIAL_CONTENT {
+            std::fs::OpenOptions::new().append(true).open(part).map_err(|e| e.to_string())?
+        } else if status.is_success() {
+            // Server ignored the range (or we start fresh): begin again.
+            if *have > 0 {
+                self.set(id, |s| s.bytes_done = s.bytes_done.saturating_sub(*have));
+                *have = 0;
+            }
+            std::fs::File::create(part).map_err(|e| e.to_string())?
+        } else {
+            return Err(format!("server replied {status}"));
+        };
+
+        let mut stream = res.bytes_stream();
+        let mut last_save = Instant::now();
+        let mut tick = Instant::now();
+        let mut tick_bytes: u64 = 0;
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| e.to_string())?;
+            file.write_all(&chunk).map_err(|e| e.to_string())?;
+            *have += chunk.len() as u64;
+            tick_bytes += chunk.len() as u64;
+            let n = chunk.len() as u64;
+            self.set(id, |s| s.bytes_done += n);
+            if tick.elapsed() >= Duration::from_secs(1) {
+                let speed = (tick_bytes as f64 / tick.elapsed().as_secs_f64()) as u64;
+                self.set(id, |s| s.speed = speed);
+                tick = Instant::now();
+                tick_bytes = 0;
+            }
+            if last_save.elapsed() >= STATE_SAVE_INTERVAL {
+                self.save();
+                last_save = Instant::now();
+            }
+            if self.pause_requested(id) {
+                file.flush().ok();
+                return Ok(false);
+            }
+        }
+        file.flush().map_err(|e| e.to_string())?;
+        if *have < expected {
+            return Err(format!("connection ended early at {} of {} bytes", *have, expected));
+        }
+        Ok(true)
+    }
+
+    fn unpack_if_needed(&self, f: &PackFile, dest: &Path) -> Result<(), String> {
+        unpack(&self.library, f, dest)
+    }
+}
+
+fn part_path(dest: &Path) -> PathBuf {
+    let mut p = dest.as_os_str().to_owned();
+    p.push(".part");
+    PathBuf::from(p)
+}
+
+fn hash_file(path: &Path) -> std::io::Result<String> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+fn copy_with_hash(src: &Path, dest: &Path) -> std::io::Result<String> {
+    let mut input = std::fs::File::open(src)?;
+    let mut output = std::fs::File::create(dest)?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let n = input.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+        output.write_all(&buf[..n])?;
+    }
+    output.flush()?;
+    Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+fn unpack(library: &Path, f: &PackFile, archive: &Path) -> Result<(), String> {
+    let Some(kind) = f.unpack.as_deref() else { return Ok(()) };
+    if kind != "zip" {
+        return Err(format!("unsupported archive type {kind}"));
+    }
+    let target = library.join(f.unpack_to.as_deref().unwrap_or("bin"));
+    if target.starts_with(library) {
+        let _ = std::fs::remove_dir_all(&target);
+    }
+    std::fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+    let file = std::fs::File::open(archive).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipArchive::new(file).map_err(|e| format!("opening archive: {e}"))?;
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
+        let Some(rel) = entry.enclosed_name() else { continue };
+        // Flatten a single top-level folder (kiwix-tools_win-i686_x.y.z/kiwix-serve.exe -> kiwix-serve.exe).
+        let rel: PathBuf = rel.components().skip(if rel.components().count() > 1 { 1 } else { 0 }).collect();
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+        let out = target.join(rel);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+            continue;
+        }
+        if let Some(parent) = out.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let mut dest = std::fs::File::create(&out).map_err(|e| e.to_string())?;
+        std::io::copy(&mut entry, &mut dest).map_err(|e| e.to_string())?;
+    }
+    info!(archive = %archive.display(), target = %target.display(), "unpacked");
+    Ok(())
+}
+
+pub fn system_info(dir: &Path) -> SystemInfo {
+    let probe = if dir.exists() { dir.to_path_buf() } else { dir.parent().map(Path::to_path_buf).unwrap_or_else(|| dir.to_path_buf()) };
+    let disk_free = fs4::available_space(&probe).unwrap_or(0);
+    let disk_total = fs4::total_space(&probe).unwrap_or(0);
+    let (battery_percent, plugged_in) = battery();
+    SystemInfo { disk_free, disk_total, battery_percent, plugged_in }
+}
+
+#[cfg(windows)]
+fn battery() -> (Option<u8>, bool) {
+    use windows_sys::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+    let mut s = SYSTEM_POWER_STATUS {
+        ACLineStatus: 255,
+        BatteryFlag: 255,
+        BatteryLifePercent: 255,
+        SystemStatusFlag: 0,
+        BatteryLifeTime: 0,
+        BatteryFullLifeTime: 0,
+    };
+    // SAFETY: GetSystemPowerStatus only writes into the struct we pass.
+    if unsafe { GetSystemPowerStatus(&mut s) } == 0 {
+        return (None, true);
+    }
+    let no_battery = s.BatteryFlag & 128 != 0;
+    let percent = if s.BatteryLifePercent == 255 { None } else { Some(s.BatteryLifePercent) };
+    (percent, s.ACLineStatus == 1 || no_battery)
+}
+
+#[cfg(not(windows))]
+fn battery() -> (Option<u8>, bool) {
+    (None, true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn part_path_appends_suffix() {
+        assert!(part_path(Path::new("a/b.zim")).to_string_lossy().ends_with("b.zim.part"));
+    }
+
+    #[test]
+    fn hashing_matches_known_value() {
+        let dir = std::env::temp_dir().join(format!("zaklon-hash-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("x.bin");
+        std::fs::write(&p, b"abc").unwrap();
+        assert_eq!(hash_file(&p).unwrap(), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

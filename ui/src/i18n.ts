@@ -21,6 +21,13 @@ const en = {
   cameraDenied: "Camera access was not allowed.", notAPairingCode: "That is not a Zaklon pairing code.",
   pairCodeEntry: "Code from the laptop (6 digits)", deviceName: "Name of this phone", deviceNameHint: "e.g. Ana's phone",
   pairNow: "Pair", linkedTo: "Connected to", forgetHub: "Forget this hub", thisDevice: "This phone",
+  addonsIntro: "Knowledge packs, maps, AI models and helper programs. Downloads resume after interruptions and are verified before use.",
+  diskFree: "Free disk space", of: "of", battery: "Battery", pluggedIn: "charging", batteryRule: "Downloads need at least 50% battery or the charger.",
+  catKnowledge: "Knowledge", catMaps: "Maps", catModels: "AI models", catApps: "Programs",
+  recommended: "recommended", download: "Download", queued: "Queued", pause: "Pause", resume: "Resume", retry: "Retry",
+  installed: "Installed", verifying: "Verifying…", importTitle: "Import from a USB stick or folder",
+  importIntro: "Pick the folder that holds the pack files (or its zaklon-packs subfolder). Files are verified before they are used.",
+  importBtn: "Import", imported: "Imported", nothingToImport: "No matching pack files were found there.",
 };
 
 const sr: typeof en = {
@@ -44,6 +51,13 @@ const sr: typeof en = {
   cameraDenied: "Pristup kameri nije dozvoljen.", notAPairingCode: "To nije Zaklon kod za uparivanje.",
   pairCodeEntry: "Kod sa laptopa (6 cifara)", deviceName: "Ime ovog telefona", deviceNameHint: "npr. Anin telefon",
   pairNow: "Upari", linkedTo: "Povezan sa", forgetHub: "Zaboravi ovaj hub", thisDevice: "Ovaj telefon",
+  addonsIntro: "Paketi znanja, mape, AI modeli i pomoćni programi. Preuzimanja se nastavljaju posle prekida i proveravaju pre upotrebe.",
+  diskFree: "Slobodno na disku", of: "od", battery: "Baterija", pluggedIn: "puni se", batteryRule: "Za preuzimanje treba bar 50% baterije ili punjač.",
+  catKnowledge: "Znanje", catMaps: "Mape", catModels: "AI modeli", catApps: "Programi",
+  recommended: "preporučeno", download: "Preuzmi", queued: "Na čekanju", pause: "Pauziraj", resume: "Nastavi", retry: "Pokušaj ponovo",
+  installed: "Instalirano", verifying: "Provera…", importTitle: "Uvoz sa USB-a ili iz foldera",
+  importIntro: "Izaberi folder u kome su fajlovi paketa (ili njegov podfolder zaklon-packs). Fajlovi se proveravaju pre upotrebe.",
+  importBtn: "Uvezi", imported: "Uvezeno", nothingToImport: "Tamo nema odgovarajućih fajlova paketa.",
 };
 
 const dict: Record<Lang, typeof en> = { en, sr };
