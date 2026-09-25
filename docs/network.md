@@ -11,6 +11,6 @@ Zaklon makes no network connections on its own. Every connection below happens o
 | Add-on download (user starts it) | `packs.zaklon.com` (Cloudflare R2) | Zaklon's own content packs and the signed catalog |
 | Online research (per-conversation switch) | `duckduckgo.com`; `api.search.brave.com` if the user adds a key; then the pages the assistant opens | Web search for the assistant |
 
-Local network traffic (hub ↔ phones) stays on your Wi-Fi: TLS on port 8484, DNS-SD and a UDP beacon on 8485 for discovery.
+Local network traffic (hub ↔ phones) stays on your Wi-Fi: TLS on port 8484 for the app, plain HTTP on port 8480 for the "install the app" page and APK downloads only, DNS-SD and a UDP beacon on port 8485 for discovery. The desktop window talks to the hub on 127.0.0.1:8481, which is not reachable from the network.
 
 There is no telemetry, no crash reporting, no analytics and no account system.

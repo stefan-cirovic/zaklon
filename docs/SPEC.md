@@ -79,9 +79,9 @@ Zaklon/
 Everything under `Zaklon/` except `app/` is user data. Moving the folder to another disk and pointing the app at it must work.
 
 ### 4.1 Networking and pairing
-- The hub listens on one TCP port (default 8484) with TLS using a self-signed certificate generated on first run.
+- The hub listens on TCP 8484 with TLS (self-signed certificate generated on first run) for phones, on 127.0.0.1:8481 without TLS for the desktop window, and on TCP 8480 without TLS for the "install the app" page and APK files only.
 - Discovery: DNS-SD `_zaklon._tcp` plus a UDP beacon on 8485 for networks that block mDNS; the pairing QR embeds `{host, port, certSha256, token}` so discovery is never required.
-- **Pairing flow**: Household → Add device → QR appears on the laptop. On the phone: install the app from `http://<hub>:8484/get` (also linked from the QR), scan the QR, enter the household password. The phone pins the certificate fingerprint and receives a long-lived device token. All later traffic is TLS with the pinned certificate; the household password is never stored on the phone.
+- **Pairing flow**: Household → Add device → QR appears on the laptop. On the phone: install the app from `http://<hub>:8480/get` (the address is shown next to the QR), scan the QR, enter the household password. The phone pins the certificate fingerprint and receives a long-lived device token. All later traffic is TLS with the pinned certificate; the household password is never stored on the phone.
 - **Laptop as access point**: Household → "Create Wi-Fi network" toggles Windows Mobile Hotspot (SSID `Zaklon`, password shown on screen). Phones join it like any Wi-Fi network.
 - Devices are listed with name, platform, last seen; any paired member can rename or remove a device.
 
