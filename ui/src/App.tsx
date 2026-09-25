@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, getMode, type AppMode, type Status } from "./api";
+import { api, clientForget, clientState, getMode, type AppMode, type LinkSummary, type Status } from "./api";
 import { makeT, type Key, type Lang } from "./i18n";
 import Home from "./screens/Home";
 import Household from "./screens/Household";
+import Connect from "./screens/Connect";
 import Placeholder from "./screens/Placeholder";
 
 const TABS: { id: string; key: Key; ico: string }[] = [
@@ -29,6 +30,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [lang, setLangState] = useState<Lang>((readPref("zaklon.lang", "") as Lang) || "en");
   const [accent] = useState(readPref("zaklon.accent", "green"));
+  const [link, setLink] = useState<LinkSummary | null>(null);
   const t = makeT(lang);
 
   const setLang = (l: Lang) => {
@@ -52,7 +54,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    getMode().then(setMode);
+    getMode().then(async (m) => {
+      setMode(m);
+      if (m.mode === "client") setLink(await clientState());
+    });
   }, []);
 
   useEffect(() => {
@@ -69,12 +74,39 @@ export default function App() {
     if (status && !status.set_up) setTab("household");
   }, [status]);
 
+  const forget = async () => {
+    await clientForget();
+    setLink(await clientState());
+    setStatus(null);
+  };
+
+  if (mode?.mode === "client" && link && !link.linked) {
+    return (
+      <div className="shell">
+        <main className="content">
+          <Connect t={t} onLinked={async () => { setLink(await clientState()); refresh(); }} />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="shell">
       <main className="content">
         {tab === "home" && <Home status={status} error={error} t={t} go={setTab} />}
         {tab === "household" && (
-          <Household status={status} t={t} lang={lang} setLang={setLang} refresh={refresh} />
+          <div className="stack">
+            {link?.linked && (
+              <div className="panel row between">
+                <div>
+                  <div className="label">{t("linkedTo")}</div>
+                  <div>{link.hub_name} · {link.last_host ?? link.hosts[0]}</div>
+                </div>
+                <button className="btn danger" onClick={forget}>{t("forgetHub")}</button>
+              </div>
+            )}
+            <Household status={status} t={t} lang={lang} setLang={setLang} refresh={refresh} />
+          </div>
         )}
         {tab === "library" && <Placeholder title={t("library")} text={t("comingSoon")} />}
         {tab === "maps" && <Placeholder title={t("maps")} text={t("comingSoon")} />}

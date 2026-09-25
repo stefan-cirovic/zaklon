@@ -16,6 +16,11 @@ const en = {
   pairStep2: "Then open Zaklon on the phone, scan this code and enter the household password.", pairCode: "Or type the code",
   pairExpires: "The code works for 5 minutes.", devicePaired: "Phone paired.", changePassword: "Change password",
   english: "English", serbian: "Serbian", lastSeen: "Last seen", never: "never",
+  connectTitle: "Connect to your hub", connectIntro: "On the laptop, open Household and choose \"Add a phone\". Then scan the code it shows.",
+  scanQr: "Scan the QR code", findHubs: "Find hubs on this network", noHubsFound: "No hub answered on this network.",
+  cameraDenied: "Camera access was not allowed.", notAPairingCode: "That is not a Zaklon pairing code.",
+  pairCodeEntry: "Code from the laptop (6 digits)", deviceName: "Name of this phone", deviceNameHint: "e.g. Ana's phone",
+  pairNow: "Pair", linkedTo: "Connected to", forgetHub: "Forget this hub", thisDevice: "This phone",
 };
 
 const sr: typeof en = {
@@ -34,6 +39,11 @@ const sr: typeof en = {
   pairStep2: "Zatim otvori Zaklon na telefonu, skeniraj ovaj kod i unesi lozinku domaćinstva.", pairCode: "Ili ukucaj kod",
   pairExpires: "Kod važi 5 minuta.", devicePaired: "Telefon je uparen.", changePassword: "Promeni lozinku",
   english: "Engleski", serbian: "Srpski", lastSeen: "Poslednji put", never: "nikad",
+  connectTitle: "Poveži se sa hubom", connectIntro: "Na laptopu otvori Domaćinstvo i izaberi \"Dodaj telefon\". Zatim skeniraj kod koji se prikaže.",
+  scanQr: "Skeniraj QR kod", findHubs: "Pronađi hubove na ovoj mreži", noHubsFound: "Nijedan hub se nije javio na ovoj mreži.",
+  cameraDenied: "Pristup kameri nije dozvoljen.", notAPairingCode: "To nije Zaklon kod za uparivanje.",
+  pairCodeEntry: "Kod sa laptopa (6 cifara)", deviceName: "Ime ovog telefona", deviceNameHint: "npr. Anin telefon",
+  pairNow: "Upari", linkedTo: "Povezan sa", forgetHub: "Zaboravi ovaj hub", thisDevice: "Ovaj telefon",
 };
 
 const dict: Record<Lang, typeof en> = { en, sr };

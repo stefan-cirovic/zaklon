@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2/capability",
+  "identifier": "mobile",
+  "description": "Camera access for scanning pairing QR codes and product barcodes on phones",
+  "platforms": ["android", "iOS"],
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "barcode-scanner:allow-scan",
+    "barcode-scanner:allow-cancel",
+    "barcode-scanner:allow-check-permissions",
+    "barcode-scanner:allow-request-permissions",
+    "barcode-scanner:allow-open-app-settings"
+  ]
+}
