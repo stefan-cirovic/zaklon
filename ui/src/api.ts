@@ -53,27 +53,22 @@ export function inTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-/** True when this page is served by the hub on the laptop (desktop window or a browser on the laptop). */
-function servedByHub(): boolean {
-  return typeof location !== "undefined" && location.protocol === "http:" && /^(127\.0\.0\.1|localhost):8481$/.test(location.host);
-}
-
+/**
+ * Outside the Tauri app shell the page is always served by the hub itself
+ * (the desktop window or a browser on the laptop), so the API is on the same
+ * origin. VITE_API_BASE points the Vite dev server at a running hub.
+ */
 export function getMode(): Promise<AppMode> {
   if (!modePromise) {
-    if (servedByHub()) {
-      modePromise = Promise.resolve({ mode: "hub", api_base: "", platform: "windows", version: "" });
-      return modePromise;
-    }
     modePromise = inTauri()
-      ? invoke<AppMode>("app_mode")
-      : Promise.resolve({
-          mode: "hub",
-          api_base: import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8481",
-          platform: "browser",
-          version: "dev",
-        });
+      ? invoke<AppMode>("app_mode").catch(() => sameOrigin())
+      : Promise.resolve(sameOrigin());
   }
   return modePromise;
+}
+
+function sameOrigin(): AppMode {
+  return { mode: "hub", api_base: import.meta.env.VITE_API_BASE ?? "", platform: "windows", version: "" };
 }
 
 export class ApiError extends Error {

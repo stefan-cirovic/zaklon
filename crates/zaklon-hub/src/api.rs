@@ -25,7 +25,16 @@ use crate::{HubState, PairingSession, VERSION};
 const PAIRING_TTL: Duration = Duration::from_secs(5 * 60);
 const MAX_PAIRING_ATTEMPTS: u8 = 3;
 
-pub fn router(state: Arc<HubState>) -> Router {
+/// Which listener a request came in on. Laptop trust exists only on the
+/// loopback listener used by the desktop window; the network (TLS) listener
+/// always requires a device token.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Listener {
+    Local,
+    Network,
+}
+
+pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
     Router::new()
         .route("/api/status", get(status))
         .route("/api/setup", post(setup))
@@ -57,6 +66,7 @@ pub fn router(state: Arc<HubState>) -> Router {
         .route("/api/library/search", get(library_search))
         .route("/kiwix/{*rest}", get(kiwix_proxy))
         .fallback(crate::ui::serve)
+        .layer(axum::Extension(listener))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -121,9 +131,15 @@ impl FromRequestParts<Arc<HubState>> for Caller {
                 return Err(unauthorized());
             }
         }
+        let listener = parts.extensions.get::<Listener>().copied().unwrap_or(Listener::Network);
+        if listener == Listener::Network {
+            return Err(unauthorized());
+        }
         let peer = parts.extensions.get::<ConnectInfo<SocketAddr>>().map(|c| c.0);
         match peer {
-            Some(addr) if addr.ip().is_loopback() && local_request_is_ours(parts) => Ok(Caller::Local),
+            Some(addr) if addr.ip().is_loopback() && local_request_is_ours(parts, state.config().local_port) => {
+                Ok(Caller::Local)
+            }
             Some(addr) if addr.ip().is_loopback() => Err(forbidden("request from another website")),
             _ => Err(unauthorized()),
         }
@@ -139,7 +155,8 @@ impl OptionalFromRequestParts<Arc<HubState>> for Caller {
     ) -> Result<Option<Self>, Self::Rejection> {
         match <Caller as FromRequestParts<Arc<HubState>>>::from_request_parts(parts, state).await {
             Ok(c) => Ok(Some(c)),
-            Err(ApiError(StatusCode::UNAUTHORIZED, _)) => Ok(None),
+            // Anyone may see the public part of what an optional caller guards.
+            Err(ApiError(StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN, _)) => Ok(None),
             Err(e) => Err(e),
         }
     }
@@ -162,12 +179,9 @@ impl FromRequestParts<Arc<HubState>> for Local {
 /// A loopback request is trusted only when it comes from the hub's own pages
 /// (or from a non-browser client). This stops other websites open in a browser
 /// on the laptop from driving the hub (CSRF), and stops DNS-rebinding tricks.
-fn local_request_is_ours(parts: &Parts) -> bool {
+fn local_request_is_ours(parts: &Parts, local_port: u16) -> bool {
     let header = |name: &str| parts.headers.get(name).and_then(|v| v.to_str().ok());
-    let local_hosts = [
-        format!("127.0.0.1:{}", crate::LOCAL_PORT),
-        format!("localhost:{}", crate::LOCAL_PORT),
-    ];
+    let local_hosts = [format!("127.0.0.1:{local_port}"), format!("localhost:{local_port}")];
     if let Some(host) = header("host") {
         if !local_hosts.iter().any(|h| h.eq_ignore_ascii_case(host)) {
             return false;
@@ -331,7 +345,7 @@ async fn pair_start(State(state): State<Arc<HubState>>, _: Local) -> Result<Json
             fp: state.identity.fingerprint.clone(),
             code,
             name: cfg.hub_name,
-            install_port: zaklon_core::config::INSTALL_PORT,
+            install_port: cfg.install_port,
         },
     }))
 }

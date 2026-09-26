@@ -10,7 +10,6 @@ use mdns_sd::{ServiceDaemon, ServiceInfo};
 use serde::Serialize;
 use tokio::net::UdpSocket;
 use tracing::{debug, info, warn};
-use zaklon_core::config::BEACON_PORT;
 
 use crate::HubState;
 
@@ -95,9 +94,10 @@ pub async fn start(state: Arc<HubState>) -> Result<Discovery> {
         }
     };
 
-    let socket = UdpSocket::bind(("0.0.0.0", BEACON_PORT))
+    let beacon_port = cfg.beacon_port;
+    let socket = UdpSocket::bind(("0.0.0.0", beacon_port))
         .await
-        .with_context(|| format!("binding UDP beacon on {BEACON_PORT}"))?;
+        .with_context(|| format!("binding UDP beacon on {beacon_port}"))?;
     socket.set_broadcast(true).ok();
     tokio::spawn(beacon_loop(socket, state));
     Ok(Discovery { _mdns: mdns })

@@ -325,7 +325,9 @@ impl Downloads {
         self.save();
 
         let sys = system_info(&self.library);
-        if !sys.plugged_in && sys.battery_percent.map(|p| p < MIN_BATTERY_PERCENT).unwrap_or(false) {
+        // ZAKLON_IGNORE_BATTERY=1 is for automated tests on laptops running on battery.
+        let ignore_battery = std::env::var("ZAKLON_IGNORE_BATTERY").is_ok_and(|v| v == "1");
+        if !ignore_battery && !sys.plugged_in && sys.battery_percent.map(|p| p < MIN_BATTERY_PERCENT).unwrap_or(false) {
             self.finish(id, Outcome::Failed(format!("battery below {MIN_BATTERY_PERCENT}%: plug in the charger and resume")));
             return;
         }

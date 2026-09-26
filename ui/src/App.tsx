@@ -32,12 +32,20 @@ export default function App() {
   const [tab, setTabState] = useState(TAB_IDS.includes(initialTab) ? initialTab : "home");
   const setTab = (id: string) => {
     setTabState(id);
-    try {
-      history.replaceState(null, "", `#${id}`);
-    } catch {
-      /* ignore */
-    }
+    if (location.hash !== `#${id}`) location.hash = id;
   };
+
+  // Follow the address: back/forward buttons and links to "#supplies" etc.
+  useEffect(() => {
+    const onHash = () => {
+      const id = location.hash.replace("#", "");
+      if (TAB_IDS.includes(id)) setTabState(id);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+    // TAB_IDS is a constant list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [mode, setMode] = useState<AppMode | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);

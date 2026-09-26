@@ -109,7 +109,7 @@ impl Hub {
     }
 
     pub fn local_base_url(&self) -> String {
-        format!("http://127.0.0.1:{LOCAL_PORT}")
+        format!("http://127.0.0.1:{}", self.state.config().local_port)
     }
 
     /// Serve until the process ends. Never returns Ok while healthy.
@@ -125,17 +125,18 @@ impl Hub {
         .await
         .context("building TLS config")?;
 
-        let app = api::router(state.clone());
+        let network_app = api::router(state.clone(), api::Listener::Network);
+        let local_app = api::router(state.clone(), api::Listener::Local);
         let tls_addr = SocketAddr::from(([0, 0, 0, 0], cfg.port));
-        let local_addr = SocketAddr::from(([127, 0, 0, 1], LOCAL_PORT));
-        let install_addr = SocketAddr::from(([0, 0, 0, 0], INSTALL_PORT));
+        let local_addr = SocketAddr::from(([127, 0, 0, 1], cfg.local_port));
+        let install_addr = SocketAddr::from(([0, 0, 0, 0], cfg.install_port));
 
         info!(%tls_addr, %local_addr, %install_addr, "listening");
 
         let tls_srv = axum_server::bind_rustls(tls_addr, tls)
-            .serve(app.clone().into_make_service_with_connect_info::<SocketAddr>());
+            .serve(network_app.into_make_service_with_connect_info::<SocketAddr>());
         let local_srv = axum_server::bind(local_addr)
-            .serve(app.into_make_service_with_connect_info::<SocketAddr>());
+            .serve(local_app.into_make_service_with_connect_info::<SocketAddr>());
         let install_srv = axum_server::bind(install_addr)
             .serve(install::router(state.clone()).into_make_service_with_connect_info::<SocketAddr>());
 

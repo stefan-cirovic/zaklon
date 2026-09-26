@@ -17,8 +17,17 @@ pub const INSTALL_PORT: u16 = 8480;
 pub struct Config {
     /// Root data folder chosen at install time (e.g. `D:\Zaklon`).
     pub root: PathBuf,
-    /// TCP port the hub listens on.
+    /// TCP port the hub listens on for phones (TLS).
     pub port: u16,
+    /// Loopback port for the desktop window.
+    #[serde(default = "default_local_port")]
+    pub local_port: u16,
+    /// Plain-HTTP port for the "install the app" page.
+    #[serde(default = "default_install_port")]
+    pub install_port: u16,
+    /// UDP port for the discovery beacon.
+    #[serde(default = "default_beacon_port")]
+    pub beacon_port: u16,
     /// Human-readable hub name shown to phones.
     pub hub_name: String,
     /// Stable hub identifier, generated once.
@@ -29,7 +38,39 @@ pub struct Config {
     pub auto_update_check: bool,
 }
 
+fn default_local_port() -> u16 {
+    LOCAL_PORT
+}
+fn default_install_port() -> u16 {
+    INSTALL_PORT
+}
+fn default_beacon_port() -> u16 {
+    BEACON_PORT
+}
+
+/// `ZAKLON_TLS_PORT`, `ZAKLON_LOCAL_PORT`, `ZAKLON_INSTALL_PORT` and
+/// `ZAKLON_BEACON_PORT` override the ports for this run only (used by tests
+/// and for running a second hub on one machine). They are never saved.
+fn env_port(name: &str) -> Option<u16> {
+    std::env::var(name).ok().and_then(|v| v.trim().parse().ok())
+}
+
 impl Config {
+    fn apply_env(&mut self) {
+        if let Some(p) = env_port("ZAKLON_TLS_PORT") {
+            self.port = p;
+        }
+        if let Some(p) = env_port("ZAKLON_LOCAL_PORT") {
+            self.local_port = p;
+        }
+        if let Some(p) = env_port("ZAKLON_INSTALL_PORT") {
+            self.install_port = p;
+        }
+        if let Some(p) = env_port("ZAKLON_BEACON_PORT") {
+            self.beacon_port = p;
+        }
+    }
+
     pub fn household_dir(&self) -> PathBuf { self.root.join("household") }
     pub fn library_dir(&self) -> PathBuf { self.root.join("library") }
     pub fn profiles_dir(&self) -> PathBuf { self.root.join("profiles") }
@@ -49,11 +90,15 @@ impl Config {
                 .with_context(|| format!("reading {}", path.display()))?;
             let mut cfg: Config = serde_json::from_str(&text).context("parsing hub.json")?;
             cfg.root = root.to_path_buf();
+            cfg.apply_env();
             return Ok(cfg);
         }
-        let cfg = Config {
+        let mut cfg = Config {
             root: root.to_path_buf(),
             port: DEFAULT_PORT,
+            local_port: LOCAL_PORT,
+            install_port: INSTALL_PORT,
+            beacon_port: BEACON_PORT,
             hub_name: default_hub_name(),
             hub_id: uuid::Uuid::new_v4().to_string(),
             language: "en".to_string(),
@@ -61,6 +106,7 @@ impl Config {
         };
         cfg.ensure_layout()?;
         cfg.save()?;
+        cfg.apply_env();
         Ok(cfg)
     }
 
@@ -83,7 +129,21 @@ impl Config {
     }
 
     pub fn save(&self) -> Result<()> {
-        let text = serde_json::to_string_pretty(self)?;
+        // Never persist ports that came from environment overrides.
+        let mut on_disk = self.clone();
+        if env_port("ZAKLON_TLS_PORT").is_some() {
+            on_disk.port = DEFAULT_PORT;
+        }
+        if env_port("ZAKLON_LOCAL_PORT").is_some() {
+            on_disk.local_port = LOCAL_PORT;
+        }
+        if env_port("ZAKLON_INSTALL_PORT").is_some() {
+            on_disk.install_port = INSTALL_PORT;
+        }
+        if env_port("ZAKLON_BEACON_PORT").is_some() {
+            on_disk.beacon_port = BEACON_PORT;
+        }
+        let text = serde_json::to_string_pretty(&on_disk)?;
         std::fs::write(self.config_path(), text).context("writing hub.json")
     }
 }

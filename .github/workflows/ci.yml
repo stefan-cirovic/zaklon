@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+      - name: Build the interface (type check included)
+        run: pnpm --filter ui build
+
+      - name: Clippy
+        run: cargo clippy -p zaklon-core -p zaklon-hub --all-targets -- -D warnings
+
+      - name: Unit and hub end-to-end tests
+        run: cargo test -p zaklon-core -p zaklon-hub
+
+      - name: Check the desktop and phone app compiles
+        run: cargo check -p zaklon-app
+
+      - name: Build the hub for interface tests
+        run: cargo build -p zaklon-hub
+
+      - name: Interface end-to-end tests (Edge)
+        run: pnpm --filter ui e2e
+
+      - name: Keep Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: ui/test-results
