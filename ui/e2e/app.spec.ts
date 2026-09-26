@@ -201,3 +201,20 @@ test("an idle screen does not flood the hub with requests", async ({ page }) => 
     expect(total, `${tab}: ${JSON.stringify(counts)}`).toBeLessThanOrEqual(6);
   }
 });
+
+test("litres are written out with the right form", async ({ page }, info) => {
+  await ensureSetUp(page);
+  await page.locator("select").first().selectOption("sr");
+  await page.goto("/#supplies");
+  for (const [qty, word] of [["1", "litar"], ["2", "litra"], ["5", "litara"], ["1,5", "litra"]]) {
+    const name = `Mleko ${qty} ${info.project.name}`;
+    await page.getByRole("button", { name: "Dodaj stavku" }).click();
+    await page.getByLabel("Naziv").fill(name);
+    await page.getByLabel("Količina").fill(qty);
+    await page.getByLabel("Jedinica").selectOption("l");
+    await page.getByRole("button", { name: "Sačuvaj" }).click();
+    await expect(page.locator(".item.supply", { hasText: name }).locator(".qty-val")).toContainText(word);
+  }
+  await page.goto("/#household");
+  await page.locator("select").first().selectOption("en");
+});

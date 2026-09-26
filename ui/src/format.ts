@@ -64,3 +64,22 @@ export function securityCode(fp: string): string {
   const s = fp.replace(/[^0-9a-fA-F]/g, "").slice(0, 8).toUpperCase();
   return `${s.slice(0, 4)} ${s.slice(4)}`;
 }
+
+/**
+ * Unit name for a quantity. Most units stay abbreviated (kg, g, ml, pcs);
+ * litres are written out with the right grammatical form:
+ * Serbian 1 litar, 2 litra, 5 litara, 1,5 litra; English 1 liter, 2 liters.
+ */
+export function unitLabel(unit: string, qty: number, short: (u: string) => string): string {
+  if (unit !== "l") return short(unit);
+  if (lang === "sr") {
+    if (!Number.isInteger(qty)) return "litra";
+    const n = Math.abs(qty);
+    const last = n % 10;
+    const lastTwo = n % 100;
+    if (last === 1 && lastTwo !== 11) return "litar";
+    if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) return "litra";
+    return "litara";
+  }
+  return qty === 1 ? "liter" : "liters";
+}

@@ -3,7 +3,7 @@ import { api } from "../api";
 import type { Key } from "../i18n";
 import { canScan, scan } from "../scan";
 import { errText } from "../errors";
-import { fmtDateTime, fmtQty, parseNumber } from "../format";
+import { fmtDateTime, fmtQty, parseNumber, unitLabel } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
 import ExpiryBadge from "../components/ExpiryBadge";
 
@@ -167,7 +167,7 @@ export default function Supplies({ t }: { t: T }) {
                       <button className="qty-btn" aria-label={`${t("useOne")}: ${i.name}`} onClick={() => adjust(i, -1)} disabled={i.quantity <= 0}>−</button>
                       <div className="qty-val">
                         <div>{fmtQty(i.quantity)}</div>
-                        <div className="muted" style={{ fontSize: 12 }}>{UNITS.includes(i.unit as (typeof UNITS)[number]) ? t(unitKey(i.unit)) : i.unit}</div>
+                        <div className="muted" style={{ fontSize: 12 }}>{unitLabel(i.unit, i.quantity, (u) => (UNITS.includes(u as (typeof UNITS)[number]) ? t(unitKey(u)) : u))}</div>
                       </div>
                       <button className="qty-btn" aria-label={`${t("addOne")}: ${i.name}`} onClick={() => adjust(i, 1)}>+</button>
                     </div>
@@ -418,7 +418,7 @@ function ShoppingView({ t }: { t: T }) {
             <input type="checkbox" checked={s.done} onChange={() => toggle(s)} />
             <span className="check-text">
               {s.text}
-              {s.quantity !== null && <span className="muted"> · {fmtQty(s.quantity)} {s.unit ? t(unitKey(s.unit)) : ""}</span>}
+              {s.quantity !== null && <span className="muted"> · {fmtQty(s.quantity)} {s.unit ? unitLabel(s.unit, s.quantity, (u) => t(unitKey(u))) : ""}</span>}
             </span>
             {s.source === "running_low" && <span className="badge warn">{t("runningLow")}</span>}
           </label>
