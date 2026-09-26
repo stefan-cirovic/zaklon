@@ -62,9 +62,13 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/barcodes/{code}", get(barcode_lookup))
         .route("/api/places", get(places_list).post(places_add))
         .route("/api/places/{id}", axum::routing::delete(places_delete))
+        .route("/api/items/{id}/batches", post(batch_add))
+        .route("/api/batches/{id}", axum::routing::patch(batch_update).delete(batch_delete))
         .route("/api/shopping", get(shopping_list).post(shopping_add))
-        .route("/api/shopping/clear-done", post(shopping_clear_done))
-        .route("/api/shopping/{id}", axum::routing::patch(shopping_update).delete(shopping_delete))
+        .route("/api/shopping/{id}/bought", post(shopping_bought))
+        .route("/api/shopping/{id}/dismiss", post(shopping_dismiss))
+        .route("/api/put-away", get(put_away_list))
+        .route("/api/put-away/{id}", post(put_away))
         .route("/api/history", get(history))
         .route("/api/models", get(models_list))
         .route("/api/models/{id}/file", get(model_file))
@@ -753,7 +757,7 @@ fn not_found_item() -> ApiError {
 /// Validation problems from the storage layer are the caller's fault.
 fn invalid(e: anyhow::Error) -> ApiError {
     let msg = e.to_string();
-    if msg.contains("required") || msg.contains("unknown") || msg.contains("must be") {
+    if msg.contains("required") || msg.contains("unknown") || msg.contains("must be") || msg.contains("several batches") {
         bad(&msg)
     } else {
         ApiError::from(e)
@@ -863,29 +867,57 @@ async fn shopping_add(State(state): State<Arc<HubState>>, caller: Caller, Json(b
     Ok((StatusCode::CREATED, Json(e)))
 }
 
-#[derive(Deserialize)]
-struct DoneBody {
-    done: bool,
-}
-
-async fn shopping_update(State(state): State<Arc<HubState>>, caller: Caller, Path(id): Path<String>, Json(b): Json<DoneBody>) -> Result<StatusCode, ApiError> {
-    if state.db.set_shopping_done(&id, b.done, &caller.actor())? {
+/// "Bought": moves an entry (or a running-low suggestion "low:<item>") to put away.
+async fn shopping_bought(State(state): State<Arc<HubState>>, caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
+    if state.db.mark_bought(&id, &caller.actor())? {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(not_found("no such entry"))
     }
 }
 
-async fn shopping_delete(State(state): State<Arc<HubState>>, _caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
-    if state.db.delete_shopping(&id)? {
+/// "Delete" on the shopping list: not bought.
+async fn shopping_dismiss(State(state): State<Arc<HubState>>, caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
+    if state.db.dismiss(&id, &caller.actor())? {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(not_found("no such entry"))
     }
 }
 
-async fn shopping_clear_done(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<serde_json::Value>, ApiError> {
-    Ok(Json(serde_json::json!({ "removed": state.db.clear_done_shopping()? })))
+async fn put_away_list(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<Vec<zaklon_core::supplies::ShoppingEntry>>, ApiError> {
+    Ok(Json(state.db.to_put_away()?))
+}
+
+async fn put_away(
+    State(state): State<Arc<HubState>>,
+    caller: Caller,
+    Path(id): Path<String>,
+    Json(body): Json<zaklon_core::supplies::PutAwayInput>,
+) -> Result<Json<Item>, ApiError> {
+    state.db.put_away(&id, body, &caller.actor()).map_err(invalid)?.map(Json).ok_or_else(|| not_found("no such entry"))
+}
+
+async fn batch_add(
+    State(state): State<Arc<HubState>>,
+    caller: Caller,
+    Path(id): Path<String>,
+    Json(body): Json<zaklon_core::supplies::BatchInput>,
+) -> Result<Json<Item>, ApiError> {
+    state.db.add_batch(&id, body, &caller.actor()).map_err(invalid)?.map(Json).ok_or_else(not_found_item)
+}
+
+async fn batch_update(
+    State(state): State<Arc<HubState>>,
+    caller: Caller,
+    Path(id): Path<String>,
+    Json(body): Json<zaklon_core::supplies::BatchInput>,
+) -> Result<Json<Item>, ApiError> {
+    state.db.update_batch(&id, body, &caller.actor()).map_err(invalid)?.map(Json).ok_or_else(|| not_found("no such batch"))
+}
+
+async fn batch_delete(State(state): State<Arc<HubState>>, caller: Caller, Path(id): Path<String>) -> Result<Json<Item>, ApiError> {
+    state.db.delete_batch(&id, &caller.actor()).map_err(invalid)?.map(Json).ok_or_else(|| not_found("no such batch"))
 }
 
 #[derive(Deserialize)]

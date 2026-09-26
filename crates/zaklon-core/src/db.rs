@@ -79,6 +79,7 @@ impl Db {
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.execute_batch(SCHEMA).context("applying schema")?;
         conn.execute_batch(crate::supplies::SCHEMA).context("applying supplies schema")?;
+        crate::supplies::migrate(&conn).context("migrating supplies")?;
         Ok(Self { conn: Mutex::new(conn) })
     }
 
@@ -86,6 +87,7 @@ impl Db {
         let conn = Connection::open_in_memory()?;
         conn.execute_batch(SCHEMA)?;
         conn.execute_batch(crate::supplies::SCHEMA)?;
+        crate::supplies::migrate(&conn)?;
         Ok(Self { conn: Mutex::new(conn) })
     }
 

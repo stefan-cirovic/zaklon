@@ -352,11 +352,26 @@ async fn full_hub_flow() {
     assert_eq!(summary["running_low"][0]["name"], "Brašno");
     let (_, shopping) = hub.get("/api/shopping").await;
     assert_eq!(shopping[0]["source"], "running_low");
+    // Bought in the shop (phone), put away at home with a date (laptop).
+    let low_id = shopping[0]["id"].as_str().unwrap().to_string();
+    let r = as_phone(reqwest::Method::POST, &format!("/api/shopping/{low_id}/bought")).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 204);
+    let (_, away) = hub.get("/api/put-away").await;
+    let away_id = away[0]["id"].as_str().unwrap().to_string();
+    let (st, put) = hub.post(&format!("/api/put-away/{away_id}"), json!({ "quantity": 2, "expiry": "2027-05-31" })).await;
+    assert_eq!(st, 200, "{put}");
+    assert_eq!(put["quantity"], 3.5);
+    assert_eq!(put["batches"].as_array().unwrap().len(), 2);
+    assert_eq!(put["expiry"], "2027-05-31");
+    let (_, away) = hub.get("/api/put-away").await;
+    assert_eq!(away, json!([]));
     let (_, code) = hub.get("/api/barcodes/8600000000017").await;
     assert_eq!(code["item"]["name"], "Brašno");
     let (_, history) = hub.get("/api/history?limit=5").await;
-    assert_eq!(history[0]["action"], "consume");
-    assert_eq!(history[0]["actor"], "Ana's phone");
+    assert_eq!(history[0]["action"], "add", "put away is recorded as restocking");
+    assert_eq!(history[0]["actor"], "laptop");
+    let consume = history.as_array().unwrap().iter().find(|h| h["action"] == "consume").expect("consume in history");
+    assert_eq!(consume["actor"], "Ana's phone");
 
     // 11. Add-ons: download, verify and install a pack.
     let (st, _) = hub.post("/api/packs/test-pack/download", json!({})).await;

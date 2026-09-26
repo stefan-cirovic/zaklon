@@ -9,6 +9,7 @@ import ExpiryBadge from "../components/ExpiryBadge";
 
 type T = (k: Key) => string;
 
+export type Batch = { id: string; quantity: number; expiry: string | null; added_at: string };
 export type Item = {
   id: string;
   name: string;
@@ -22,11 +23,21 @@ export type Item = {
   notes: string | null;
   updated_at: string;
   updated_by: string | null;
+  batches?: Batch[];
 };
 type Place = { id: string; name: string; preset: boolean };
-type Shopping = { id: string; item_id: string | null; text: string; quantity: number | null; unit: string | null; done: boolean; source: "manual" | "running_low" };
+type Shopping = {
+  id: string;
+  item_id: string | null;
+  text: string;
+  quantity: number | null;
+  unit: string | null;
+  status: "open" | "bought";
+  source: "manual" | "running_low";
+};
 type History = { seq: number; at: string; actor: string | null; entity: string; entity_id: string; action: string; before: Partial<Item> | null; after: Partial<Item> | null };
 type BarcodeReply = { barcode: string; item: Item | null; known: { name: string; unit: string | null; category: string | null } | null };
+type View = "items" | "shopping" | "putaway" | "history";
 
 const CATEGORIES = ["food", "drink", "medicine", "hygiene", "equipment", "fuel", "other"] as const;
 const UNITS = ["pcs", "kg", "g", "l", "ml", "pack"] as const;
@@ -35,10 +46,15 @@ const catKey = (c: string) => ("cat_" + c) as Key;
 const unitKey = (u: string) => ("unit_" + u) as Key;
 const placeKey = (p: string) => ("place_" + p) as Key;
 
+function unitName(t: T, unit: string, qty: number) {
+  return unitLabel(unit, qty, (u) => (UNITS.includes(u as (typeof UNITS)[number]) ? t(unitKey(u)) : u));
+}
+
 export default function Supplies({ t }: { t: T }) {
-  const [view, setView] = useState<"items" | "shopping" | "history">("items");
+  const [view, setView] = useState<View>("items");
   const [items, setItems] = useState<Item[] | null>(null);
   const [places, setPlaces] = useState<Place[]>([]);
+  const [awayCount, setAwayCount] = useState(0);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<string>("all");
@@ -47,9 +63,10 @@ export default function Supplies({ t }: { t: T }) {
 
   const load = useCallback(async () => {
     try {
-      const [i, p] = await Promise.all([api<Item[]>("/api/items"), api<Place[]>("/api/places")]);
+      const [i, p, a] = await Promise.all([api<Item[]>("/api/items"), api<Place[]>("/api/places"), api<Shopping[]>("/api/put-away")]);
       setItems(i);
       setPlaces(p);
+      setAwayCount(a.length);
       setErr(null);
     } catch (e) {
       setErr(errText(t, e));
@@ -61,12 +78,15 @@ export default function Supplies({ t }: { t: T }) {
     canScan().then(setScanner).catch(() => setScanner(false));
   }, [load]);
 
-  const placeName = (p: string | null) => {
-    if (!p) return "";
-    const found = places.find((x) => x.id === p || x.name === p);
-    if (found?.preset) return t(placeKey(found.id));
-    return found?.name ?? p;
-  };
+  const placeName = useCallback(
+    (p: string | null) => {
+      if (!p) return "";
+      const found = places.find((x) => x.id === p || x.name === p);
+      if (found?.preset) return t(placeKey(found.id));
+      return found?.name ?? p;
+    },
+    [places, t],
+  );
 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -114,15 +134,22 @@ export default function Supplies({ t }: { t: T }) {
     );
   }
 
+  const tabs: [View, string][] = [
+    ["items", t("suppliesItems")],
+    ["shopping", t("shoppingList")],
+    ["putaway", awayCount > 0 ? `${t("putAway")} (${awayCount})` : t("putAway")],
+    ["history", t("history")],
+  ];
+
   return (
     <div className="stack">
       <div className="page-head">
         <h1>{t("supplies")}</h1>
       </div>
       <div className="segmented">
-        {(["items", "shopping", "history"] as const).map((v) => (
+        {tabs.map(([v, label]) => (
           <button key={v} className={view === v ? "active" : ""} onClick={() => setView(v)}>
-            {t(v === "items" ? "suppliesItems" : v === "shopping" ? "shoppingList" : "history")}
+            {label}
           </button>
         ))}
       </div>
@@ -150,6 +177,7 @@ export default function Supplies({ t }: { t: T }) {
             <div className="list">
               {shown.map((i) => {
                 const low = i.min_quantity !== null && i.quantity < i.min_quantity;
+                const batches = i.batches?.length ?? 0;
                 return (
                   <div className="item supply" key={i.id}>
                     <button className="supply-main" onClick={() => setEditing(i)}>
@@ -157,6 +185,7 @@ export default function Supplies({ t }: { t: T }) {
                       <div className="muted supply-meta">
                         {t(catKey(i.category))}
                         {i.place ? ` · ${placeName(i.place)}` : ""}
+                        {batches > 1 ? ` · ${batches} ${t("batchesShort")}` : ""}
                       </div>
                       <div className="supply-badges">
                         <ExpiryBadge date={i.expiry} t={t} />
@@ -167,7 +196,7 @@ export default function Supplies({ t }: { t: T }) {
                       <button className="qty-btn" aria-label={`${t("useOne")}: ${i.name}`} onClick={() => adjust(i, -1)} disabled={i.quantity <= 0}>−</button>
                       <div className="qty-val">
                         <div>{fmtQty(i.quantity)}</div>
-                        <div className="muted" style={{ fontSize: 12 }}>{unitLabel(i.unit, i.quantity, (u) => (UNITS.includes(u as (typeof UNITS)[number]) ? t(unitKey(u)) : u))}</div>
+                        <div className="muted" style={{ fontSize: 12 }}>{unitName(t, i.unit, i.quantity)}</div>
                       </div>
                       <button className="qty-btn" aria-label={`${t("addOne")}: ${i.name}`} onClick={() => adjust(i, 1)}>+</button>
                     </div>
@@ -179,11 +208,14 @@ export default function Supplies({ t }: { t: T }) {
         </>
       )}
 
-      {view === "shopping" && <ShoppingView t={t} />}
+      {view === "shopping" && <ShoppingView t={t} onChanged={load} />}
+      {view === "putaway" && <PutAwayView t={t} items={items ?? []} places={places} placeName={placeName} onChanged={load} />}
       {view === "history" && <HistoryView t={t} />}
     </div>
   );
 }
+
+// ---- add / edit an item ------------------------------------------------------
 
 function ItemForm({
   t,
@@ -202,6 +234,7 @@ function ItemForm({
   onPlacesChanged: () => void;
   onDone: () => void;
 }) {
+  const isNew = !initial.id;
   const [f, setF] = useState({
     name: initial.name ?? "",
     quantity: initial.quantity !== undefined ? String(initial.quantity) : "1",
@@ -213,6 +246,7 @@ function ItemForm({
     barcode: initial.barcode ?? "",
     notes: initial.notes ?? "",
   });
+  const [batches, setBatches] = useState<Batch[]>(initial.batches ?? []);
   const [newPlace, setNewPlace] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -220,26 +254,23 @@ function ItemForm({
     const value = e.target.value;
     setF((prev) => ({ ...prev, [k]: value }));
   };
-  const num = parseNumber;
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setErr(null);
-    const body = {
+    const common = {
       name: f.name,
-      quantity: num(f.quantity) ?? 0,
       unit: f.unit,
       category: f.category,
       place: f.place || null,
-      expiry: f.expiry || null,
-      min_quantity: f.min_quantity.trim() ? num(f.min_quantity) : null,
+      min_quantity: f.min_quantity.trim() ? parseNumber(f.min_quantity) : null,
       barcode: f.barcode || null,
       notes: f.notes || null,
     };
     try {
-      if (initial.id) await api(`/api/items/${initial.id}`, { method: "PATCH", json: body });
-      else await api("/api/items", { json: body });
+      if (isNew) await api("/api/items", { json: { ...common, quantity: parseNumber(f.quantity) ?? 0, expiry: f.expiry || null } });
+      else await api(`/api/items/${initial.id}`, { method: "PATCH", json: common });
       onDone();
     } catch (ex) {
       setErr(errText(t, ex));
@@ -278,17 +309,19 @@ function ItemForm({
   return (
     <form className="stack form" onSubmit={save}>
       <div className="page-head">
-        <h1>{initial.id ? t("editItem") : t("addItem")}</h1>
+        <h1>{isNew ? t("addItem") : t("editItem")}</h1>
       </div>
       <label className="field">
         {t("itemName")}
-        <input type="text" value={f.name} onChange={set("name")} required maxLength={120} autoFocus={!initial.id} />
+        <input type="text" value={f.name} onChange={set("name")} required maxLength={120} autoFocus={isNew} />
       </label>
       <div className="two">
-        <label className="field">
-          {t("quantity")}
-          <input type="text" inputMode="decimal" value={f.quantity} onChange={set("quantity")} />
-        </label>
+        {isNew && (
+          <label className="field">
+            {t("quantity")}
+            <input type="text" inputMode="decimal" value={f.quantity} onChange={set("quantity")} />
+          </label>
+        )}
         <label className="field">
           {t("unit")}
           <select value={f.unit} onChange={set("unit")}>
@@ -322,15 +355,22 @@ function ItemForm({
         <button type="button" className="btn secondary" onClick={addPlace} disabled={!newPlace.trim()} aria-label={t("addPlace")}>+</button>
       </div>
       <div className="two">
-        <label className="field">
-          {t("expiry")}
-          <input type="date" value={f.expiry} onChange={set("expiry")} min="2000-01-01" max="2100-12-31" />
-        </label>
+        {isNew && (
+          <label className="field">
+            {t("expiry")}
+            <input type="date" value={f.expiry} onChange={set("expiry")} min="2000-01-01" max="2100-12-31" />
+          </label>
+        )}
         <label className="field">
           {t("minQuantity")}
           <input type="text" inputMode="decimal" value={f.min_quantity} onChange={set("min_quantity")} placeholder={t("optional")} />
         </label>
       </div>
+
+      {!isNew && initial.id && (
+        <BatchesEditor t={t} itemId={initial.id} unit={f.unit} batches={batches} onChange={setBatches} onError={setErr} />
+      )}
+
       <label className="field">
         {t("barcode")}
         <div className="row">
@@ -342,18 +382,106 @@ function ItemForm({
         {t("notes")}
         <textarea value={f.notes} onChange={set("notes")} rows={2} maxLength={500} />
       </label>
-      {initial.id && <p className="muted" style={{ fontSize: 13 }}>{t("confirmDelete")}</p>}
+      {!isNew && <p className="muted" style={{ fontSize: 13 }}>{t("confirmDelete")}</p>}
       {err && <p className="error" role="alert">{err}</p>}
       <div className="row actions">
         <button className="btn" disabled={busy || !f.name.trim()}>{t("save")}</button>
         <button type="button" className="btn secondary" onClick={onDone}>{t("cancel")}</button>
-        {initial.id && <ConfirmButton label={t("delete")} confirmLabel={t("yesDelete")} cancelLabel={t("cancel")} onConfirm={remove} />}
+        {!isNew && <ConfirmButton label={t("delete")} confirmLabel={t("yesDelete")} cancelLabel={t("cancel")} onConfirm={remove} />}
       </div>
     </form>
   );
 }
 
-function ShoppingView({ t }: { t: T }) {
+/** Batches of an item: each with its own quantity and expiry date. Changes are saved right away. */
+function BatchesEditor({
+  t,
+  itemId,
+  unit,
+  batches,
+  onChange,
+  onError,
+}: {
+  t: T;
+  itemId: string;
+  unit: string;
+  batches: Batch[];
+  onChange: (b: Batch[]) => void;
+  onError: (e: string | null) => void;
+}) {
+  const [addQty, setAddQty] = useState("");
+  const [addDate, setAddDate] = useState("");
+  const total = batches.reduce((s, b) => s + b.quantity, 0);
+
+  const apply = async (p: Promise<Item>) => {
+    try {
+      const item = await p;
+      onChange(item.batches ?? []);
+      onError(null);
+    } catch (e) {
+      onError(errText(t, e));
+    }
+  };
+
+  const update = (b: Batch, field: "quantity" | "expiry", value: string) => {
+    if (field === "quantity") {
+      const q = parseNumber(value);
+      if (q === null || q === b.quantity) return;
+      apply(api<Item>(`/api/batches/${b.id}`, { method: "PATCH", json: { quantity: q } }));
+    } else {
+      if ((value || null) === b.expiry) return;
+      apply(api<Item>(`/api/batches/${b.id}`, { method: "PATCH", json: { expiry: value || null } }));
+    }
+  };
+
+  const add = () => {
+    const q = parseNumber(addQty);
+    if (q === null || q <= 0) return;
+    apply(api<Item>(`/api/items/${itemId}/batches`, { json: { quantity: q, expiry: addDate || null } }));
+    setAddQty("");
+    setAddDate("");
+  };
+
+  return (
+    <div className="panel stack batches">
+      <div className="row between">
+        <div className="label">{t("batches")}</div>
+        <div className="muted" style={{ fontSize: 14 }}>
+          {t("total")}: {fmtQty(total)} {unitName(t, unit, total)}
+        </div>
+      </div>
+      {batches.length === 0 && <p className="muted">{t("noBatches")}</p>}
+      {batches.map((b) => (
+        <div className="batch-row" key={b.id + b.quantity + (b.expiry ?? "")}>
+          <input
+            type="text"
+            inputMode="decimal"
+            defaultValue={fmtQty(b.quantity)}
+            aria-label={t("quantity")}
+            onBlur={(e) => update(b, "quantity", e.target.value)}
+          />
+          <input type="date" defaultValue={b.expiry ?? ""} aria-label={t("expiry")} onBlur={(e) => update(b, "expiry", e.target.value)} />
+          <ConfirmButton
+            label="×"
+            confirmLabel={t("yesRemove")}
+            cancelLabel={t("cancel")}
+            onConfirm={() => apply(api<Item>(`/api/batches/${b.id}`, { method: "DELETE" }))}
+            className="btn danger small"
+          />
+        </div>
+      ))}
+      <div className="batch-row">
+        <input type="text" inputMode="decimal" value={addQty} onChange={(e) => setAddQty(e.target.value)} placeholder={t("quantity")} aria-label={t("newBatchQuantity")} />
+        <input type="date" value={addDate} onChange={(e) => setAddDate(e.target.value)} aria-label={t("newBatchExpiry")} />
+        <button type="button" className="btn secondary small" onClick={add} disabled={!parseNumber(addQty)}>{t("addBatch")}</button>
+      </div>
+    </div>
+  );
+}
+
+// ---- shopping list -------------------------------------------------------------
+
+function ShoppingView({ t, onChanged }: { t: T; onChanged: () => void }) {
   const [list, setList] = useState<Shopping[] | null>(null);
   const [text, setText] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -384,24 +512,14 @@ function ShoppingView({ t }: { t: T }) {
     }
   };
 
-  const toggle = async (s: Shopping) => {
+  const act = async (s: Shopping, what: "bought" | "dismiss") => {
     try {
-      if (s.source === "running_low") {
-        // Tick a computed entry: keep it on the list as a real, done entry.
-        const e = await api<Shopping>("/api/shopping", { json: { text: s.text, quantity: s.quantity, unit: s.unit, item_id: s.item_id } });
-        await api(`/api/shopping/${e.id}`, { method: "PATCH", json: { done: true } });
-      } else {
-        await api(`/api/shopping/${s.id}`, { method: "PATCH", json: { done: !s.done } });
-      }
+      await api(`/api/shopping/${encodeURIComponent(s.id)}/${what}`, { method: "POST" });
       load();
+      onChanged();
     } catch (ex) {
       setErr(errText(t, ex));
     }
-  };
-
-  const clearDone = async () => {
-    await api("/api/shopping/clear-done", { method: "POST" }).catch(() => {});
-    load();
   };
 
   return (
@@ -414,24 +532,193 @@ function ShoppingView({ t }: { t: T }) {
       {list && list.length === 0 && <p className="muted" style={{ textAlign: "center" }}>{t("listEmpty")}</p>}
       <div className="list">
         {list?.map((s) => (
-          <label className={"item check" + (s.done ? " done" : "")} key={s.id}>
-            <input type="checkbox" checked={s.done} onChange={() => toggle(s)} />
-            <span className="check-text">
-              {s.text}
-              {s.quantity !== null && <span className="muted"> · {fmtQty(s.quantity)} {s.unit ? unitLabel(s.unit, s.quantity, (u) => t(unitKey(u))) : ""}</span>}
-            </span>
-            {s.source === "running_low" && <span className="badge warn">{t("runningLow")}</span>}
-          </label>
+          <div className="item wrap shop" key={s.id}>
+            <div className="shop-text">
+              <div>{s.text}</div>
+              <div className="muted" style={{ fontSize: 13 }}>
+                {s.quantity !== null && s.quantity > 0 && <span>{fmtQty(s.quantity)} {s.unit ? unitName(t, s.unit, s.quantity) : ""}</span>}
+                {s.source === "running_low" && <span className="badge warn" style={{ marginLeft: 6 }}>{t("runningLow")}</span>}
+              </div>
+            </div>
+            <div className="row">
+              <button className="btn small" onClick={() => act(s, "bought")} aria-label={`${t("bought")}: ${s.text}`}>{t("bought")}</button>
+              <button className="btn secondary small" onClick={() => act(s, "dismiss")} aria-label={`${t("delete")}: ${s.text}`}>{t("delete")}</button>
+            </div>
+          </div>
         ))}
       </div>
-      {list?.some((s) => s.done) && (
-        <div>
-          <button className="btn secondary" onClick={clearDone}>{t("clearDone")}</button>
-        </div>
-      )}
     </div>
   );
 }
+
+// ---- put away bought things ------------------------------------------------------
+
+function PutAwayView({
+  t,
+  items,
+  places,
+  placeName,
+  onChanged,
+}: {
+  t: T;
+  items: Item[];
+  places: Place[];
+  placeName: (p: string | null) => string;
+  onChanged: () => void;
+}) {
+  const [list, setList] = useState<Shopping[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(
+    () =>
+      api<Shopping[]>("/api/put-away")
+        .then((l) => {
+          setList(l);
+          setErr(null);
+        })
+        .catch((e) => setErr(errText(t, e))),
+    [t],
+  );
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const done = () => {
+    load();
+    onChanged();
+  };
+
+  return (
+    <div className="stack">
+      <p className="muted">{t("putAwayIntro")}</p>
+      {err && <p className="error" role="alert">{err}</p>}
+      {list && list.length === 0 && <p className="muted" style={{ textAlign: "center" }}>{t("nothingToPutAway")}</p>}
+      {list?.map((s) => (
+        <PutAwayCard
+          key={s.id}
+          t={t}
+          entry={s}
+          item={items.find((i) => i.id === s.item_id) ?? null}
+          places={places}
+          placeName={placeName}
+          onDone={done}
+          onError={setErr}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PutAwayCard({
+  t,
+  entry,
+  item,
+  places,
+  placeName,
+  onDone,
+  onError,
+}: {
+  t: T;
+  entry: Shopping;
+  item: Item | null;
+  places: Place[];
+  placeName: (p: string | null) => string;
+  onDone: () => void;
+  onError: (e: string | null) => void;
+}) {
+  const [qty, setQty] = useState(entry.quantity && entry.quantity > 0 ? fmtQty(entry.quantity) : "1");
+  const [expiry, setExpiry] = useState("");
+  const [place, setPlace] = useState(item?.place ?? "");
+  const [category, setCategory] = useState(item?.category ?? "food");
+  const [unit, setUnit] = useState(item?.unit ?? entry.unit ?? "pcs");
+  const [busy, setBusy] = useState(false);
+
+  const putAway = async () => {
+    const q = parseNumber(qty);
+    if (q === null || q <= 0) return;
+    setBusy(true);
+    try {
+      await api(`/api/put-away/${entry.id}`, {
+        json: { quantity: q, expiry: expiry || null, place: place || null, category, unit, item_id: item?.id ?? null },
+      });
+      onDone();
+    } catch (e) {
+      onError(errText(t, e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const discard = async () => {
+    try {
+      await api(`/api/shopping/${entry.id}/dismiss`, { method: "POST" });
+      onDone();
+    } catch (e) {
+      onError(errText(t, e));
+    }
+  };
+
+  return (
+    <div className="panel stack put-away" aria-label={entry.text}>
+      <div className="row between wrap">
+        <strong>{entry.text}</strong>
+        <span className="muted" style={{ fontSize: 13 }}>{item ? t("addsToStock") : t("newItem")}</span>
+      </div>
+      <div className="two">
+        <label className="field">
+          {t("quantity")}
+          <input type="text" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} />
+        </label>
+        {item ? (
+          <div className="field">
+            {t("unit")}
+            <div className="static-value">{unitName(t, unit, parseNumber(qty) ?? 1)}</div>
+          </div>
+        ) : (
+          <label className="field">
+            {t("unit")}
+            <select value={unit} onChange={(e) => setUnit(e.target.value)}>
+              {UNITS.map((u) => (
+                <option key={u} value={u}>{t(unitKey(u))}</option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
+      <div className="two">
+        <label className="field">
+          {t("expiry")}
+          <input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} />
+        </label>
+        <label className="field">
+          {t("place")}
+          <select value={place} onChange={(e) => setPlace(e.target.value)}>
+            <option value="">—</option>
+            {places.map((p) => (
+              <option key={p.id} value={p.id}>{placeName(p.id)}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {!item && (
+        <label className="field">
+          {t("category")}
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            {CATEGORIES.map((c) => (
+              <option key={c} value={c}>{t(catKey(c))}</option>
+            ))}
+          </select>
+        </label>
+      )}
+      <div className="row actions">
+        <button className="btn" onClick={putAway} disabled={busy || !parseNumber(qty)}>{t("putAwayNow")}</button>
+        <ConfirmButton label={t("remove")} confirmLabel={t("yesRemove")} cancelLabel={t("cancel")} onConfirm={discard} className="btn secondary" />
+      </div>
+    </div>
+  );
+}
+
+// ---- history ---------------------------------------------------------------------
 
 function HistoryView({ t }: { t: T }) {
   const [h, setH] = useState<History[] | null>(null);

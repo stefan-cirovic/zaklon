@@ -210,3 +210,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .home-cta .btn { min-width: 220px; }
 
 .answer { white-space: pre-wrap; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; line-height: 1.55; }
+
+/* Put away and batches */
+.btn.small { min-height: 38px; padding: 8px 12px; font-size: 14px; }
+.batch-row { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 8px; align-items: center; }
+.batch-row input { min-width: 0; }
+.static-value { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-height: 44px; color: var(--text); }
+.item.shop .shop-text { flex: 1; min-width: 0; }
+.panel.put-away { text-align: left; }

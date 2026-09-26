@@ -90,7 +90,7 @@ test("supplies: add, adjust, running low, shopping list, history, home", async (
   await expect(row.locator(".qty-val")).toContainText("2");
 
   await page.getByRole("button", { name: "Shopping list" }).click();
-  await expect(page.locator(".item.check", { hasText: name })).toBeVisible();
+  await expect(page.locator(".item.shop", { hasText: name })).toBeVisible();
 
   await page.getByRole("button", { name: "History" }).click();
   await expect(page.getByText(name).first()).toBeVisible();
@@ -227,4 +227,56 @@ test("the Latin-script switch is remembered on this device", async ({ page }) =>
   await page.reload();
   await expect(page.getByRole("checkbox", { name: /Serbian articles in Latin script/ })).toBeChecked();
   await page.getByRole("checkbox", { name: /Serbian articles in Latin script/ }).uncheck();
+});
+
+test("shopping: bought goes to Put away, which adds a dated batch", async ({ page }, info) => {
+  await ensureSetUp(page);
+  const name = `Rice ${info.project.name}`;
+  await page.goto("/#supplies");
+  // An item that is running low shows on the shopping list.
+  await page.getByRole("button", { name: "Add item" }).click();
+  await page.getByLabel("Name").fill(name);
+  await page.getByLabel("Quantity").fill("1");
+  await page.getByLabel("Unit").selectOption("kg");
+  await page.getByLabel("Warn below").fill("2");
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Shopping list" }).click();
+  const entry = page.locator(".item.shop", { hasText: name });
+  await expect(entry).toBeVisible();
+
+  // Bought in the shop: off the list, on "Put away".
+  await entry.getByRole("button", { name: `Bought: ${name}` }).click();
+  await expect(page.locator(".item.shop", { hasText: name })).toHaveCount(0);
+  await page.getByRole("button", { name: /^Put away/ }).first().click();
+  const card = page.getByLabel(name);
+  await card.getByLabel("Quantity").fill("3");
+  await card.getByLabel("Expiry date").fill("2031-03-31");
+  await card.getByRole("button", { name: "Put away" }).click();
+  await expect(page.getByLabel(name)).toHaveCount(0);
+
+  // The item now has two batches: 1 kg without a date and 3 kg dated.
+  await page.getByRole("button", { name: "Items" }).click();
+  const row = page.locator(".item.supply", { hasText: name });
+  await expect(row.locator(".qty-val")).toContainText("4");
+  await expect(row.getByText("Running low")).toHaveCount(0);
+  await expect(row.getByText("2 batches")).toBeVisible();
+  await row.locator(".supply-main").click();
+  await expect(page.locator(".batch-row")).toHaveCount(3); // two batches + the "add" row
+  // Using 2 takes from the dated batch first.
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await row.getByRole("button", { name: /^Use one/ }).click();
+  await row.getByRole("button", { name: /^Use one/ }).click();
+  await expect(row.locator(".qty-val")).toContainText("2");
+  await row.locator(".supply-main").click();
+  await expect(page.locator(".batch-row").first().locator('input[type="date"]')).toHaveValue("2031-03-31");
+  await expect(page.locator(".batch-row").first().locator('input[inputmode="decimal"]')).toHaveValue("1");
+  await page.getByRole("button", { name: "Cancel" }).click();
+
+  // "Delete" on the list: not bought, gone from the list.
+  await page.getByRole("button", { name: "Shopping list" }).click();
+  await page.getByLabel("Add to the list…").first().fill(`Candles ${info.project.name}`);
+  await page.getByRole("button", { name: "Add to the list…" }).click();
+  const candles = page.locator(".item.shop", { hasText: `Candles ${info.project.name}` });
+  await candles.getByRole("button", { name: /^Delete/ }).click();
+  await expect(candles).toHaveCount(0);
 });

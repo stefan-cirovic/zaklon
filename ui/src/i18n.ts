@@ -68,6 +68,10 @@ const en = {
   noModelsOnHub: "The hub has no AI models yet. Download one in Add-ons on the laptop.", copyToPhone: "Copy to phone", copyingModel: "Copying the model…",
   aiStart: "Start", aiStop: "Stop", aiLoading: "Loading…", aiRunning: "running", askSomething: "Ask something",
   askExample: "e.g. How do I purify water without a filter?", aiThinking: "Thinking…", tokensPerSecond: "words/s",
+  putAway: "Put away", putAwayIntro: "Things you marked as bought. Enter how much, the date and the place, then put them away.",
+  nothingToPutAway: "Nothing to put away.", putAwayNow: "Put away", addsToStock: "adds to stock", newItem: "new item",
+  bought: "Bought", batches: "Batches", batchesShort: "batches", total: "Total", noBatches: "None in stock.",
+  addBatch: "Add", newBatchQuantity: "Quantity of a new batch", newBatchExpiry: "Expiry date of a new batch",
 
 };
 
@@ -139,6 +143,10 @@ const sr: typeof en = {
   noModelsOnHub: "Hub još nema AI modele. Preuzmi neki u Dodacima na laptopu.", copyToPhone: "Kopiraj na telefon", copyingModel: "Kopiranje modela…",
   aiStart: "Pokreni", aiStop: "Zaustavi", aiLoading: "Učitava se…", aiRunning: "radi", askSomething: "Pitaj nešto",
   askExample: "npr. Kako da prečistim vodu bez filtera?", aiThinking: "Razmišlja…", tokensPerSecond: "reči/s",
+  putAway: "Rasporedi", putAwayIntro: "Stvari koje si označio kao kupljene. Unesi koliko, rok i mesto, pa ih rasporedi.",
+  nothingToPutAway: "Nema ništa za raspoređivanje.", putAwayNow: "Rasporedi", addsToStock: "dodaje se u zalihe", newItem: "nova stavka",
+  bought: "Kupljeno", batches: "Serije", batchesShort: "serije", total: "Ukupno", noBatches: "Nema na stanju.",
+  addBatch: "Dodaj", newBatchQuantity: "Količina nove serije", newBatchExpiry: "Rok nove serije",
 
 };
 
