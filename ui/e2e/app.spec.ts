@@ -52,9 +52,15 @@ test("pairing shows the download QR, the pairing QR and a 6-digit code", async (
   await ensureSetUp(page);
   await page.getByRole("button", { name: "Add a phone" }).click();
   await expect(page.getByRole("heading", { name: "Pair a phone" })).toBeVisible();
-  await expect(page.getByRole("img", { name: "QR code" })).toHaveCount(2);
+  await expect(page.getByRole("img", { name: /QR code/ })).toHaveCount(2);
   await expect(page.locator(".code")).toHaveText(/^\d{6}$/);
   await expect(page.getByText(/http:\/\/.+:28480\/get/)).toBeVisible();
+  await expect(page.locator(".sec-code")).toHaveText(/^[0-9A-F]{4} [0-9A-F]{4}$/);
+  await expect(page.getByText(/Valid for [45]:\d\d/)).toBeVisible();
+  // A new code replaces the old one.
+  const first = await page.locator(".code").textContent();
+  await page.getByRole("button", { name: "New code" }).click();
+  await expect(page.locator(".code")).not.toHaveText(first ?? "");
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("button", { name: "Add a phone" })).toBeVisible();
 });
@@ -68,7 +74,7 @@ test("supplies: add, adjust, running low, shopping list, history, home", async (
   await page.getByLabel("Quantity").fill("2");
   await page.getByLabel("Unit").selectOption("kg");
   await page.getByLabel("Category").selectOption("food");
-  await page.getByLabel("Place").selectOption("pantry");
+  await page.getByRole("combobox", { name: /^Place/ }).selectOption("pantry");
   await page.getByLabel("Warn below").fill("3");
   await page.getByRole("button", { name: "Save" }).click();
 
@@ -77,10 +83,10 @@ test("supplies: add, adjust, running low, shopping list, history, home", async (
   await expect(row.locator(".qty-val")).toContainText("2");
   await expect(row.getByText("Running low")).toBeVisible();
 
-  await row.getByRole("button", { name: "+" }).click();
+  await row.getByRole("button", { name: /^Add one/ }).click();
   await expect(row.locator(".qty-val")).toContainText("3");
   await expect(row.getByText("Running low")).toHaveCount(0);
-  await row.getByRole("button", { name: "−" }).click();
+  await row.getByRole("button", { name: /^Use one/ }).click();
   await expect(row.locator(".qty-val")).toContainText("2");
 
   await page.getByRole("button", { name: "Shopping list" }).click();
@@ -104,22 +110,44 @@ test("supplies: an expired item is flagged and a bad date is refused", async ({ 
   await page.getByLabel("Expiry date").fill("2020-01-31");
   await page.getByRole("button", { name: "Save" }).click();
   const row = page.locator(".item.supply", { hasText: name });
-  await expect(row.getByText(/expired · 31\.01\.2020\./)).toBeVisible();
+  await expect(row.getByText(/expired · 31 Jan 2020/)).toBeVisible();
 
-  // Edit, then delete (confirm dialog).
+  // An impossible date is refused by the hub with a clear message.
+  await page.getByRole("button", { name: "Add item" }).click();
+  await page.getByLabel("Name").fill(`Bad date ${info.project.name}`);
+  await page.evaluate(() => {
+    const el = document.querySelector('input[type="date"]') as HTMLInputElement;
+    el.type = "text";
+  });
+  await page.getByLabel("Expiry date").fill("2027-02-31");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("alert")).toHaveText("That date does not exist.");
+  await page.getByRole("button", { name: "Cancel" }).click();
+
+  // Edit, then delete: needs a second, deliberate tap.
   await row.locator(".supply-main").click();
   await expect(page.getByRole("heading", { name: "Edit item" })).toBeVisible();
-  page.once("dialog", (d) => d.accept());
   await page.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("button", { name: "Cancel" }).last().click();
+  await expect(page.getByRole("heading", { name: "Edit item" })).toBeVisible();
+  await page.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("button", { name: "Yes, delete" }).click();
   await expect(page.locator(".item.supply", { hasText: name })).toHaveCount(0);
 });
 
-test("language switch to Serbian and back", async ({ page }) => {
+test("language switch to Serbian and back, with Serbian number format", async ({ page }, info) => {
   await ensureSetUp(page);
   await page.locator("select").first().selectOption("sr");
   await expect(page.getByRole("heading", { name: "Domaćinstvo" })).toBeVisible();
   await page.goto("/#supplies");
   await expect(page.getByRole("heading", { name: "Zalihe" })).toBeVisible();
+  const name = `Šećer ${info.project.name}`;
+  await page.getByRole("button", { name: "Dodaj stavku" }).click();
+  await page.getByLabel("Naziv").fill(name);
+  await page.getByLabel("Količina").fill("1,5");
+  await page.getByLabel("Jedinica").selectOption("kg");
+  await page.getByRole("button", { name: "Sačuvaj" }).click();
+  await expect(page.locator(".item.supply", { hasText: name }).locator(".qty-val")).toContainText("1,5");
   await page.goto("/#household");
   await page.locator("select").first().selectOption("en");
   await expect(page.getByRole("heading", { name: "Household" })).toBeVisible();
@@ -152,4 +180,24 @@ test("the tab is remembered in the address", async ({ page }) => {
   await expect(page).toHaveURL(/#supplies$/);
   await page.reload();
   await expect(page.getByRole("heading", { name: "Supplies" })).toBeVisible();
+});
+
+test("an idle screen does not flood the hub with requests", async ({ page }) => {
+  test.setTimeout(90_000);
+  await ensureSetUp(page);
+  for (const tab of ["home", "supplies", "household", "library", "addons"]) {
+    await page.goto(`/#${tab}`);
+    await page.waitForTimeout(1500);
+    const counts: Record<string, number> = {};
+    const onRequest = (r: { url: () => string }) => {
+      const path = new URL(r.url()).pathname;
+      if (path.startsWith("/api/")) counts[path] = (counts[path] ?? 0) + 1;
+    };
+    page.on("request", onRequest);
+    await page.waitForTimeout(6000);
+    page.off("request", onRequest);
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    // Status every 10 s, add-ons every 10 s while idle: a handful at most.
+    expect(total, `${tab}: ${JSON.stringify(counts)}`).toBeLessThanOrEqual(6);
+  }
 });

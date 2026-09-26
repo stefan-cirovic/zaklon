@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS history (
 impl Db {
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path).with_context(|| format!("opening {}", path.display()))?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.execute_batch(SCHEMA).context("applying schema")?;
@@ -163,8 +164,19 @@ impl Db {
                 },
             )
             .optional()?;
+        // Write "last seen" at most about once a minute, not on every request
+        // (an article can pull dozens of images).
         if let Some(d) = &dev {
-            conn.execute("UPDATE devices SET last_seen = ?1 WHERE id = ?2", params![now, d.id])?;
+            let stale = d.last_seen.as_deref().is_none_or(|seen| {
+                let fmt = &time::format_description::well_known::Rfc3339;
+                match (time::OffsetDateTime::parse(seen, fmt), time::OffsetDateTime::parse(now, fmt)) {
+                    (Ok(a), Ok(b)) => (b - a).whole_seconds() >= 60,
+                    _ => true,
+                }
+            });
+            if stale {
+                conn.execute("UPDATE devices SET last_seen = ?1 WHERE id = ?2", params![now, d.id])?;
+            }
         }
         Ok(dev)
     }

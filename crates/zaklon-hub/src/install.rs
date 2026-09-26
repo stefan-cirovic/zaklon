@@ -38,7 +38,7 @@ async fn page(axum::extract::State(state): axum::extract::State<Arc<HubState>>) 
         "<p class=\"muted\">No app packages are on this hub yet.</p>".to_string()
     } else {
         apks.iter()
-            .map(|n| format!("<a class=\"btn\" href=\"/apk/{n}\">Download {n}</a>"))
+            .map(|n| format!("<a class=\"btn\" href=\"/apk/{}\">Download {}</a>", url_encode(n), html_escape(n)))
             .collect::<Vec<_>>()
             .join("\n")
     };
@@ -66,5 +66,14 @@ h1{{font-size:28px;margin:0 0 8px}} .muted{{color:#9aa3ad}}
 }
 
 fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;")
+}
+
+fn url_encode(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
 }

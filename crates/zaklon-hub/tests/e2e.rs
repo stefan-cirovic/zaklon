@@ -278,16 +278,24 @@ async fn full_hub_flow() {
         .unwrap();
     assert_eq!(r.status().as_u16(), 403, "burned code stays invalid");
 
-    // 8. Pairing with a fresh code and the right password.
+    // 8. Pairing with a fresh code and the right password. Starting a new code
+    //    cancels the previous one.
+    let (_, old) = hub.post("/api/pair/start", json!({})).await;
     let (_, pair) = hub.post("/api/pair/start", json!({})).await;
     let r = phone
         .post(format!("{}/api/pair/complete", hub.tls))
-        .json(&json!({ "code": pair["code"], "password": "correct horse", "device_name": "Ana's phone" }))
+        .json(&json!({ "code": old["code"], "password": "correct horse", "device_name": "x" }))
         .send()
         .await
         .unwrap();
+    assert_eq!(r.status().as_u16(), 403, "an older code is no longer valid");
+    let request = json!({ "code": pair["code"], "password": "correct horse", "device_name": "Ana's phone", "nonce": "0123456789abcdef-e2e" });
+    let r = phone.post(format!("{}/api/pair/complete", hub.tls)).json(&request).send().await.unwrap();
     assert_eq!(r.status().as_u16(), 200);
     let paired: Value = r.json().await.unwrap();
+    // The reply "got lost": the phone repeats the request and gets the same device, not a second one.
+    let again: Value = phone.post(format!("{}/api/pair/complete", hub.tls)).json(&request).send().await.unwrap().json().await.unwrap();
+    assert_eq!(again["device_id"], paired["device_id"]);
     let token = paired["device_token"].as_str().unwrap().to_string();
     assert_eq!(paired["fingerprint"], fingerprint.as_str());
 
@@ -374,7 +382,16 @@ async fn full_hub_flow() {
     assert_eq!(pack["state"]["status"], "installed", "{pack}");
     assert_eq!(sha256_hex(&std::fs::read(&installed).unwrap()), sha256_hex(&payload));
 
-    // 15. Without the library engine add-on the library says so.
+    // 15. Library pages may never run scripts (sandbox), even opened directly.
+    let r = hub.http.get(format!("{}/kiwix/content/x/y", hub.local)).send().await.unwrap();
+    if r.status().is_success() {
+        assert_eq!(r.headers()["content-security-policy"], "sandbox allow-popups");
+    }
+    // A cross-site navigation is never trusted as the laptop.
+    let r = hub.http.get(format!("{}/api/devices", hub.local)).header("sec-fetch-site", "cross-site").send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 403);
+
+    // 15b. Without the library engine add-on the library says so.
     let (_, lib) = hub.get("/api/library").await;
     assert_eq!(lib["engine"], "missing");
     let (_, results) = hub.get("/api/library/search?q=voda").await;
@@ -391,7 +408,14 @@ async fn full_hub_flow() {
 
     // 17. Discovery beacon answers with the same fingerprint.
     let sock = tokio::net::UdpSocket::bind(("127.0.0.1", 0)).await.unwrap();
+    // A short request gets no answer (no amplification)...
     sock.send_to(b"ZAKLON?", SocketAddr::from(([127, 0, 0, 1], hub.beacon_port))).await.unwrap();
+    let mut probe = [0u8; 512];
+    assert!(tokio::time::timeout(Duration::from_millis(500), sock.recv_from(&mut probe)).await.is_err(), "short request ignored");
+    // ...a padded one does.
+    let mut request = b"ZAKLON?".to_vec();
+    request.resize(zaklon_hub::discovery::BEACON_MIN_REQUEST, 0);
+    sock.send_to(&request, SocketAddr::from(([127, 0, 0, 1], hub.beacon_port))).await.unwrap();
     let mut buf = [0u8; 512];
     let (n, _) = tokio::time::timeout(Duration::from_secs(3), sock.recv_from(&mut buf)).await.expect("beacon reply").unwrap();
     let beacon: Value = serde_json::from_slice(&buf[..n]).unwrap();

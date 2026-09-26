@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 
-export default function Qr({ value, size = 220 }: { value: string; size?: number }) {
+export default function Qr({ value, size = 220, label }: { value: string; size?: number; label: string }) {
   const [url, setUrl] = useState<string>("");
   useEffect(() => {
     QRCode.toDataURL(value, { width: size, margin: 0, color: { dark: "#0b0d10", light: "#ffffff" } })
@@ -9,6 +9,8 @@ export default function Qr({ value, size = 220 }: { value: string; size?: number
       .catch(() => setUrl(""));
   }, [value, size]);
   return url ? (
-    <span className="qr"><img src={url} width={size} height={size} alt="QR code" /></span>
+    <span className="qr">
+      <img src={url} width={size} height={size} alt={label} />
+    </span>
   ) : null;
 }

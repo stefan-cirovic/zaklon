@@ -68,7 +68,7 @@ export function getMode(): Promise<AppMode> {
 }
 
 function sameOrigin(): AppMode {
-  return { mode: "hub", api_base: import.meta.env.VITE_API_BASE ?? "", platform: "windows", version: "" };
+  return { mode: "hub", api_base: import.meta.env.VITE_API_BASE ?? "", platform: "", version: "" };
 }
 
 export class ApiError extends Error {

@@ -106,6 +106,31 @@ impl PackState {
     }
 }
 
+/// A path inside the library: relative, only plain names, no "..", no drive.
+pub fn is_safe_relative(path: &str) -> bool {
+    let p = Path::new(path);
+    !path.is_empty()
+        && !path.contains('\\')
+        && p.components().all(|c| matches!(c, std::path::Component::Normal(_)))
+}
+
+impl Pack {
+    /// Ids are simple slugs; every path stays inside the library.
+    pub fn is_safe(&self) -> bool {
+        let id_ok = !self.id.is_empty()
+            && self.id.len() <= 64
+            && self.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+        id_ok
+            && !self.files.is_empty()
+            && self.files.iter().all(|f| {
+                is_safe_relative(&f.path)
+                    && f.unpack_to.as_deref().is_none_or(is_safe_relative)
+                    && f.sha256.len() == 64
+                    && f.sha256.chars().all(|c| c.is_ascii_hexdigit())
+            })
+    }
+}
+
 impl Catalog {
     /// The catalog compiled into the binary.
     pub fn bundled() -> Catalog {
@@ -113,14 +138,23 @@ impl Catalog {
     }
 
     /// Bundled catalog, overridden by `<catalog_dir>/catalog.json` when that
-    /// file exists, parses, and is at least as new.
+    /// file exists, parses, and is at least as new. Packs with unsafe ids or
+    /// file paths are dropped.
     pub fn load(catalog_dir: &Path) -> Catalog {
         let bundled = Self::bundled();
         let path = catalog_dir.join("catalog.json");
-        match std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Catalog>(&t).ok()) {
+        let mut c = match std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Catalog>(&t).ok()) {
             Some(c) if c.generated >= bundled.generated => c,
             _ => bundled,
-        }
+        };
+        c.packs.retain(|p| {
+            let ok = p.is_safe();
+            if !ok {
+                tracing::warn!(pack = %p.id, "catalog entry with an unsafe id or path ignored");
+            }
+            ok
+        });
+        c
     }
 
     pub fn pack(&self, id: &str) -> Option<&Pack> {
@@ -150,5 +184,25 @@ mod tests {
             }
         }
         assert!(c.pack("kiwix-tools").is_some());
+        for p in &c.packs {
+            assert!(p.is_safe(), "unsafe pack {}", p.id);
+            for f in &p.files {
+                let name = f.path.rsplit('/').next().unwrap();
+                for u in &f.urls {
+                    assert!(u.starts_with("https://"), "{u}");
+                    assert!(u.ends_with(&format!("/{name}")), "mirror URL must point at the file: {u}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_unsafe_paths() {
+        assert!(is_safe_relative("zim/a.zim"));
+        assert!(!is_safe_relative("../a.zim"));
+        assert!(!is_safe_relative("/etc/passwd"));
+        assert!(!is_safe_relative("C:/Windows/x"));
+        assert!(!is_safe_relative("zim\\..\\x"));
+        assert!(!is_safe_relative(""));
     }
 }

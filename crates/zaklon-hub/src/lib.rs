@@ -44,6 +44,11 @@ pub struct HubState {
     pub identity: Identity,
     pub started: Instant,
     pub pairing: Mutex<HashMap<String, PairingSession>>,
+    /// Wrong or unknown pairing codes since the last "Add a phone".
+    pub pairing_failures: Mutex<u32>,
+    /// Recent successful pairings by the phone's nonce, so a phone whose
+    /// reply got lost can ask again and get the same answer (no ghost device).
+    pub recent_pairs: Mutex<HashMap<String, (Instant, String, api::Paired)>>,
     pub downloads: Arc<Downloads>,
     pub library: Arc<Library>,
 }
@@ -98,6 +103,8 @@ impl Hub {
                 identity,
                 started: Instant::now(),
                 pairing: Mutex::new(HashMap::new()),
+                pairing_failures: Mutex::new(0),
+                recent_pairs: Mutex::new(HashMap::new()),
                 library: Library::new(downloads.clone()),
                 downloads,
             }),

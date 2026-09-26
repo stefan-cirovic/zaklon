@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import type { Key } from "../i18n";
 import { canScan, scan } from "../scan";
+import { errText } from "../errors";
+import { fmtDateTime, fmtQty, parseNumber } from "../format";
+import ConfirmButton from "../components/ConfirmButton";
+import ExpiryBadge from "../components/ExpiryBadge";
 
 type T = (k: Key) => string;
 
@@ -24,40 +28,12 @@ type Shopping = { id: string; item_id: string | null; text: string; quantity: nu
 type History = { seq: number; at: string; actor: string | null; entity: string; entity_id: string; action: string; before: Partial<Item> | null; after: Partial<Item> | null };
 type BarcodeReply = { barcode: string; item: Item | null; known: { name: string; unit: string | null; category: string | null } | null };
 
-export const CATEGORIES = ["food", "drink", "medicine", "hygiene", "equipment", "fuel", "other"] as const;
-export const UNITS = ["pcs", "kg", "g", "l", "ml", "pack"] as const;
+const CATEGORIES = ["food", "drink", "medicine", "hygiene", "equipment", "fuel", "other"] as const;
+const UNITS = ["pcs", "kg", "g", "l", "ml", "pack"] as const;
 
 const catKey = (c: string) => ("cat_" + c) as Key;
 const unitKey = (u: string) => ("unit_" + u) as Key;
 const placeKey = (p: string) => ("place_" + p) as Key;
-
-export function fmtQty(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(n < 10 ? 2 : 1).replace(/\.?0+$/, "");
-}
-
-export function todayIso(): string {
-  const d = new Date();
-  const p = (x: number) => String(x).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
-export function daysUntil(date: string): number {
-  const [y, m, d] = date.split("-").map(Number);
-  const target = Date.UTC(y, m - 1, d);
-  const now = new Date();
-  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-  return Math.round((target - today) / 86400000);
-}
-
-export function ExpiryBadge({ date, t }: { date: string | null; t: T }) {
-  if (!date) return null;
-  const days = daysUntil(date);
-  const [y, m, d] = date.split("-");
-  const label = `${d}.${m}.${y}.`;
-  if (days < 0) return <span className="badge warn">{t("expired")} · {label}</span>;
-  if (days <= 30) return <span className="badge soon">{days === 0 ? t("today") : `${days} ${t("daysShort")}`} · {label}</span>;
-  return <span className="badge">{label}</span>;
-}
 
 export default function Supplies({ t }: { t: T }) {
   const [view, setView] = useState<"items" | "shopping" | "history">("items");
@@ -76,13 +52,13 @@ export default function Supplies({ t }: { t: T }) {
       setPlaces(p);
       setErr(null);
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(errText(t, e));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
-    canScan().then(setScanner);
+    canScan().then(setScanner).catch(() => setScanner(false));
   }, [load]);
 
   const placeName = (p: string | null) => {
@@ -104,7 +80,7 @@ export default function Supplies({ t }: { t: T }) {
       const updated = await api<Item>(`/api/items/${i.id}/adjust`, { json: { delta } });
       setItems((all) => (all ?? []).map((x) => (x.id === updated.id ? updated : x)));
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(errText(t, e));
     }
   };
 
@@ -117,7 +93,7 @@ export default function Supplies({ t }: { t: T }) {
       else if (r.known) setEditing({ name: r.known.name, unit: r.known.unit ?? "pcs", category: r.known.category ?? "food", barcode: code, quantity: 1 });
       else setEditing({ barcode: code, quantity: 1, unit: "pcs", category: "food" });
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(errText(t, e));
     }
   };
 
@@ -150,7 +126,7 @@ export default function Supplies({ t }: { t: T }) {
           </button>
         ))}
       </div>
-      {err && <p className="error">{err}</p>}
+      {err && <p className="error" role="alert">{err}</p>}
 
       {view === "items" && (
         <>
@@ -158,7 +134,7 @@ export default function Supplies({ t }: { t: T }) {
             <button className="btn" onClick={() => setEditing({ quantity: 1, unit: "pcs", category: "food" })}>{t("addItem")}</button>
             {scanner && <button className="btn secondary" onClick={scanAndOpen}>{t("scanBarcode")}</button>}
           </div>
-          <input type="text" className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("searchSupplies")} />
+          <input type="search" className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("searchSupplies")} aria-label={t("searchSupplies")} />
           <div className="chips">
             {["all", ...CATEGORIES].map((c) => (
               <button key={c} className={"chip" + (cat === c ? " active" : "")} onClick={() => setCat(c)}>
@@ -188,12 +164,12 @@ export default function Supplies({ t }: { t: T }) {
                       </div>
                     </button>
                     <div className="qty">
-                      <button className="qty-btn" aria-label="−" onClick={() => adjust(i, -1)} disabled={i.quantity <= 0}>−</button>
+                      <button className="qty-btn" aria-label={`${t("useOne")}: ${i.name}`} onClick={() => adjust(i, -1)} disabled={i.quantity <= 0}>−</button>
                       <div className="qty-val">
                         <div>{fmtQty(i.quantity)}</div>
-                        <div className="muted" style={{ fontSize: 12 }}>{t(unitKey(i.unit)) || i.unit}</div>
+                        <div className="muted" style={{ fontSize: 12 }}>{UNITS.includes(i.unit as (typeof UNITS)[number]) ? t(unitKey(i.unit)) : i.unit}</div>
                       </div>
-                      <button className="qty-btn" aria-label="+" onClick={() => adjust(i, 1)}>+</button>
+                      <button className="qty-btn" aria-label={`${t("addOne")}: ${i.name}`} onClick={() => adjust(i, 1)}>+</button>
                     </div>
                   </div>
                 );
@@ -240,13 +216,11 @@ function ItemForm({
   const [newPlace, setNewPlace] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setF({ ...f, [k]: e.target.value });
-
-  const num = (s: string) => {
-    const v = parseFloat(s.replace(",", "."));
-    return Number.isFinite(v) ? v : null;
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setF((prev) => ({ ...prev, [k]: value }));
   };
+  const num = parseNumber;
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -268,19 +242,19 @@ function ItemForm({
       else await api("/api/items", { json: body });
       onDone();
     } catch (ex) {
-      setErr((ex as Error).message);
+      setErr(errText(t, ex));
     } finally {
       setBusy(false);
     }
   };
 
   const remove = async () => {
-    if (!initial.id || !confirm(t("confirmDelete"))) return;
+    if (!initial.id) return;
     try {
       await api(`/api/items/${initial.id}`, { method: "DELETE" });
       onDone();
     } catch (ex) {
-      setErr((ex as Error).message);
+      setErr(errText(t, ex));
     }
   };
 
@@ -289,16 +263,16 @@ function ItemForm({
     try {
       const p = await api<Place>("/api/places", { json: { name: newPlace } });
       onPlacesChanged();
-      setF({ ...f, place: p.id });
+      setF((prev) => ({ ...prev, place: p.id }));
       setNewPlace("");
     } catch (ex) {
-      setErr((ex as Error).message);
+      setErr(errText(t, ex));
     }
   };
 
   const scanCode = async () => {
     const code = await scan("product");
-    if (code) setF({ ...f, barcode: code });
+    if (code) setF((prev) => ({ ...prev, barcode: code }));
   };
 
   return (
@@ -344,8 +318,8 @@ function ItemForm({
         </label>
       </div>
       <div className="row">
-        <input type="text" value={newPlace} onChange={(e) => setNewPlace(e.target.value)} placeholder={t("newPlace")} maxLength={40} />
-        <button type="button" className="btn secondary" onClick={addPlace} disabled={!newPlace.trim()}>+</button>
+        <input type="text" value={newPlace} onChange={(e) => setNewPlace(e.target.value)} placeholder={t("newPlace")} aria-label={t("newPlace")} maxLength={40} />
+        <button type="button" className="btn secondary" onClick={addPlace} disabled={!newPlace.trim()} aria-label={t("addPlace")}>+</button>
       </div>
       <div className="two">
         <label className="field">
@@ -368,11 +342,12 @@ function ItemForm({
         {t("notes")}
         <textarea value={f.notes} onChange={set("notes")} rows={2} maxLength={500} />
       </label>
-      {err && <p className="error">{err}</p>}
+      {initial.id && <p className="muted" style={{ fontSize: 13 }}>{t("confirmDelete")}</p>}
+      {err && <p className="error" role="alert">{err}</p>}
       <div className="row actions">
         <button className="btn" disabled={busy || !f.name.trim()}>{t("save")}</button>
         <button type="button" className="btn secondary" onClick={onDone}>{t("cancel")}</button>
-        {initial.id && <button type="button" className="btn danger" onClick={remove}>{t("delete")}</button>}
+        {initial.id && <ConfirmButton label={t("delete")} confirmLabel={t("yesDelete")} cancelLabel={t("cancel")} onConfirm={remove} />}
       </div>
     </form>
   );
@@ -383,7 +358,16 @@ function ShoppingView({ t }: { t: T }) {
   const [text, setText] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
-  const load = useCallback(() => api<Shopping[]>("/api/shopping").then(setList).catch((e) => setErr((e as Error).message)), []);
+  const load = useCallback(
+    () =>
+      api<Shopping[]>("/api/shopping")
+        .then((l) => {
+          setList(l);
+          setErr(null);
+        })
+        .catch((e) => setErr(errText(t, e))),
+    [t],
+  );
   useEffect(() => {
     load();
   }, [load]);
@@ -396,7 +380,7 @@ function ShoppingView({ t }: { t: T }) {
       setText("");
       load();
     } catch (ex) {
-      setErr((ex as Error).message);
+      setErr(errText(t, ex));
     }
   };
 
@@ -411,7 +395,7 @@ function ShoppingView({ t }: { t: T }) {
       }
       load();
     } catch (ex) {
-      setErr((ex as Error).message);
+      setErr(errText(t, ex));
     }
   };
 
@@ -423,10 +407,10 @@ function ShoppingView({ t }: { t: T }) {
   return (
     <div className="stack">
       <form className="row" onSubmit={add}>
-        <input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder={t("addToList")} maxLength={120} />
-        <button className="btn" disabled={!text.trim()}>+</button>
+        <input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder={t("addToList")} aria-label={t("addToList")} maxLength={120} />
+        <button className="btn" disabled={!text.trim()} aria-label={t("addToList")}>+</button>
       </form>
-      {err && <p className="error">{err}</p>}
+      {err && <p className="error" role="alert">{err}</p>}
       {list && list.length === 0 && <p className="muted" style={{ textAlign: "center" }}>{t("listEmpty")}</p>}
       <div className="list">
         {list?.map((s) => (
@@ -452,10 +436,12 @@ function ShoppingView({ t }: { t: T }) {
 function HistoryView({ t }: { t: T }) {
   const [h, setH] = useState<History[] | null>(null);
   useEffect(() => {
-    api<History[]>("/api/history?limit=100").then(setH).catch(() => setH([]));
+    api<History[]>("/api/history?limit=100")
+      .then(setH)
+      .catch(() => setH(null));
   }, []);
   const actionKey = (a: string) => ("act_" + a) as Key;
-  if (h === null) return <p className="muted">…</p>;
+  if (h === null) return <p className="muted">{t("loadingOrUnavailable")}</p>;
   if (h.length === 0) return <p className="muted" style={{ textAlign: "center" }}>{t("nothingYet")}</p>;
   return (
     <div className="list">
@@ -470,7 +456,7 @@ function HistoryView({ t }: { t: T }) {
               <strong>{name}</strong> · {t(actionKey(e.action))} {change && <span className="muted">({change})</span>}
             </div>
             <div className="muted" style={{ fontSize: 13 }}>
-              {new Date(e.at).toLocaleString()} · {e.actor === "laptop" ? t("theLaptop") : e.actor}
+              {fmtDateTime(e.at)} · {e.actor === "laptop" ? t("theLaptop") : e.actor}
             </div>
           </div>
         );

@@ -88,6 +88,8 @@ pub struct ClientState {
     link: Mutex<Option<HubLink>>,
     /// Base URL of the loopback content proxy, once started.
     content_base: tokio::sync::Mutex<Option<String>>,
+    /// One HTTPS client per hub fingerprint, reused so connections stay open.
+    http: Mutex<Option<(String, reqwest::Client)>>,
 }
 
 impl ClientState {
@@ -95,7 +97,70 @@ impl ClientState {
         let link = std::fs::read(dir.join(LINK_FILE))
             .ok()
             .and_then(|bytes| serde_json::from_slice::<HubLink>(&bytes).ok());
-        Self { dir, link: Mutex::new(link), content_base: tokio::sync::Mutex::new(None) }
+        Self { dir, link: Mutex::new(link), content_base: tokio::sync::Mutex::new(None), http: Mutex::new(None) }
+    }
+
+    fn client_for(&self, fingerprint: &str) -> Result<reqwest::Client, String> {
+        let mut cache = self.http.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((fp, c)) = cache.as_ref() {
+            if fp == fingerprint {
+                return Ok(c.clone());
+            }
+        }
+        let c = pinned_client(fingerprint)?;
+        *cache = Some((fingerprint.to_string(), c.clone()));
+        Ok(c)
+    }
+
+    /// Remember a host that answered, unless the link changed meanwhile
+    /// (forgotten or re-paired while this request was in flight).
+    fn note_host(&self, token: &str, host: &str, hosts: Option<Vec<String>>) {
+        let guard = self.link.lock().unwrap_or_else(|p| p.into_inner());
+        let Some(current) = guard.as_ref() else { return };
+        if current.device_token != token {
+            return;
+        }
+        let mut updated = current.clone();
+        if let Some(h) = hosts {
+            updated.hosts = h;
+        }
+        if updated.last_host.as_deref() == Some(host) && updated.hosts == current.hosts {
+            return;
+        }
+        updated.last_host = Some(host.to_string());
+        drop(guard);
+        let _ = self.store(Some(updated));
+    }
+
+    /// Hosts to try: the last one that answered first.
+    fn ordered_hosts(link: &HubLink) -> Vec<String> {
+        let mut hosts = link.hosts.clone();
+        if let Some(last) = &link.last_host {
+            hosts.retain(|h| h != last);
+            hosts.insert(0, last.clone());
+        }
+        hosts
+    }
+
+    /// The hub may have a new address (router gave the laptop another IP).
+    /// Ask the network; accept only the hub with our id and certificate.
+    async fn rediscover(&self, link: &HubLink) -> Option<Vec<String>> {
+        let found = discover().await.ok()?;
+        let fresh: Vec<String> = found
+            .into_iter()
+            .filter(|h| h.id == link.hub_id && h.fp.eq_ignore_ascii_case(&link.fingerprint) && h.port == link.port)
+            .map(|h| h.host)
+            .collect();
+        if fresh.is_empty() {
+            return None;
+        }
+        let mut hosts = fresh;
+        for h in &link.hosts {
+            if !hosts.contains(h) {
+                hosts.push(h.clone());
+            }
+        }
+        Some(hosts)
     }
 
     fn link(&self) -> Option<HubLink> {
@@ -108,7 +173,9 @@ impl ClientState {
             Some(l) => {
                 std::fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
                 let json = serde_json::to_vec_pretty(l).map_err(|e| e.to_string())?;
-                std::fs::write(&path, json).map_err(|e| e.to_string())?;
+                let tmp = path.with_extension("tmp");
+                std::fs::write(&tmp, json).map_err(|e| e.to_string())?;
+                std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
             }
             None => {
                 let _ = std::fs::remove_file(&path);
@@ -141,7 +208,14 @@ impl ClientState {
         }
     }
 
-    pub fn forget(&self) -> Result<(), String> {
+    /// Unlink this phone. The hub is asked to revoke the token first (best
+    /// effort: works only if it is reachable), then the local link is removed.
+    pub async fn forget(&self) -> Result<(), String> {
+        if let Some(link) = self.link() {
+            let path = format!("/api/devices/{}", link.device_id);
+            let _ = tokio::time::timeout(Duration::from_secs(5), self.request("DELETE".into(), path, None)).await;
+        }
+        *self.http.lock().unwrap_or_else(|p| p.into_inner()) = None;
         self.store(None)
     }
 
@@ -151,14 +225,23 @@ impl ClientState {
             return Err("unsupported pairing code version".into());
         }
         let client = pinned_client(&payload.fp)?;
+        let nonce: String = {
+            use rand::RngCore;
+            let mut b = [0u8; 16];
+            rand::thread_rng().fill_bytes(&mut b);
+            b.iter().map(|x| format!("{x:02x}")).collect()
+        };
         let body = serde_json::json!({
             "code": payload.code,
             "password": password,
             "device_name": device_name,
             "platform": std::env::consts::OS,
+            "nonce": nonce,
         });
         let mut last_err = String::from("no hosts in pairing code");
-        for host in &payload.hosts {
+        // Each host twice: a second try with the same nonce recovers a lost reply.
+        let attempts: Vec<&String> = payload.hosts.iter().flat_map(|h| [h, h]).collect();
+        for host in attempts {
             let url = format!("https://{}:{}/api/pair/complete", host, payload.port);
             match client.post(&url).json(&body).send().await {
                 Ok(res) => {
@@ -200,37 +283,43 @@ impl ClientState {
         let Some(link) = self.link() else {
             return Err("not paired with a hub".into());
         };
-        let client = pinned_client(&link.fingerprint)?;
+        let client = self.client_for(&link.fingerprint)?;
         let method = reqwest::Method::from_bytes(method.as_bytes()).map_err(|e| e.to_string())?;
-        let mut hosts = link.hosts.clone();
-        if let Some(last) = &link.last_host {
-            hosts.retain(|h| h != last);
-            hosts.insert(0, last.clone());
-        }
         let mut last_err = String::from("hub has no known addresses");
-        for host in hosts {
-            let url = format!("https://{}:{}{}", host, link.port, path);
-            let mut req = client
-                .request(method.clone(), &url)
-                .header("authorization", format!("Bearer {}", link.device_token));
-            if let Some(b) = &body {
-                req = req.header("content-type", "application/json").body(b.clone());
-            }
-            match req.send().await {
-                Ok(res) => {
-                    let status = res.status().as_u16();
-                    let text = res.text().await.unwrap_or_default();
-                    if link.last_host.as_deref() != Some(host.as_str()) {
-                        let mut updated = link.clone();
-                        updated.last_host = Some(host.clone());
-                        let _ = self.store(Some(updated));
-                    }
-                    return Ok(ClientResponse { status, body: text });
+        let mut rediscovered = false;
+        let mut hosts = Self::ordered_hosts(&link);
+        loop {
+            for host in &hosts {
+                let url = format!("https://{}:{}{}", host, link.port, path);
+                let mut req = client
+                    .request(method.clone(), &url)
+                    .header("authorization", format!("Bearer {}", link.device_token));
+                if let Some(b) = &body {
+                    req = req.header("content-type", "application/json").body(b.clone());
                 }
-                Err(e) => last_err = format!("{host}: {}", short_err(&e)),
+                match req.send().await {
+                    Ok(res) => {
+                        let status = res.status().as_u16();
+                        let text = res.text().await.unwrap_or_default();
+                        let new_hosts = rediscovered.then(|| hosts.clone());
+                        self.note_host(&link.device_token, host, new_hosts);
+                        return Ok(ClientResponse { status, body: text });
+                    }
+                    // Only when the hub never got the request is it safe to try
+                    // another address; otherwise a "-1" could be applied twice.
+                    Err(e) if e.is_connect() => last_err = format!("{host}: {}", short_err(&e)),
+                    Err(e) => return Err(format!("{host}: {}", short_err(&e))),
+                }
+            }
+            if rediscovered {
+                return Err(last_err);
+            }
+            rediscovered = true;
+            match self.rediscover(&link).await {
+                Some(h) => hosts = h,
+                None => return Err(last_err),
             }
         }
-        Err(last_err)
     }
 }
 
@@ -239,7 +328,10 @@ pub async fn discover() -> Result<Vec<DiscoveredHub>, String> {
     use tokio::net::UdpSocket;
     let socket = UdpSocket::bind(("0.0.0.0", 0)).await.map_err(|e| e.to_string())?;
     socket.set_broadcast(true).map_err(|e| e.to_string())?;
-    let _ = socket.send_to(b"ZAKLON?", ("255.255.255.255", 8485)).await;
+    // Padded: the hub only answers requests at least as long as its reply.
+    let mut request = b"ZAKLON?".to_vec();
+    request.resize(512, 0);
+    let _ = socket.send_to(&request, ("255.255.255.255", 8485)).await;
     let mut found: Vec<DiscoveredHub> = Vec::new();
     let deadline = tokio::time::Instant::now() + Duration::from_millis(1500);
     let mut buf = [0u8; 1024];
@@ -322,6 +414,7 @@ fn pinned_client(fingerprint: &str) -> Result<reqwest::Client, String> {
         .use_preconfigured_tls(tls)
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REQUEST_TIMEOUT)
+        .pool_idle_timeout(Duration::from_secs(30))
         .no_proxy()
         .build()
         .map_err(|e| e.to_string())
@@ -383,18 +476,16 @@ impl ClientState {
         use axum::response::IntoResponse;
         let full = uri.path_and_query().map(|p| p.as_str()).unwrap_or("/");
         let Some(rest) = full.strip_prefix(prefix) else { return StatusCode::NOT_FOUND.into_response() };
-        if !rest.starts_with("/kiwix/") {
+        let path_only = rest.split('?').next().unwrap_or(rest).to_ascii_lowercase();
+        let escapes = path_only.contains("..") || path_only.contains("%2e") || path_only.contains('\\') || path_only.contains("%5c");
+        if !rest.starts_with("/kiwix/") || escapes {
             return StatusCode::NOT_FOUND.into_response();
         }
         let Some(link) = self.link() else {
             return (StatusCode::SERVICE_UNAVAILABLE, "not paired").into_response();
         };
-        let Ok(client) = pinned_client(&link.fingerprint) else { return StatusCode::BAD_GATEWAY.into_response() };
-        let mut hosts = link.hosts.clone();
-        if let Some(last) = &link.last_host {
-            hosts.retain(|h| h != last);
-            hosts.insert(0, last.clone());
-        }
+        let Ok(client) = self.client_for(&link.fingerprint) else { return StatusCode::BAD_GATEWAY.into_response() };
+        let hosts = Self::ordered_hosts(&link);
         for host in hosts {
             let url = format!("https://{}:{}{}", host, link.port, rest);
             let sent = client

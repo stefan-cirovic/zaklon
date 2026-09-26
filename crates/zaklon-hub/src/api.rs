@@ -24,6 +24,10 @@ use crate::{HubState, PairingSession, VERSION};
 
 const PAIRING_TTL: Duration = Duration::from_secs(5 * 60);
 const MAX_PAIRING_ATTEMPTS: u8 = 3;
+/// After this many wrong codes, every open code is cancelled (stops guessing).
+const MAX_PAIRING_FAILURES: u32 = 20;
+/// How long a phone may repeat a pairing request after the reply was lost.
+const PAIR_REPLAY_WINDOW: Duration = Duration::from_secs(120);
 
 /// Which listener a request came in on. Laptop trust exists only on the
 /// loopback listener used by the desktop window; the network (TLS) listener
@@ -187,6 +191,9 @@ fn local_request_is_ours(parts: &Parts, local_port: u16) -> bool {
             return false;
         }
     }
+    if header("sec-fetch-site").is_some_and(|v| v.eq_ignore_ascii_case("cross-site")) {
+        return false;
+    }
     match header("origin") {
         None => true,
         Some(origin) => local_hosts.iter().any(|h| origin.eq_ignore_ascii_case(&format!("http://{h}"))),
@@ -326,9 +333,11 @@ async fn pair_start(State(state): State<Arc<HubState>>, _: Local) -> Result<Json
         return Err(bad("set a household password first"));
     }
     let code = pairing::pairing_code();
+    *state.pairing_failures.lock().unwrap_or_else(|p| p.into_inner()) = 0;
     {
         let mut sessions = state.pairing.lock().unwrap_or_else(|p| p.into_inner());
-        sessions.retain(|_, s| s.expires_at > Instant::now());
+        // Only the newest code is valid: showing a new QR cancels the old one.
+        sessions.clear();
         sessions.insert(
             code.clone(),
             PairingSession { expires_at: Instant::now() + PAIRING_TTL, failed_attempts: 0 },
@@ -357,14 +366,18 @@ struct PairComplete {
     device_name: String,
     #[serde(default = "default_platform")]
     platform: String,
+    /// Random value chosen by the phone; repeating the same request with the
+    /// same nonce returns the same result instead of failing.
+    #[serde(default)]
+    nonce: Option<String>,
 }
 
 fn default_platform() -> String {
     "android".into()
 }
 
-#[derive(Serialize)]
-struct Paired {
+#[derive(Serialize, Clone)]
+pub struct Paired {
     device_id: String,
     device_token: String,
     hub_id: String,
@@ -377,22 +390,54 @@ async fn pair_complete(
     Json(body): Json<PairComplete>,
 ) -> Result<Json<Paired>, ApiError> {
     let now = Instant::now();
-    {
+    let nonce = body.nonce.as_deref().map(str::trim).filter(|n| n.len() >= 16 && n.len() <= 128).map(str::to_string);
+
+    // A repeat of a pairing that already succeeded (the phone never got the reply).
+    if let Some(n) = &nonce {
+        let mut recent = state.recent_pairs.lock().unwrap_or_else(|p| p.into_inner());
+        recent.retain(|_, (at, _, _)| at.elapsed() < PAIR_REPLAY_WINDOW);
+        if let Some((_, code, paired)) = recent.get(n) {
+            if *code == body.code {
+                return Ok(Json(paired.clone()));
+            }
+        }
+    }
+
+    let failure = {
         let mut sessions = state.pairing.lock().unwrap_or_else(|p| p.into_inner());
         sessions.retain(|_, s| s.expires_at > now);
-        let Some(session) = sessions.get_mut(&body.code) else {
-            return Err(forbidden("pairing code is invalid or expired"));
-        };
-        let hash = state.db.get_setting("household_password_hash")?.unwrap_or_default();
-        if !pairing::verify_password(&body.password, &hash) {
-            session.failed_attempts += 1;
-            if session.failed_attempts >= MAX_PAIRING_ATTEMPTS {
-                sessions.remove(&body.code);
-                return Err(forbidden("too many attempts; start pairing again on the laptop"));
+        match sessions.get_mut(&body.code) {
+            None => Some("pairing code is invalid or expired"),
+            Some(session) => {
+                let hash = state.db.get_setting("household_password_hash")?.unwrap_or_default();
+                if pairing::verify_password(&body.password, &hash) {
+                    sessions.remove(&body.code);
+                    None
+                } else {
+                    session.failed_attempts += 1;
+                    if session.failed_attempts >= MAX_PAIRING_ATTEMPTS {
+                        sessions.remove(&body.code);
+                        Some("too many attempts; start pairing again on the laptop")
+                    } else {
+                        Some("wrong household password")
+                    }
+                }
             }
-            return Err(forbidden("wrong household password"));
         }
-        sessions.remove(&body.code);
+    };
+    if let Some(msg) = failure {
+        let exhausted = {
+            let mut f = state.pairing_failures.lock().unwrap_or_else(|p| p.into_inner());
+            *f += 1;
+            *f >= MAX_PAIRING_FAILURES
+        };
+        if exhausted {
+            state.pairing.lock().unwrap_or_else(|p| p.into_inner()).clear();
+            tracing::warn!("too many wrong pairing attempts; open pairing codes cancelled");
+        }
+        // Slow down guessing.
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        return Err(forbidden(msg));
     }
     let token = pairing::random_token(32);
     let mut name: String = body.device_name.trim().chars().take(60).collect();
@@ -409,13 +454,21 @@ async fn pair_complete(
     state.db.insert_device(&device, &token_hash(&token))?;
     let cfg = state.config();
     tracing::info!(device = %device.name, "device paired");
-    Ok(Json(Paired {
+    let paired = Paired {
         device_id: device.id,
         device_token: token,
         hub_id: cfg.hub_id,
         hub_name: cfg.hub_name,
         fingerprint: state.identity.fingerprint.clone(),
-    }))
+    };
+    if let Some(n) = nonce {
+        state
+            .recent_pairs
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(n, (Instant::now(), body.code.clone(), paired.clone()));
+    }
+    Ok(Json(paired))
 }
 
 // ---- devices ----------------------------------------------------------------
@@ -501,7 +554,14 @@ async fn pack_pause(State(state): State<Arc<HubState>>, _caller: Caller, Path(id
 
 async fn pack_remove(State(state): State<Arc<HubState>>, caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
     tracing::info!(by = %caller.actor(), pack = %id, "pack removed");
-    state.downloads.remove(&id).map_err(|e| bad(&e))?;
+    // The library engine keeps knowledge packs (and its own files) open;
+    // stop it so Windows lets us delete them. It restarts by itself.
+    state.library.stop_for(Duration::from_secs(10)).await;
+    let d = state.downloads.clone();
+    tokio::task::spawn_blocking(move || d.remove(&id))
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?
+        .map_err(|e| bad(&e))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -589,6 +649,9 @@ async fn kiwix_proxy(State(state): State<Arc<HubState>>, _caller: Caller, uri: a
                         (axum::http::header::CONTENT_TYPE, ctype),
                         (axum::http::header::CACHE_CONTROL, cache.to_string()),
                         (axum::http::header::HeaderName::from_static("x-content-type-options"), "nosniff".to_string()),
+                        // Library pages never run scripts and get a unique origin,
+                        // even if another website opens them in a new tab.
+                        (axum::http::header::CONTENT_SECURITY_POLICY, "sandbox allow-popups".to_string()),
                     ],
                     body,
                 )

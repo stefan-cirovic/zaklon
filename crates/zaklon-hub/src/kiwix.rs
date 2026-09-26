@@ -85,6 +85,8 @@ pub struct Library {
     state: Mutex<EngineState>,
     failures: Mutex<u32>,
     last_failure: Mutex<Option<std::time::Instant>>,
+    /// While set and in the future, the engine is kept stopped (e.g. during a pack removal).
+    hold_until: Mutex<Option<std::time::Instant>>,
     /// Port kiwix-serve currently listens on (0 when not running).
     port: std::sync::atomic::AtomicU16,
     #[cfg(windows)]
@@ -102,6 +104,7 @@ impl Library {
             state: Mutex::new(EngineState::Missing),
             failures: Mutex::new(0),
             last_failure: Mutex::new(None),
+            hold_until: Mutex::new(None),
             port: std::sync::atomic::AtomicU16::new(0),
             #[cfg(windows)]
             job: job::Job::new(),
@@ -173,7 +176,29 @@ impl Library {
         });
     }
 
+    /// Stop the engine and keep it stopped for `hold` (it then restarts with
+    /// whatever packs are installed at that time).
+    pub async fn stop_for(&self, hold: Duration) {
+        *self.hold_until.lock().unwrap_or_else(|p| p.into_inner()) = Some(std::time::Instant::now() + hold);
+        let mut running = self.running.lock().await;
+        if let Some(mut r) = running.take() {
+            let _ = r.child.kill().await;
+            let _ = r.child.wait().await;
+            info!("library engine stopped for maintenance");
+            // It comes back by itself once the hold ends.
+            self.set_state(EngineState::Starting);
+        }
+    }
+
     async fn reconcile(&self) {
+        let held = self
+            .hold_until
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .is_some_and(|t| std::time::Instant::now() < t);
+        if held {
+            return;
+        }
         let mut running = self.running.lock().await;
 
         if !self.exe().is_file() {

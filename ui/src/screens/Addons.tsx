@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import type { Key, Lang } from "../i18n";
+import { errText } from "../errors";
+import { fmtBytes } from "../format";
+import ConfirmButton from "../components/ConfirmButton";
 
 type T = (k: Key) => string;
 type Props = { t: T; lang: Lang; isHub: boolean };
@@ -24,12 +27,6 @@ type CatalogReply = {
   system: { disk_free: number; disk_total: number; battery_percent: number | null; plugged_in: boolean };
 };
 
-export function fmtBytes(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(n >= 1e10 ? 0 : 1)} GB`;
-  if (n >= 1e6) return `${Math.round(n / 1e6)} MB`;
-  return `${Math.round(n / 1e3)} kB`;
-}
-
 const CATEGORY_KEY: Record<Pack["category"], Key> = { knowledge: "catKnowledge", maps: "catMaps", model: "catModels", app: "catApps" };
 
 export default function Addons({ t, lang, isHub }: Props) {
@@ -43,9 +40,9 @@ export default function Addons({ t, lang, isHub }: Props) {
       setData(await api<CatalogReply>("/api/catalog"));
       setErr(null);
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(errText(t, e));
     }
-  }, []);
+  }, [t]);
 
   const busy = data?.packs.some((p) => ["queued", "downloading", "verifying"].includes(p.state.status)) ?? false;
   useEffect(() => {
@@ -59,7 +56,7 @@ export default function Addons({ t, lang, isHub }: Props) {
       await api(path, { method });
       load();
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(errText(t, e));
     }
   };
 
@@ -70,7 +67,7 @@ export default function Addons({ t, lang, isHub }: Props) {
       setNote(r.imported.length ? `${t("imported")}: ${r.imported.join(", ")}` : t("nothingToImport"));
       load();
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(errText(t, e));
     }
   };
 
@@ -83,7 +80,7 @@ export default function Addons({ t, lang, isHub }: Props) {
         <h1>{t("addons")}</h1>
         <p className="muted">{t("addonsIntro")}</p>
       </div>
-      {err && <p className="error">{err}</p>}
+      {err && <p className="error" role="alert">{err}</p>}
       {data && (
         <div className="grid">
           <div className="panel">
@@ -122,7 +119,7 @@ export default function Addons({ t, lang, isHub }: Props) {
           <h2>{t("importTitle")}</h2>
           <p className="muted">{t("importIntro")}</p>
           <div className="row">
-            <input type="text" value={importDir} onChange={(e) => setImportDir(e.target.value)} placeholder="E:\" />
+            <input type="text" value={importDir} onChange={(e) => setImportDir(e.target.value)} placeholder="E:\" aria-label={t("importTitle")} />
             <button className="btn secondary" onClick={doImport} disabled={!importDir.trim()}>{t("importBtn")}</button>
           </div>
           {note && <p className="ok">{note}</p>}
@@ -155,13 +152,13 @@ function PackRow({ p, t, lang, title, act }: { p: Pack; t: T; lang: Lang; title:
           {(s.status === "paused" || s.status === "failed") && (
             <>
               <button className="btn" onClick={() => act(`/api/packs/${p.id}/download`)}>{s.status === "paused" ? t("resume") : t("retry")}</button>
-              <button className="btn danger" onClick={() => act(`/api/packs/${p.id}`, "DELETE")}>{t("remove")}</button>
+              <ConfirmButton label={t("remove")} confirmLabel={t("yesRemove")} cancelLabel={t("cancel")} onConfirm={() => act(`/api/packs/${p.id}`, "DELETE")} />
             </>
           )}
           {s.status === "installed" && (
             <>
               <span className="ok">{t("installed")}</span>
-              <button className="btn danger" onClick={() => act(`/api/packs/${p.id}`, "DELETE")}>{t("remove")}</button>
+              <ConfirmButton label={t("remove")} confirmLabel={t("yesRemove")} cancelLabel={t("cancel")} onConfirm={() => act(`/api/packs/${p.id}`, "DELETE")} />
             </>
           )}
         </div>
@@ -175,7 +172,7 @@ function PackRow({ p, t, lang, title, act }: { p: Pack; t: T; lang: Lang; title:
           </div>
         </div>
       )}
-      {s.status === "failed" && s.error && <div className="warn" style={{ fontSize: 13 }}>{s.error}</div>}
+      {s.status === "failed" && s.error && <div className="warn" style={{ fontSize: 13 }}>{errText(t, new Error(s.error))}</div>}
     </div>
   );
 }

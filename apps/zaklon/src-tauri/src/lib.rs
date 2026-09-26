@@ -64,8 +64,8 @@ async fn client_request(
 }
 
 #[tauri::command]
-fn client_forget(state: tauri::State<'_, Arc<ClientState>>) -> Result<(), String> {
-    state.forget()
+async fn client_forget(state: tauri::State<'_, Arc<ClientState>>) -> Result<(), String> {
+    state.forget().await
 }
 
 /// Base URL for library articles on phones (the loopback content proxy).

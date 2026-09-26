@@ -28,6 +28,9 @@ pub struct Config {
     /// UDP port for the discovery beacon.
     #[serde(default = "default_beacon_port")]
     pub beacon_port: u16,
+    /// Ports as stored on disk, so env overrides are never written back.
+    #[serde(skip)]
+    disk_ports: Option<[u16; 4]>,
     /// Human-readable hub name shown to phones.
     pub hub_name: String,
     /// Stable hub identifier, generated once.
@@ -36,6 +39,19 @@ pub struct Config {
     pub language: String,
     /// Whether to check for app updates automatically (asked at install).
     pub auto_update_check: bool,
+}
+
+/// Write a file so that a crash or power cut leaves either the old or the new
+/// content, never half of it: write a temporary file, flush it to disk, rename.
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension("tmp");
+    {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+    }
+    std::fs::rename(&tmp, path)
 }
 
 fn default_local_port() -> u16 {
@@ -57,6 +73,7 @@ fn env_port(name: &str) -> Option<u16> {
 
 impl Config {
     fn apply_env(&mut self) {
+        self.disk_ports = Some([self.port, self.local_port, self.install_port, self.beacon_port]);
         if let Some(p) = env_port("ZAKLON_TLS_PORT") {
             self.port = p;
         }
@@ -99,6 +116,7 @@ impl Config {
             local_port: LOCAL_PORT,
             install_port: INSTALL_PORT,
             beacon_port: BEACON_PORT,
+            disk_ports: None,
             hub_name: default_hub_name(),
             hub_id: uuid::Uuid::new_v4().to_string(),
             language: "en".to_string(),
@@ -131,20 +149,22 @@ impl Config {
     pub fn save(&self) -> Result<()> {
         // Never persist ports that came from environment overrides.
         let mut on_disk = self.clone();
-        if env_port("ZAKLON_TLS_PORT").is_some() {
-            on_disk.port = DEFAULT_PORT;
-        }
-        if env_port("ZAKLON_LOCAL_PORT").is_some() {
-            on_disk.local_port = LOCAL_PORT;
-        }
-        if env_port("ZAKLON_INSTALL_PORT").is_some() {
-            on_disk.install_port = INSTALL_PORT;
-        }
-        if env_port("ZAKLON_BEACON_PORT").is_some() {
-            on_disk.beacon_port = BEACON_PORT;
+        if let Some([tls, local, install, beacon]) = self.disk_ports {
+            if env_port("ZAKLON_TLS_PORT").is_some() {
+                on_disk.port = tls;
+            }
+            if env_port("ZAKLON_LOCAL_PORT").is_some() {
+                on_disk.local_port = local;
+            }
+            if env_port("ZAKLON_INSTALL_PORT").is_some() {
+                on_disk.install_port = install;
+            }
+            if env_port("ZAKLON_BEACON_PORT").is_some() {
+                on_disk.beacon_port = beacon;
+            }
         }
         let text = serde_json::to_string_pretty(&on_disk)?;
-        std::fs::write(self.config_path(), text).context("writing hub.json")
+        write_atomic(&self.config_path(), text.as_bytes()).context("writing hub.json")
     }
 }
 

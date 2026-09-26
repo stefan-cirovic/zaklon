@@ -13,6 +13,8 @@ pub const PRESET_PLACES: &[&str] = &["pantry", "fridge", "freezer", "medicine_ca
 
 /// Items expiring within this many days show up as "expiring soon".
 pub const EXPIRING_DAYS: i64 = 30;
+/// Largest quantity we accept; anything bigger is a typo or an attack.
+pub const MAX_QUANTITY: f64 = 1_000_000_000.0;
 
 pub(crate) const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS places (
@@ -138,12 +140,22 @@ fn clean(s: Option<String>) -> Option<String> {
     s.map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
 }
 
+/// Trimmed, non-empty, at most `max` characters.
+fn clean_max(s: Option<String>, max: usize) -> Option<String> {
+    clean(s).map(|v| v.chars().take(max).collect())
+}
+
+fn clamp_qty(q: f64) -> f64 {
+    if !q.is_finite() {
+        return 0.0;
+    }
+    (q.clamp(0.0, MAX_QUANTITY) * 1000.0).round() / 1000.0
+}
+
+/// A real calendar date written as YYYY-MM-DD (rejects 2027-02-31).
 fn valid_date(d: &str) -> bool {
-    let b = d.as_bytes();
-    d.len() == 10
-        && b[4] == b'-'
-        && b[7] == b'-'
-        && d.chars().enumerate().all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit())
+    let fmt = time::macros::format_description!("[year]-[month]-[day]");
+    d.len() == 10 && time::Date::parse(d, &fmt).is_ok()
 }
 
 fn row_item(r: &Row) -> rusqlite::Result<Item> {
@@ -225,18 +237,18 @@ impl Db {
                 bail!("expiry must be a date like 2027-03-31");
             }
         }
-        let quantity = input.quantity.unwrap_or(1.0).max(0.0);
+        let quantity = clamp_qty(input.quantity.unwrap_or(1.0));
         let item = Item {
             id: uuid::Uuid::new_v4().to_string(),
             name: name.chars().take(120).collect(),
             quantity,
             unit: unit.chars().take(20).collect(),
             category,
-            place: clean(input.place.flatten()),
+            place: clean_max(input.place.flatten(), 60),
             expiry,
-            barcode: clean(input.barcode.flatten()),
-            min_quantity: input.min_quantity.flatten().filter(|m| *m >= 0.0),
-            notes: clean(input.notes.flatten()),
+            barcode: clean_max(input.barcode.flatten(), 64),
+            min_quantity: input.min_quantity.flatten().filter(|m| m.is_finite() && *m >= 0.0).map(clamp_qty),
+            notes: clean_max(input.notes.flatten(), 500),
             updated_at: now_rfc3339(),
             updated_by: Some(actor.to_string()),
         };
@@ -264,7 +276,7 @@ impl Db {
             after.name = n.chars().take(120).collect();
         }
         if let Some(q) = input.quantity {
-            after.quantity = q.max(0.0);
+            after.quantity = clamp_qty(q);
         }
         if let Some(u) = clean(input.unit) {
             after.unit = u.chars().take(20).collect();
@@ -276,7 +288,7 @@ impl Db {
             after.category = c;
         }
         if let Some(p) = input.place {
-            after.place = clean(p);
+            after.place = clean_max(p, 60);
         }
         if let Some(e) = input.expiry {
             let e = clean(e);
@@ -288,13 +300,13 @@ impl Db {
             after.expiry = e;
         }
         if let Some(b) = input.barcode {
-            after.barcode = clean(b);
+            after.barcode = clean_max(b, 64);
         }
         if let Some(m) = input.min_quantity {
-            after.min_quantity = m.filter(|v| *v >= 0.0);
+            after.min_quantity = m.filter(|v| v.is_finite() && *v >= 0.0).map(clamp_qty);
         }
         if let Some(n) = input.notes {
-            after.notes = clean(n);
+            after.notes = clean_max(n, 500);
         }
         if after == before {
             return Ok(Some(before));
@@ -319,25 +331,41 @@ impl Db {
         Ok(Some(after))
     }
 
-    /// Add to or take from the quantity; never below zero.
+    /// Add to or take from the quantity; never below zero. Read, write and
+    /// history happen in one transaction, so simultaneous taps from two
+    /// phones are both counted.
     pub fn adjust_item(&self, id: &str, delta: f64, actor: &str) -> Result<Option<Item>> {
-        let Some(before) = self.get_item(id)? else { return Ok(None) };
-        let mut after = before.clone();
-        after.quantity = ((before.quantity + delta) * 1000.0).round() / 1000.0;
-        if after.quantity < 0.0 {
-            after.quantity = 0.0;
+        if !delta.is_finite() {
+            bail!("delta must be a number");
         }
+        let mut conn = self.lock();
+        let tx = conn.transaction()?;
+        let before = tx
+            .query_row(&format!("SELECT {ITEM_COLS} FROM items WHERE id = ?1 AND deleted = 0"), params![id], row_item)
+            .optional()?;
+        let Some(before) = before else { return Ok(None) };
+        let mut after = before.clone();
+        after.quantity = clamp_qty(before.quantity + delta);
         after.updated_at = now_rfc3339();
         after.updated_by = Some(actor.to_string());
-        {
-            let conn = self.lock();
-            conn.execute(
-                "UPDATE items SET quantity=?2, updated_at=?3, updated_by=?4 WHERE id=?1",
-                params![after.id, after.quantity, after.updated_at, after.updated_by],
-            )?;
-        }
+        tx.execute(
+            "UPDATE items SET quantity=?2, updated_at=?3, updated_by=?4 WHERE id=?1",
+            params![after.id, after.quantity, after.updated_at, after.updated_by],
+        )?;
         let action = if delta < 0.0 { "consume" } else { "add" };
-        self.record("item", id, action, actor, Some(&before), Some(&after))?;
+        tx.execute(
+            "INSERT INTO history (at, actor, entity, entity_id, action, before_json, after_json)
+             VALUES (?1, ?2, 'item', ?3, ?4, ?5, ?6)",
+            params![
+                after.updated_at,
+                actor,
+                id,
+                action,
+                serde_json::to_string(&before)?,
+                serde_json::to_string(&after)?
+            ],
+        )?;
+        tx.commit()?;
         Ok(Some(after))
     }
 
@@ -611,6 +639,44 @@ mod tests {
         let h = db.history(10).unwrap();
         assert_eq!(h.iter().map(|e| e.action.as_str()).collect::<Vec<_>>(), vec!["delete", "consume", "consume", "create"]);
         assert_eq!(h[1].actor.as_deref(), Some("phone"));
+    }
+
+    #[test]
+    fn concurrent_adjustments_all_count() {
+        let db = std::sync::Arc::new(Db::open_in_memory().unwrap());
+        let mut i = input("Voda");
+        i.quantity = Some(100.0);
+        let id = db.create_item(i, "laptop").unwrap().id;
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                let (db, id) = (db.clone(), id.clone());
+                std::thread::spawn(move || {
+                    for _ in 0..10 {
+                        db.adjust_item(&id, -1.0, "phone").unwrap();
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        assert_eq!(db.get_item(&id).unwrap().unwrap().quantity, 20.0);
+        assert_eq!(db.history(200).unwrap().iter().filter(|h| h.action == "consume").count(), 80);
+    }
+
+    #[test]
+    fn limits() {
+        let db = Db::open_in_memory().unwrap();
+        let mut i = input("x");
+        i.quantity = Some(1e308);
+        i.notes = Some(Some("n".repeat(5000)));
+        let item = db.create_item(i, "laptop").unwrap();
+        assert_eq!(item.quantity, MAX_QUANTITY);
+        assert_eq!(item.notes.unwrap().chars().count(), 500);
+        let item = db.adjust_item(&item.id, 1e308, "laptop").unwrap().unwrap();
+        assert!(item.quantity.is_finite());
+        let bad = ItemInput { expiry: Some(Some("2027-02-31".into())), ..Default::default() };
+        assert!(db.update_item(&item.id, bad, "laptop").is_err(), "impossible date refused");
     }
 
     #[test]

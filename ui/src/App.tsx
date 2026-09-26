@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
-import { api, clientForget, clientState, getMode, type AppMode, type LinkSummary, type Status } from "./api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { api, ApiError, clientForget, clientState, getMode, type AppMode, type LinkSummary, type Status } from "./api";
 import { makeT, type Key, type Lang } from "./i18n";
+import { setFormatLang } from "./format";
+import { errText } from "./errors";
+import ConfirmButton from "./components/ConfirmButton";
 import Home from "./screens/Home";
 import Household from "./screens/Household";
 import Connect from "./screens/Connect";
@@ -17,6 +20,11 @@ const TABS: { id: string; key: Key; ico: string }[] = [
   { id: "assistant", key: "assistant", ico: "◇" },
   { id: "addons", key: "addons", ico: "⊕" },
 ];
+const TAB_IDS = [...TABS.map((x) => x.id), "household"];
+
+/** Poll every 2 s until the hub answers, then every 10 s. Never overlapping. */
+const POLL_FAST = 2000;
+const POLL_SLOW = 10000;
 
 function readPref(key: string, fallback: string): string {
   try {
@@ -26,10 +34,25 @@ function readPref(key: string, fallback: string): string {
   }
 }
 
+function tabFromHash(): string {
+  const id = typeof location !== "undefined" ? location.hash.replace("#", "") : "";
+  return TAB_IDS.includes(id) ? id : "home";
+}
+
 export default function App() {
-  const TAB_IDS = ["home", "library", "maps", "supplies", "assistant", "addons", "household"];
-  const initialTab = typeof location !== "undefined" ? location.hash.replace("#", "") : "";
-  const [tab, setTabState] = useState(TAB_IDS.includes(initialTab) ? initialTab : "home");
+  const [tab, setTabState] = useState(tabFromHash);
+  const [mode, setMode] = useState<AppMode | null>(null);
+  const [status, setStatus] = useState<Status | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [lang, setLangState] = useState<Lang>((readPref("zaklon.lang", "") as Lang) || "en");
+  const [accent] = useState(readPref("zaklon.accent", "green"));
+  const [link, setLink] = useState<LinkSummary | null>(null);
+  const [notice, setNotice] = useState<Key | null>(null);
+  const connected = useRef(false);
+  setFormatLang(lang);
+  // Stable between renders so screens can safely depend on it.
+  const t = useMemo(() => makeT(lang), [lang]);
+
   const setTab = (id: string) => {
     setTabState(id);
     if (location.hash !== `#${id}`) location.hash = id;
@@ -37,22 +60,10 @@ export default function App() {
 
   // Follow the address: back/forward buttons and links to "#supplies" etc.
   useEffect(() => {
-    const onHash = () => {
-      const id = location.hash.replace("#", "");
-      if (TAB_IDS.includes(id)) setTabState(id);
-    };
+    const onHash = () => setTabState(tabFromHash());
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
-    // TAB_IDS is a constant list.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const [mode, setMode] = useState<AppMode | null>(null);
-  const [status, setStatus] = useState<Status | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [lang, setLangState] = useState<Lang>((readPref("zaklon.lang", "") as Lang) || "en");
-  const [accent] = useState(readPref("zaklon.accent", "green"));
-  const [link, setLink] = useState<LinkSummary | null>(null);
-  const t = makeT(lang);
 
   const setLang = (l: Lang) => {
     setLangState(l);
@@ -63,49 +74,86 @@ export default function App() {
     }
   };
 
+  /** This phone was removed on the hub: drop the link and say why. */
+  const unlinked = useCallback(async (why: Key) => {
+    await clientForget().catch(() => {});
+    setLink(await clientState().catch(() => null));
+    setStatus(null);
+    setNotice(why);
+  }, []);
+
   const refresh = useCallback(async () => {
     try {
       const s = await api<Status>("/api/status");
       setStatus(s);
       setError(null);
+      connected.current = true;
       if (!readPref("zaklon.lang", "")) setLangState(s.language);
     } catch (e) {
-      setError((e as Error).message);
+      connected.current = false;
+      const m = await getMode();
+      if (m.mode === "client" && e instanceof ApiError && e.status === 401) {
+        await unlinked("removedFromHub");
+        return;
+      }
+      setError(e instanceof Error ? e.message : String(e));
     }
-  }, []);
+  }, [unlinked]);
 
   useEffect(() => {
-    getMode().then(async (m) => {
-      setMode(m);
-      if (m.mode === "client") setLink(await clientState());
-    });
+    getMode()
+      .then(async (m) => {
+        setMode(m);
+        if (m.mode === "client") setLink(await clientState());
+      })
+      .catch(() => {});
   }, []);
 
-  // Poll quickly until the hub answers for the first time, then every 10 s.
+  // One request at a time: the next one starts only after the previous finished.
   useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, status ? 10000 : 2000);
-    return () => clearInterval(id);
-  }, [refresh, status]);
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = async () => {
+      await refresh();
+      if (alive) timer = setTimeout(tick, connected.current ? POLL_SLOW : POLL_FAST);
+    };
+    tick();
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [refresh, link?.linked]);
 
   useEffect(() => {
     document.documentElement.dataset.accent = accent;
-  }, [accent]);
+    document.documentElement.lang = lang === "sr" ? "sr-Latn" : "en";
+  }, [accent, lang]);
 
+  const needsSetup = status !== null && !status.set_up;
   useEffect(() => {
-    if (status && !status.set_up) setTab("household");
-  }, [status]);
+    if (needsSetup) setTabState("household");
+  }, [needsSetup]);
 
   const forget = async () => {
-    await clientForget();
+    await clientForget().catch(() => {});
     setLink(await clientState());
     setStatus(null);
   };
 
+  const isHub = mode?.mode !== "client";
+
   if (mode?.mode === "client" && link && !link.linked) {
     return (
       <main className="center-screen">
-        <Connect t={t} onLinked={async () => { setLink(await clientState()); refresh(); }} />
+        <Connect
+          t={t}
+          notice={notice ? t(notice) : null}
+          onLinked={async () => {
+            setNotice(null);
+            setLink(await clientState());
+            refresh();
+          }}
+        />
       </main>
     );
   }
@@ -113,46 +161,52 @@ export default function App() {
   return (
     <div className="shell">
       <main className="content">
-        {tab === "home" && <Home status={status} error={error} t={t} go={setTab} />}
+        {tab === "home" && <Home status={status} error={error ? errText(t, new Error(error)) : null} t={t} go={setTab} />}
         {tab === "household" && (
           <div className="stack">
             {link?.linked && (
-              <div className="panel row between">
+              <div className="panel row between wrap">
                 <div>
                   <div className="label">{t("linkedTo")}</div>
-                  <div>{link.hub_name} · {link.last_host ?? link.hosts[0]}</div>
+                  <div>
+                    {link.hub_name} · {link.last_host ?? link.hosts[0]}
+                  </div>
                 </div>
-                <button className="btn danger" onClick={forget}>{t("forgetHub")}</button>
+                <ConfirmButton label={t("forgetHub")} confirmLabel={t("yesForget")} cancelLabel={t("cancel")} onConfirm={forget} />
               </div>
             )}
-            <Household status={status} t={t} lang={lang} setLang={setLang} refresh={refresh} />
+            <Household status={status} t={t} lang={lang} setLang={setLang} refresh={refresh} isHub={isHub} ownDeviceId={link?.device_id ?? null} />
           </div>
         )}
         {tab === "library" && <Library t={t} lang={lang} go={setTab} />}
         {tab === "maps" && <Placeholder title={t("maps")} text={t("comingSoon")} />}
         {tab === "supplies" && <Supplies t={t} />}
         {tab === "assistant" && <Placeholder title={t("assistant")} text={t("comingSoon")} />}
-        {tab === "addons" && <Addons t={t} lang={lang} isHub={mode?.mode === "hub"} />}
-        {mode && (
-          <p className="muted" style={{ marginTop: 32, fontSize: 12 }}>
-            {[mode.mode, mode.platform, mode.version || status?.version].filter(Boolean).join(" · ")}
-          </p>
-        )}
+        {tab === "addons" && <Addons t={t} lang={lang} isHub={isHub} />}
+        {status?.version && <p className="muted footer-note">Zaklon {status.version}</p>}
       </main>
-      <nav className="nav">
+      <nav className="nav" aria-label="Zaklon">
         <div className="brand">Zaklon</div>
         {TABS.map((x) => (
-          <button key={x.id} className={tab === x.id ? "active" : ""} onClick={() => setTab(x.id)}>
-            <span className="ico">{x.ico}</span>
+          <button key={x.id} className={tab === x.id ? "active" : ""} aria-current={tab === x.id ? "page" : undefined} onClick={() => setTab(x.id)}>
+            <span className="ico" aria-hidden="true">{x.ico}</span>
             <span>{t(x.key)}</span>
           </button>
         ))}
-        <button className={"wide-only" + (tab === "household" ? " active" : "")} onClick={() => setTab("household")}>
-          <span className="ico">⚙</span>
+        <button
+          className={"wide-only" + (tab === "household" ? " active" : "")}
+          aria-current={tab === "household" ? "page" : undefined}
+          onClick={() => setTab("household")}
+        >
+          <span className="ico" aria-hidden="true">⚙</span>
           <span>{t("household")}</span>
         </button>
-        <button className={"more-only" + (tab === "household" ? " active" : "")} onClick={() => setTab("household")}>
-          <span className="ico">⚙</span>
+        <button
+          className={"more-only" + (tab === "household" ? " active" : "")}
+          aria-current={tab === "household" ? "page" : undefined}
+          onClick={() => setTab("household")}
+        >
+          <span className="ico" aria-hidden="true">⚙</span>
           <span>{t("more")}</span>
         </button>
       </nav>

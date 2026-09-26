@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, contentBase } from "../api";
 import type { Key, Lang } from "../i18n";
+import { errText } from "../errors";
 
 type T = (k: Key) => string;
 type Props = { t: T; lang: Lang; go: (tab: string) => void };
@@ -29,29 +30,36 @@ export default function Library({ t, lang, go }: Props) {
   const seq = useRef(0);
 
   useEffect(() => {
-    contentBase().then(setBase).catch((e) => setErr(String(e)));
-  }, []);
+    contentBase().then(setBase).catch((e) => setErr(errText(t, e)));
+  }, [t]);
 
   // Refresh the library state; poll while the engine is starting.
   useEffect(() => {
     let alive = true;
     const load = () =>
       api<LibraryReply>("/api/library")
-        .then((r) => alive && setLib(r))
-        .catch((e) => alive && setErr((e as Error).message));
+        .then((r) => {
+          if (!alive) return;
+          setLib(r);
+          setErr(null);
+        })
+        .catch((e) => alive && setErr(errText(t, e)));
     load();
     const id = setInterval(load, lib?.engine === "starting" ? 2000 : 15000);
     return () => {
       alive = false;
       clearInterval(id);
     };
-  }, [lib?.engine]);
+  }, [lib?.engine, t]);
 
   // Search as you type, 300 ms after the last key; ignore stale replies.
   useEffect(() => {
     const query = q.trim();
     if (query.length < 2) {
+      // Invalidate any search still in flight so its results do not appear later.
+      seq.current++;
       setResults(null);
+      setSearching(false);
       return;
     }
     const mine = ++seq.current;
@@ -59,15 +67,18 @@ export default function Library({ t, lang, go }: Props) {
       setSearching(true);
       try {
         const r = await api<Result[]>(`/api/library/search?q=${encodeURIComponent(query)}&limit=30`);
-        if (mine === seq.current) setResults(r);
+        if (mine === seq.current) {
+          setResults(r);
+          setErr(null);
+        }
       } catch (e) {
-        if (mine === seq.current) setErr((e as Error).message);
+        if (mine === seq.current) setErr(errText(t, e));
       } finally {
         if (mine === seq.current) setSearching(false);
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [q]);
+  }, [q, t]);
 
   const bookTitle = (en: string, sr: string) => (lang === "sr" && sr ? sr : en);
 
@@ -96,7 +107,7 @@ export default function Library({ t, lang, go }: Props) {
         <h1>{t("library")}</h1>
         <p className="muted">{t("libraryIntro")}</p>
       </div>
-      {err && <p className="error">{err}</p>}
+      {err && <p className="error" role="alert">{err}</p>}
 
       {(engine === "missing" || engine === "idle") && (
         <div className="panel stack" style={{ textAlign: "center" }}>
@@ -112,8 +123,9 @@ export default function Library({ t, lang, go }: Props) {
       {engine === "running" && (
         <>
           <input
-            type="text"
+            type="search"
             className="search"
+            aria-label={t("searchPlaceholder")}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder={t("searchPlaceholder")}

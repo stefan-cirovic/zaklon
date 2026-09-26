@@ -29,7 +29,6 @@
           "path": "zim/wikipedia_sr_all_maxi_2026-09.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_sr_all_maxi_2026-09.zim",
-            "https://kiwix.org",
             "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_sr_all_maxi_2026-09.zim"
           ],
           "sha256": "29e4a604c3037d17ee0c1518282138753b8f064c7e61464ce4a8403056dc2b5d",
@@ -62,7 +61,6 @@
           "path": "zim/wikipedia_sr_all_nopic_2026-09.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_sr_all_nopic_2026-09.zim",
-            "https://kiwix.org",
             "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_sr_all_nopic_2026-09.zim"
           ],
           "sha256": "ffb274f9e4e80350f0bbe62cac7b503244e3e30d7c04710df3b27869ce86c150",
@@ -95,7 +93,6 @@
           "path": "zim/wikipedia_sr_all_mini_2026-09.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_sr_all_mini_2026-09.zim",
-            "https://kiwix.org",
             "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_sr_all_mini_2026-09.zim"
           ],
           "sha256": "3ff7fbae92c6eb911b0c1700eb589148d6ab2ed76e8225c3b7a5cf48081cc179",
@@ -130,7 +127,6 @@
           "path": "zim/wiktionary_sr_all_nopic_2026-07.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/wiktionary/wiktionary_sr_all_nopic_2026-07.zim",
-            "https://kiwix.org",
             "https://mirror.accum.se/mirror/kiwix.org/zim/wiktionary/wiktionary_sr_all_nopic_2026-07.zim"
           ],
           "sha256": "c34f0a957aaa8947e6ce20798d7bd216637688dee1ba8785c974804a217bd66e",
@@ -166,7 +162,6 @@
           "path": "zim/wikipedia_en_medicine_maxi_2026-04.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_en_medicine_maxi_2026-04.zim",
-            "https://kiwix.org",
             "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_en_medicine_maxi_2026-04.zim"
           ],
           "sha256": "6f67340a7cd7665bb57c27d2bbff97e26f2037477c9ea597345a118286820331",
@@ -202,7 +197,6 @@
           "path": "zim/ifixit_en_all_2025-12.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/ifixit/ifixit_en_all_2025-12.zim",
-            "https://kiwix.org",
             "https://mirror.accum.se/mirror/kiwix.org/zim/ifixit/ifixit_en_all_2025-12.zim"
           ],
           "sha256": "9bb5f3408707fd0300c6ef47a425c3217187f144cd9154a928183816aa72eead",
@@ -237,7 +231,6 @@
           "path": "zim/wikipedia_en_all_mini_2026-09.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_en_all_mini_2026-09.zim",
-            "https://kiwix.org",
             "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_en_all_mini_2026-09.zim"
           ],
           "sha256": "350d8956ee3d7abe2839c464c3a983f93d6934a16c7f04b10715b49439dfd349",
@@ -270,7 +263,6 @@
           "path": "zim/wikipedia_en_all_nopic_2026-06.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_en_all_nopic_2026-06.zim",
-            "https://kiwix.org",
             "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_en_all_nopic_2026-06.zim"
           ],
           "sha256": "441a56d9e05b2d98f8ae9acb7986a513ed47904d73852c92dc6b7d50baa122e5",

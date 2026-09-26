@@ -14,6 +14,11 @@ use tracing::{debug, info, warn};
 use crate::HubState;
 
 pub const SERVICE_TYPE: &str = "_zaklon._tcp.local.";
+/// A discovery request must be at least this long, so the reply is never
+/// bigger than the request (no use as a traffic amplifier).
+pub const BEACON_MIN_REQUEST: usize = 512;
+/// At most this many replies per second.
+const BEACON_MAX_PER_SECOND: u32 = 20;
 
 /// Keeps the mDNS daemon alive; dropping it unregisters the service.
 pub struct Discovery {
@@ -104,12 +109,22 @@ pub async fn start(state: Arc<HubState>) -> Result<Discovery> {
 }
 
 async fn beacon_loop(socket: UdpSocket, state: Arc<HubState>) {
-    let mut buf = [0u8; 512];
+    let mut buf = [0u8; 2048];
+    let mut window = std::time::Instant::now();
+    let mut sent_in_window = 0u32;
     loop {
         let Ok((n, peer)) = socket.recv_from(&mut buf).await else { continue };
-        if !buf[..n].starts_with(b"ZAKLON?") {
+        if n < BEACON_MIN_REQUEST || !buf[..n].starts_with(b"ZAKLON?") {
             continue;
         }
+        if window.elapsed() >= std::time::Duration::from_secs(1) {
+            window = std::time::Instant::now();
+            sent_in_window = 0;
+        }
+        if sent_in_window >= BEACON_MAX_PER_SECOND {
+            continue;
+        }
+        sent_in_window += 1;
         let cfg = state.config();
         let reply = BeaconReply {
             v: 1,
