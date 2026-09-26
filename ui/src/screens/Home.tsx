@@ -13,7 +13,7 @@ export default function Home({ status, error, t, go }: Props) {
   const up = !!status && !error;
   return (
     <div className="stack">
-      <div>
+      <div className="page-head">
         <h1>{status?.hub_name ?? "Zaklon"}</h1>
         <p className="muted row">
           <span className={"status-dot" + (up ? "" : " off")} /> {up ? t("online") : t("offline")}
@@ -30,7 +30,7 @@ export default function Home({ status, error, t, go }: Props) {
         <div className="panel"><div className="label">{t("expiringSoon")}</div><p className="muted">{t("nothingYet")}</p></div>
         <div className="panel"><div className="label">{t("runningLow")}</div><p className="muted">{t("nothingYet")}</p></div>
       </div>
-      <div className="row">
+      <div className="row actions">
         <button className="btn" onClick={() => go("supplies")}>{t("addItem")}</button>
         <button className="btn secondary" onClick={() => go("assistant")}>{t("ask")}</button>
       </div>

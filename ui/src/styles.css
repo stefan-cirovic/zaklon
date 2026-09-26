@@ -116,3 +116,16 @@ label.field { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
 .center-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
 .center-screen > .stack { width: 100%; max-width: 420px; text-align: center; }
 .center-screen label.field, .center-screen .list, .center-screen .panel { text-align: left; }
+
+/* Phone: centered, compact dashboard */
+@media (max-width: 899px) {
+  .content h1 { text-align: center; }
+  .page-head { text-align: center; }
+  .page-head .row { justify-content: center; }
+  .grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .panel { padding: 14px 12px; text-align: center; }
+  .panel .value { font-size: 20px; }
+  .panel .label { font-size: 12px; }
+  .actions { justify-content: center; flex-wrap: wrap; }
+  .actions .btn { flex: 1 1 140px; }
+}
