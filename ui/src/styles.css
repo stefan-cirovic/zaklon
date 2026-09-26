@@ -60,17 +60,20 @@ p { margin: 0 0 12px; }
 .nav button.active { color: var(--accent); }
 .nav .more-only { display: flex; }
 @media (min-width: 900px) {
-  .shell { grid-template-rows: 1fr; grid-template-columns: var(--nav) 1fr; }
+  /* Laptop: navigation is a bar across the top. */
+  .shell { grid-template-rows: auto 1fr; }
   .nav {
-    flex-direction: column; justify-content: flex-start; border-top: 0; border-right: 1px solid var(--line);
-    position: sticky; top: 0; height: 100vh; padding: 16px 12px; gap: 4px; order: -1;
+    order: -1; position: sticky; top: 0; z-index: 10; bottom: auto;
+    justify-content: flex-start; align-items: center; gap: 4px;
+    border-top: 0; border-bottom: 1px solid var(--line); padding: 8px 24px;
   }
-  .nav .brand { padding: 8px 12px 20px; font-weight: 700; font-size: 20px; letter-spacing: 0.02em; }
+  .nav .brand { font-weight: 700; font-size: 20px; letter-spacing: 0.02em; margin-right: 24px; }
   .nav button {
-    flex: 0 0 auto; flex-direction: row; justify-content: flex-start; gap: 12px; font-size: 15px;
-    padding: 10px 12px; border-radius: 8px; min-height: 44px;
+    flex: 0 0 auto; flex-direction: row; gap: 8px; font-size: 15px;
+    padding: 8px 14px; border-radius: 8px; min-height: 40px;
   }
   .nav button.active { background: var(--panel-2); }
+  .nav .wide-only { margin-left: auto; }
   .nav .more-only { display: none; }
   .content { padding: 32px 40px; }
 }
