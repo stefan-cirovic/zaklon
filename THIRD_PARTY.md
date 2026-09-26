@@ -18,6 +18,7 @@ Zaklon runs several independent open-source programs as separate processes and o
 | iFixit (ZIM) | CC BY-NC-SA 3.0 | iFixit |
 | Stack Exchange sites (ZIM) | CC BY-SA 4.0 | Stack Exchange contributors |
 | Map data | ODbL 1.0 | © OpenStreetMap contributors |
+| Map region list and region names (bundled in `crates/zaklon-core/catalog/comaps-*.json`, Serbian names converted to Latin script) | Apache-2.0 | CoMaps contributors |
 | AI models (Qwen3.5 family, Gemma 4) | Apache-2.0 | Alibaba Cloud (Qwen), Google (Gemma) |
 
 ## Libraries
