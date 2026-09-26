@@ -218,3 +218,13 @@ test("litres are written out with the right form", async ({ page }, info) => {
   await page.goto("/#household");
   await page.locator("select").first().selectOption("en");
 });
+
+test("the Latin-script switch is remembered on this device", async ({ page }) => {
+  await ensureSetUp(page);
+  const box = page.getByRole("checkbox", { name: /Serbian articles in Latin script/ });
+  await expect(box).not.toBeChecked();
+  await box.check();
+  await page.reload();
+  await expect(page.getByRole("checkbox", { name: /Serbian articles in Latin script/ })).toBeChecked();
+  await page.getByRole("checkbox", { name: /Serbian articles in Latin script/ }).uncheck();
+});

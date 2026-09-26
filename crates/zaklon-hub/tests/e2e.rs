@@ -421,6 +421,21 @@ async fn full_hub_flow() {
     if r.status().is_success() {
         assert_eq!(r.headers()["content-security-policy"], "sandbox allow-popups");
     }
+    // ...but the page's own styles and images (marked cross-site because the
+    // page is sandboxed) are still served; there is no engine here, so 503.
+    for prefix in ["/kiwix/", "/kiwix-lat/"] {
+        let r = hub
+            .http
+            .get(format!("{}{prefix}content/x/_mw_/style.css", hub.local))
+            .header("sec-fetch-site", "cross-site")
+            .send()
+            .await
+            .unwrap();
+        assert_ne!(r.status().as_u16(), 403, "{prefix} resources must load inside the sandboxed page");
+    }
+    // Library pages are not readable from the network without a token.
+    let r = phone.get(format!("{}/kiwix/content/x/y", hub.tls)).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 401);
     // A cross-site navigation is never trusted as the laptop.
     let r = hub.http.get(format!("{}/api/devices", hub.local)).header("sec-fetch-site", "cross-site").send().await.unwrap();
     assert_eq!(r.status().as_u16(), 403);

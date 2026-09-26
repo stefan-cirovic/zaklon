@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, contentBase } from "../api";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
+import { cyrToLat, latinArticles } from "../format";
 
 type T = (k: Key) => string;
 type Props = { t: T; lang: Lang; go: (tab: string) => void };
@@ -81,17 +82,20 @@ export default function Library({ t, lang, go }: Props) {
   }, [q, t]);
 
   const bookTitle = (en: string, sr: string) => (lang === "sr" && sr ? sr : en);
+  const latin = latinArticles(lang);
+  const show = (s: string) => (latin ? cyrToLat(s) : s);
+  const readerUrl = (url: string) => (latin ? url.replace(/^\/kiwix\//, "/kiwix-lat/") : url);
 
   if (reader && base !== null) {
     return (
       <div className="reader">
         <div className="reader-bar">
           <button className="btn secondary" onClick={() => setReader(null)}>← {t("back")}</button>
-          <div className="reader-title">{reader.title}</div>
+          <div className="reader-title">{show(reader.title)}</div>
         </div>
         <iframe
           className="reader-frame"
-          src={base + reader.url}
+          src={base + readerUrl(reader.url)}
           title={reader.title}
           sandbox="allow-same-origin allow-popups"
           referrerPolicy="no-referrer"
@@ -156,8 +160,8 @@ export default function Library({ t, lang, go }: Props) {
               {results.map((r) => (
                 <button key={r.url} className="item clickable result" onClick={() => setReader({ url: r.url, title: r.title })}>
                   <div>
-                    <div className="result-title">{r.title}</div>
-                    {r.snippet && <div className="muted result-snippet">{r.snippet}</div>}
+                    <div className="result-title">{show(r.title)}</div>
+                    {r.snippet && <div className="muted result-snippet">{show(r.snippet)}</div>}
                     <div className="muted result-book">{bookTitle(r.book_title_en, r.book_title_sr)}</div>
                   </div>
                 </button>

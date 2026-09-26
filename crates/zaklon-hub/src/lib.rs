@@ -11,6 +11,7 @@ pub mod discovery;
 pub mod downloads;
 pub mod install;
 pub mod kiwix;
+pub mod latin;
 pub mod ui;
 
 use std::collections::HashMap;

@@ -71,6 +71,7 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/library", get(library_books))
         .route("/api/library/search", get(library_search))
         .route("/kiwix/{*rest}", get(kiwix_proxy))
+        .route("/kiwix-lat/{*rest}", get(kiwix_proxy_latin))
         .fallback(crate::ui::serve)
         .layer(axum::Extension(listener))
         .layer(TraceLayer::new_for_http())
@@ -173,6 +174,38 @@ impl OptionalFromRequestParts<Arc<HubState>> for Caller {
             // Anyone may see the public part of what an optional caller guards.
             Err(ApiError(StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN, _)) => Ok(None),
             Err(e) => Err(e),
+        }
+    }
+}
+
+/// Someone allowed to *read library pages*: a paired device, or the laptop.
+/// Library pages are shown sandboxed (no scripts, opaque origin), so the
+/// browser marks their own styles and images as cross-site requests; those
+/// must still load. Only the Host check (against DNS rebinding) applies here.
+/// Nothing private is behind this: it is used only for read-only /kiwix pages.
+pub struct LibraryReader;
+
+impl FromRequestParts<Arc<HubState>> for LibraryReader {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &Arc<HubState>) -> Result<Self, Self::Rejection> {
+        let has_token = parts.headers.get("authorization").is_some();
+        let listener = parts.extensions.get::<Listener>().copied().unwrap_or(Listener::Network);
+        if has_token || listener == Listener::Network {
+            <Caller as FromRequestParts<Arc<HubState>>>::from_request_parts(parts, state).await?;
+            return Ok(LibraryReader);
+        }
+        let loopback = parts.extensions.get::<ConnectInfo<SocketAddr>>().is_some_and(|c| c.0.ip().is_loopback());
+        let port = state.config().local_port;
+        let host_ok = parts
+            .headers
+            .get("host")
+            .and_then(|v| v.to_str().ok())
+            .is_none_or(|h| h.eq_ignore_ascii_case(&format!("127.0.0.1:{port}")) || h.eq_ignore_ascii_case(&format!("localhost:{port}")));
+        if loopback && host_ok {
+            Ok(LibraryReader)
+        } else {
+            Err(unauthorized())
         }
     }
 }
@@ -638,11 +671,32 @@ async fn library_search(
 }
 
 /// Articles, images and styles of installed knowledge packs, read-only.
-async fn kiwix_proxy(State(state): State<Arc<HubState>>, _caller: Caller, uri: axum::http::Uri) -> Response {
+async fn kiwix_proxy(State(state): State<Arc<HubState>>, _reader: LibraryReader, uri: axum::http::Uri) -> Response {
     let path = uri.path_and_query().map(|p| p.as_str()).unwrap_or("/");
     if !path.starts_with("/kiwix/") {
         return StatusCode::NOT_FOUND.into_response();
     }
+    proxy_library(&state, path, false).await
+}
+
+/// The same pages with Serbian Cyrillic text shown in Latin script. Relative
+/// links inside the page stay under /kiwix-lat/, so reading on stays in Latin.
+async fn kiwix_proxy_latin(State(state): State<Arc<HubState>>, _reader: LibraryReader, uri: axum::http::Uri) -> Response {
+    let path = uri.path_and_query().map(|p| p.as_str()).unwrap_or("/");
+    let Some(rest) = path.strip_prefix("/kiwix-lat/") else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    // Only pages of Serbian books are converted.
+    let book = rest.strip_prefix("content/").and_then(|r| r.split('/').next()).unwrap_or_default();
+    let serbian = state
+        .library
+        .books()
+        .iter()
+        .any(|b| b.name == book && b.languages.iter().any(|l| l == "srp"));
+    proxy_library(&state, &format!("/kiwix/{rest}"), serbian).await
+}
+
+async fn proxy_library(state: &Arc<HubState>, path: &str, to_latin: bool) -> Response {
     match state.library.fetch(path).await {
         Ok(res) => {
             let status = StatusCode::from_u16(res.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
@@ -652,9 +706,22 @@ async fn kiwix_proxy(State(state): State<Arc<HubState>>, _caller: Caller, uri: a
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("application/octet-stream")
                 .to_string();
-            let cache = if ctype.starts_with("text/html") { "no-cache" } else { "private, max-age=86400" };
+            let is_html = ctype.starts_with("text/html");
+            let cache = if is_html { "no-cache" } else { "private, max-age=86400" };
             match res.bytes().await {
-                Ok(body) => (
+                Ok(body) => {
+                    let body = if to_latin && is_html {
+                        match std::str::from_utf8(&body) {
+                            Ok(text) => {
+                                let converted = crate::latin::html_to_latin(text);
+                                axum::body::Bytes::from(converted)
+                            }
+                            Err(_) => body,
+                        }
+                    } else {
+                        body
+                    };
+                    (
                     status,
                     [
                         (axum::http::header::CONTENT_TYPE, ctype),
@@ -666,7 +733,8 @@ async fn kiwix_proxy(State(state): State<Arc<HubState>>, _caller: Caller, uri: a
                     ],
                     body,
                 )
-                    .into_response(),
+                    .into_response()
+                }
                 Err(_) => StatusCode::BAD_GATEWAY.into_response(),
             }
         }

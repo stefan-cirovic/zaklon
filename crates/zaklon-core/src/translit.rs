@@ -83,27 +83,70 @@ pub fn latin_to_cyrillic(input: &str) -> String {
     out
 }
 
-/// Convert Serbian Cyrillic text to Latin.
+/// Letters of other Cyrillic alphabets that appear in Serbian texts (Russian,
+/// Macedonian, Ukrainian names), written the usual Serbian way.
+const EXTRA_CYR: &[(char, &str)] = &[
+    ('я', "ja"),
+    ('ю', "ju"),
+    ('ё', "jo"),
+    ('й', "j"),
+    ('ы', "y"),
+    ('э', "e"),
+    ('щ', "šč"),
+    ('ъ', ""),
+    ('ь', ""),
+    ('ѓ', "ǵ"),
+    ('ќ', "ḱ"),
+    ('ѕ', "dz"),
+    ('і', "i"),
+    ('ї', "ji"),
+    ('є', "je"),
+    ('ґ', "g"),
+];
+
+fn latin_for(lower: char) -> Option<&'static str> {
+    LAT_TO_CYR
+        .iter()
+        .find(|(_, cyr)| *cyr == lower)
+        .map(|(lat, _)| *lat)
+        .or_else(|| EXTRA_CYR.iter().find(|(c, _)| *c == lower).map(|(_, l)| *l))
+}
+
+/// Convert Serbian Cyrillic text to Latin. A capital letter that becomes two
+/// Latin letters (Љ, Њ, Џ) is written "Lj" at the start of a word and "LJ"
+/// inside a word written in capitals ("ЉУБАВ" -> "LJUBAV").
 pub fn cyrillic_to_latin(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    for c in input.chars() {
+    let chars: Vec<char> = input.chars().collect();
+    let mut out = String::with_capacity(input.len() + input.len() / 4);
+    for (i, &c) in chars.iter().enumerate() {
         let lower = c.to_lowercase().next().unwrap_or(c);
-        match LAT_TO_CYR.iter().find(|(_, cyr)| *cyr == lower) {
-            Some((lat, _)) => {
-                if c.is_uppercase() {
-                    let mut it = lat.chars();
-                    if let Some(first) = it.next() {
-                        out.extend(first.to_uppercase());
-                        out.extend(it);
-                    }
-                } else {
-                    out.push_str(lat);
-                }
+        let Some(lat) = latin_for(lower) else {
+            out.push(c);
+            continue;
+        };
+        if !c.is_uppercase() {
+            out.push_str(lat);
+            continue;
+        }
+        let next_upper = chars.get(i + 1).is_some_and(|n| n.is_uppercase());
+        let prev_upper = i > 0 && chars[i - 1].is_uppercase();
+        let next_lower = chars.get(i + 1).is_some_and(|n| n.is_lowercase());
+        if next_upper || (prev_upper && !next_lower) {
+            out.push_str(&lat.to_uppercase());
+        } else {
+            let mut it = lat.chars();
+            if let Some(first) = it.next() {
+                out.extend(first.to_uppercase());
+                out.extend(it);
             }
-            None => out.push(c),
         }
     }
     out
+}
+
+/// True when the text contains Cyrillic letters.
+pub fn has_cyrillic(input: &str) -> bool {
+    input.chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c))
 }
 
 /// True when the text contains at least one Latin letter that maps to Cyrillic.
@@ -193,6 +236,17 @@ mod tests {
         assert_eq!(cyrillic_to_latin("Љубав"), "Ljubav");
         assert_eq!(cyrillic_to_latin("Ђорђе и џеп"), "Đorđe i džep");
         assert_eq!(cyrillic_to_latin("Београд 2026"), "Beograd 2026");
+    }
+
+    #[test]
+    fn capitals_and_foreign_letters() {
+        assert_eq!(cyrillic_to_latin("ЉУБАВ"), "LJUBAV");
+        assert_eq!(cyrillic_to_latin("Љубав и ЊЕГОШ"), "Ljubav i NJEGOŠ");
+        assert_eq!(cyrillic_to_latin("УНИЦЕФ"), "UNICEF");
+        assert_eq!(cyrillic_to_latin("Достоевский"), "Dostoevskij");
+        assert_eq!(cyrillic_to_latin("Юрий Гагарин"), "Jurij Gagarin");
+        assert!(has_cyrillic("вода 1"));
+        assert!(!has_cyrillic("voda 1"));
     }
 
     #[test]

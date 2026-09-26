@@ -566,7 +566,7 @@ impl ClientState {
         let Some(rest) = full.strip_prefix(prefix) else { return StatusCode::NOT_FOUND.into_response() };
         let path_only = rest.split('?').next().unwrap_or(rest).to_ascii_lowercase();
         let escapes = path_only.contains("..") || path_only.contains("%2e") || path_only.contains('\\') || path_only.contains("%5c");
-        if !rest.starts_with("/kiwix/") || escapes {
+        if !(rest.starts_with("/kiwix/") || rest.starts_with("/kiwix-lat/")) || escapes {
             return StatusCode::NOT_FOUND.into_response();
         }
         let Some(link) = self.link() else {

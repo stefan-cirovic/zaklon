@@ -83,3 +83,56 @@ export function unitLabel(unit: string, qty: number, short: (u: string) => strin
   }
   return qty === 1 ? "liter" : "liters";
 }
+
+// ---- Serbian Cyrillic to Latin (same rules as the hub) --------------------
+
+const CYR: Record<string, string> = {
+  а: "a", б: "b", в: "v", г: "g", д: "d", ђ: "đ", е: "e", ж: "ž", з: "z", и: "i", ј: "j", к: "k", л: "l", љ: "lj",
+  м: "m", н: "n", њ: "nj", о: "o", п: "p", р: "r", с: "s", т: "t", ћ: "ć", у: "u", ф: "f", х: "h", ц: "c", ч: "č",
+  џ: "dž", ш: "š", я: "ja", ю: "ju", ё: "jo", й: "j", ы: "y", э: "e", щ: "šč", ъ: "", ь: "", ѓ: "ǵ", ќ: "ḱ", ѕ: "dz",
+  і: "i", ї: "ji", є: "je", ґ: "g",
+};
+
+export function cyrToLat(s: string): string {
+  const chars = [...s];
+  let out = "";
+  chars.forEach((c, i) => {
+    const lower = c.toLowerCase();
+    const lat = CYR[lower];
+    if (lat === undefined) {
+      out += c;
+      return;
+    }
+    if (c === lower) {
+      out += lat;
+      return;
+    }
+    const next = chars[i + 1];
+    const prev = chars[i - 1];
+    const isUpper = (x?: string) => !!x && x !== x.toLowerCase();
+    const isLower = (x?: string) => !!x && x !== x.toUpperCase();
+    if (isUpper(next) || (isUpper(prev) && !isLower(next))) out += lat.toUpperCase();
+    else out += lat.charAt(0).toUpperCase() + lat.slice(1);
+  });
+  return out;
+}
+
+/** Show Serbian articles in Latin script: a per-device choice, on by default in Serbian. */
+export function latinArticles(appLang: Lang): boolean {
+  try {
+    const v = localStorage.getItem("zaklon.latin");
+    if (v === "1") return true;
+    if (v === "0") return false;
+  } catch {
+    /* ignore */
+  }
+  return appLang === "sr";
+}
+
+export function setLatinArticles(on: boolean) {
+  try {
+    localStorage.setItem("zaklon.latin", on ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}

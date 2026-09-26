@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type Device, type PairStart, type Status } from "../api";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
-import { fmtDateTime, securityCode } from "../format";
+import { fmtDateTime, latinArticles, securityCode, setLatinArticles } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
 import Qr from "../components/Qr";
 
@@ -156,6 +156,12 @@ function Devices({ t, status, lang, setLang, isHub, ownDeviceId }: DevicesProps)
     }
   };
 
+  const [latin, setLatin] = useState(() => latinArticles(lang));
+  const toggleLatin = (on: boolean) => {
+    setLatin(on);
+    setLatinArticles(on);
+  };
+
   const host = pair?.payload.hosts[0] ?? status.addresses?.[0];
   const left = Math.max(0, Math.round((expiresAt - now) / 1000));
   const expired = pair !== null && left === 0;
@@ -171,6 +177,11 @@ function Devices({ t, status, lang, setLang, isHub, ownDeviceId }: DevicesProps)
         </select>
       </div>
       {err && <p className="error" role="alert">{err}</p>}
+
+      <label className="check-line panel">
+        <input type="checkbox" checked={latin} onChange={(e) => toggleLatin(e.target.checked)} />
+        <span>{t("latinArticles")}</span>
+      </label>
 
       {isHub &&
         (pair ? (
