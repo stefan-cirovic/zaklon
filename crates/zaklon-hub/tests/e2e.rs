@@ -427,6 +427,11 @@ async fn full_hub_flow() {
     assert_eq!(st, 204);
     let r = as_phone(reqwest::Method::GET, "/api/items").send().await.unwrap();
     assert_eq!(r.status().as_u16(), 401);
+    // Even the public status says so, so the phone app notices it was removed.
+    let r = as_phone(reqwest::Method::GET, "/api/status").send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 401);
+    let r = phone.get(format!("{}/api/status", hub.tls)).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 200, "without a token the public status still works");
 
     // 19. The password can be changed from the laptop; the old one no longer pairs.
     let (st, _) = hub.post("/api/password", json!({ "new_password": "new household pw" })).await;

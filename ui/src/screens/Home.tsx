@@ -113,9 +113,8 @@ export default function Home({ status, error, t, go }: Props) {
         </div>
       </div>
       {sum !== null && sumFailed && <p className="muted" style={{ fontSize: 13 }}>{t("showingLastKnown")}</p>}
-      <div className="row actions">
-        <button className="btn" onClick={() => go("supplies")}>{t("addItem")}</button>
-        <button className="btn secondary" onClick={() => go("assistant")}>{t("ask")}</button>
+      <div className="home-cta">
+        <button className="btn" onClick={() => go("assistant")}>{t("ask")}</button>
       </div>
     </div>
   );

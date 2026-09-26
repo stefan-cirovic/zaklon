@@ -157,8 +157,17 @@ impl OptionalFromRequestParts<Arc<HubState>> for Caller {
         parts: &mut Parts,
         state: &Arc<HubState>,
     ) -> Result<Option<Self>, Self::Rejection> {
+        // A device that presents a token the hub no longer accepts (it was
+        // removed) must hear so clearly, even on public pages, so the phone
+        // can leave the hub instead of looking connected.
+        let presented_token = parts
+            .headers
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.starts_with("Bearer "));
         match <Caller as FromRequestParts<Arc<HubState>>>::from_request_parts(parts, state).await {
             Ok(c) => Ok(Some(c)),
+            Err(e @ ApiError(StatusCode::UNAUTHORIZED, _)) if presented_token => Err(e),
             // Anyone may see the public part of what an optional caller guards.
             Err(ApiError(StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN, _)) => Ok(None),
             Err(e) => Err(e),
