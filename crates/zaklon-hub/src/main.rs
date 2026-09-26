@@ -1,5 +1,9 @@
-//! `zaklon-hub` binary: runs the hub as a plain console process.
-//! The desktop app embeds the same library and starts it in-process.
+//! `zaklon-hub` binary: runs the hub as a background process. Release builds
+//! open no console window and log to `<root>/logs/hub.log`; debug builds also
+//! print to the console. The desktop app embeds the same library in-process.
+
+// No console window in release builds (the hub is started by a scheduled task or the desktop app).
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::path::PathBuf;
 
@@ -23,7 +27,7 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| "zaklon_hub=info,zaklon_core=info,tower_http=info".into());
     tracing_subscriber::registry()
         .with(filter)
-        .with(fmt::layer().with_writer(std::io::stdout))
+        .with(fmt::layer().with_ansi(false).with_writer(std::io::stdout))
         .with(fmt::layer().with_ansi(false).with_writer(file_writer))
         .init();
 
