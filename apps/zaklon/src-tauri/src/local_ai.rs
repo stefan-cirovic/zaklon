@@ -18,6 +18,10 @@ const CONTEXT: &str = "2048";
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct CopyProgress {
     pub model: String,
+    /// The hub's id of the model, so the app can resume by itself.
+    pub model_id: String,
+    /// Reading back the part already on the phone before resuming.
+    pub verifying: bool,
     pub done: u64,
     pub total: u64,
     pub error: Option<String>,
@@ -142,7 +146,7 @@ impl LocalAi {
             if c.as_ref().is_some_and(|c| !c.finished) {
                 return Err("a copy is already running".into());
             }
-            *c = Some(CopyProgress { model: file.clone(), ..Default::default() });
+            *c = Some(CopyProgress { model: file.clone(), model_id: model_id.clone(), ..Default::default() });
         }
         if !file.ends_with(".gguf") || file.contains('/') || file.contains('\\') || file.contains("..") {
             return Err("bad model file name".into());
@@ -152,10 +156,11 @@ impl LocalAi {
         tauri::async_runtime::spawn(async move {
             let p2 = progress.clone();
             let result = client
-                .fetch_to_file(&format!("/api/models/{model_id}/file"), &dest, move |done, total| {
+                .fetch_to_file(&format!("/api/models/{model_id}/file"), &dest, move |done, total, verifying| {
                     if let Some(c) = p2.lock().unwrap_or_else(|p| p.into_inner()).as_mut() {
                         c.done = done;
                         c.total = total;
+                        c.verifying = verifying;
                     }
                 })
                 .await;
@@ -244,6 +249,8 @@ impl LocalAi {
             .as_ref()
             .map(|s| s.port)
             .ok_or("start the AI engine first")?;
+        // Answer in the language of the question; the app language only breaks ties.
+        let language = question_language(prompt).unwrap_or(language);
         let system = if language == "sr" {
             "Ti si Zaklon, pomoćnik za domaćinstvo. Odgovaraj kratko i jasno, na srpskom jeziku, latinicom. Ako nisi siguran, reci da nisi siguran."
         } else {
@@ -292,4 +299,50 @@ fn strip_thinking(s: &str) -> String {
         out.replace_range(a..b + "</think>".len(), "");
     }
     out.trim().to_string()
+}
+
+/// "sr" or "en" when the text clearly is one of them.
+pub fn question_language(text: &str) -> Option<&'static str> {
+    let lower = text.to_lowercase();
+    if lower.chars().any(|c| matches!(c, 'č' | 'ć' | 'ž' | 'š' | 'đ') || ('\u{0400}'..='\u{04FF}').contains(&c)) {
+        return Some("sr");
+    }
+    const SR: &[&str] = &[
+        "je", "da", "li", "koliko", "kako", "sta", "gde", "zasto", "koji", "koja", "koje", "sam", "se", "za", "od", "na", "u", "i",
+        "treba", "moze", "mogu", "ima", "nema", "traje", "dugo", "kada", "kad", "sto", "ili", "ne", "mi", "ti", "hleb", "voda",
+    ];
+    const EN: &[&str] = &[
+        "the", "is", "are", "how", "what", "does", "do", "can", "why", "where", "which", "of", "to", "in", "and", "a", "an", "it",
+        "long", "last", "should", "i", "my", "you", "when", "much", "many", "for", "with", "water", "food",
+    ];
+    let (mut sr, mut en) = (0, 0);
+    for w in lower.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()) {
+        if SR.contains(&w) {
+            sr += 1;
+        }
+        if EN.contains(&w) {
+            en += 1;
+        }
+    }
+    match sr.cmp(&en) {
+        std::cmp::Ordering::Greater => Some("sr"),
+        std::cmp::Ordering::Less => Some("en"),
+        std::cmp::Ordering::Equal => None,
+    }
+}
+
+#[cfg(test)]
+mod lang_tests {
+    use super::question_language;
+
+    #[test]
+    fn guesses_the_language_of_a_question() {
+        assert_eq!(question_language("How long does canned food last?"), Some("en"));
+        assert_eq!(question_language("Koliko dugo traje konzerva pasulja?"), Some("sr"));
+        assert_eq!(question_language("koliko traje hleb"), Some("sr"));
+        assert_eq!(question_language("Šta da radim"), Some("sr"));
+        assert_eq!(question_language("Колико траје хлеб?"), Some("sr"));
+        assert_eq!(question_language("What is the best way to store water?"), Some("en"));
+        assert_eq!(question_language("pasulj"), None);
+    }
 }

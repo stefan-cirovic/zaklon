@@ -98,7 +98,7 @@ export async function api<T = unknown>(path: string, init: { method?: string; js
   if (mode.mode === "client") {
     const res = await invoke<{ status: number; body: string }>("client_request", { method, path, body: body ?? null });
     if (res.status >= 400) throw errorFromBody(res.status, res.body, `hub replied ${res.status}`);
-    if (res.status === 204 || !res.body) return undefined as T;
+    if (!res.body || !res.body.trim()) return undefined as T;
     return JSON.parse(res.body) as T;
   }
 
@@ -108,9 +108,11 @@ export async function api<T = unknown>(path: string, init: { method?: string; js
     headers: body !== undefined ? { "content-type": "application/json" } : undefined,
     body,
   });
-  if (!res.ok) throw errorFromBody(res.status, await res.text(), res.statusText);
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  const text = await res.text();
+  if (!res.ok) throw errorFromBody(res.status, text, res.statusText);
+  // 202/204 and other answers without a body carry no data.
+  if (!text.trim()) return undefined as T;
+  return JSON.parse(text) as T;
 }
 
 // ---- phone-side link management ------------------------------------------

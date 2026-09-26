@@ -28,6 +28,12 @@ time = { version = "0.3", features = ["formatting", "parsing", "serde", "macros"
 argon2 = "0.5"
 rcgen = { version = "0.13", default-features = false, features = ["pem", "ring", "crypto"] }
 
+# Checksums of multi-gigabyte files: keep them fast in debug builds too.
+[profile.dev.package.sha2]
+opt-level = 3
+[profile.dev.package.sha1]
+opt-level = 3
+
 [profile.release]
 opt-level = "s"
 lto = "thin"

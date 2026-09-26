@@ -17,11 +17,13 @@ export function fmtQty(n: number): string {
   return new Intl.NumberFormat(locale(), { maximumFractionDigits: 3 }).format(n);
 }
 
+/** Sizes the way Windows Explorer, Android and CoMaps show them (1 MB = 1024 × 1024 bytes). */
 export function fmtBytes(n: number): string {
   const nf = (v: number, digits: number) => new Intl.NumberFormat(locale(), { maximumFractionDigits: digits }).format(v);
-  if (n >= 1e9) return `${nf(n / 1e9, n >= 1e10 ? 0 : 1)} GB`;
-  if (n >= 1e6) return `${nf(n / 1e6, 0)} MB`;
-  return `${nf(n / 1e3, 0)} kB`;
+  const KB = 1024, MB = KB * 1024, GB = MB * 1024;
+  if (n >= 1000 * MB) return `${nf(n / GB, n >= 10 * GB ? 0 : 1)} GB`;
+  if (n >= 1000 * KB) return `${nf(n / MB, 0)} MB`;
+  return `${nf(n / KB, 0)} kB`;
 }
 
 /** "YYYY-MM-DD" -> "31.01.2027." (Serbian) or "31 Jan 2027" (English). */

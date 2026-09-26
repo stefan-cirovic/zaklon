@@ -598,6 +598,14 @@ async fn pack_download(State(state): State<Arc<HubState>>, _caller: Caller, Path
         if pack.category == zaklon_core::catalog::Category::Knowledge && !state.downloads.is_installed("kiwix-tools") {
             let _ = state.downloads.enqueue("kiwix-tools");
         }
+        // A map piece: CoMaps needs the world overview first, phones need the app.
+        if pack.category == zaklon_core::catalog::Category::Maps {
+            for dep in zaklon_core::maps::BASE_IDS.into_iter().chain([zaklon_core::maps::COMAPS_APK_ID]) {
+                if dep != id && !state.downloads.is_installed(dep) {
+                    let _ = state.downloads.enqueue(dep);
+                }
+            }
+        }
     }
     state.downloads.enqueue(&id).map_err(|e| bad(&e))?;
     Ok(StatusCode::ACCEPTED)
@@ -1137,6 +1145,11 @@ async fn maps_overview(State(state): State<Arc<HubState>>, _caller: Caller) -> R
                 .collect(),
         })
         .collect();
+    for b in &tree.base {
+        if states.get(&format!("{}{}", maps::MAP_ID_PREFIX, b.id)).is_some_and(|s| s.status == PackStatus::Installed) {
+            installed_bytes += b.size;
+        }
+    }
     Ok(Json(MapsReply {
         version: tree.version,
         server_urls: hosts.iter().map(|h| format!("http://{h}:{}/", cfg.install_port)).collect(),
@@ -1158,8 +1171,11 @@ fn country_regions(country: &str) -> Option<Vec<String>> {
 /// Download every piece of a country (and the CoMaps app, the first time).
 async fn maps_country_download(State(state): State<Arc<HubState>>, _caller: Caller, Path(country): Path<String>) -> Result<StatusCode, ApiError> {
     let ids = country_regions(&country).ok_or_else(|| not_found("no such country"))?;
-    if !state.downloads.is_installed(zaklon_core::maps::COMAPS_APK_ID) {
-        let _ = state.downloads.enqueue(zaklon_core::maps::COMAPS_APK_ID);
+    // CoMaps needs the world overview first, and phones need the app.
+    for dep in zaklon_core::maps::BASE_IDS.into_iter().chain([zaklon_core::maps::COMAPS_APK_ID]) {
+        if !state.downloads.is_installed(dep) {
+            let _ = state.downloads.enqueue(dep);
+        }
     }
     for id in ids {
         if !state.downloads.is_installed(&id) {

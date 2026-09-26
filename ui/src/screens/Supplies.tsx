@@ -135,10 +135,11 @@ export default function Supplies({ t }: { t: T }) {
   }
 
   const tabs: [View, string][] = [
+    // Two rows on phones: what we have, then what we buy.
     ["items", t("suppliesItems")],
+    ["history", t("history")],
     ["shopping", t("shoppingList")],
     ["putaway", awayCount > 0 ? `${t("putAway")} (${awayCount})` : t("putAway")],
-    ["history", t("history")],
   ];
 
   return (
@@ -146,7 +147,7 @@ export default function Supplies({ t }: { t: T }) {
       <div className="page-head">
         <h1>{t("supplies")}</h1>
       </div>
-      <div className="segmented">
+      <div className="segmented tabs-4">
         {tabs.map(([v, label]) => (
           <button key={v} className={view === v ? "active" : ""} onClick={() => setView(v)}>
             {label}

@@ -12,7 +12,7 @@ type Status = {
   models: { file: string; size: number }[];
   running: string | null;
   starting: boolean;
-  copy: { model: string; done: number; total: number; error: string | null; finished: boolean } | null;
+  copy: { model: string; model_id: string; verifying: boolean; done: number; total: number; error: string | null; finished: boolean } | null;
   cpu_cores: number;
 };
 type HubModel = { id: string; title_en: string; title_sr: string; file: string; size: number; sha256: string };
@@ -51,6 +51,20 @@ export default function PhoneAi({ t, lang }: { t: T; lang: Lang }) {
     const id = setInterval(load, 1000);
     return () => clearInterval(id);
   }, [active, load]);
+
+  // The phone pauses network work while the screen is locked. When the app
+  // comes back after an interrupted copy, carry on by itself.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || !st?.copy) return;
+      const c = st.copy;
+      if (c.finished && c.error && /connection lost|not reachable|no answer|timed out/i.test(c.error)) {
+        invoke("local_ai_copy", { modelId: c.model_id, file: c.model }).then(load).catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [st, load]);
 
   const copy = async (m: HubModel) => {
     setErr(null);
@@ -136,9 +150,10 @@ export default function PhoneAi({ t, lang }: { t: T; lang: Lang }) {
 
       {st.copy && !st.copy.finished && (
         <div className="panel">
-          <div className="label">{t("copyingModel")}</div>
+          <div className="label">{st.copy.verifying ? t("copyVerifying") : t("copyingModel")}</div>
           <div className="bar"><i style={{ width: `${st.copy.total ? Math.round((st.copy.done / st.copy.total) * 100) : 0}%` }} /></div>
           <div className="muted" style={{ fontSize: 13 }}>{fmtBytes(st.copy.done)} / {fmtBytes(st.copy.total)}</div>
+          <div className="muted" style={{ fontSize: 13 }}>{t("keepScreenOn")}</div>
         </div>
       )}
       {st.copy?.finished && st.copy.error && <p className="error" role="alert">{errText(t, new Error(st.copy.error))}</p>}

@@ -52,7 +52,13 @@ pub struct MapTree {
     pub version: u64,
     pub series: String,
     pub countries: Vec<MapCountry>,
+    /// The world overview and coastlines. CoMaps needs them before any
+    /// country, so the hub fetches them with the first map.
+    pub base: Vec<MapRegion>,
 }
+
+/// Pack ids of the world overview maps.
+pub const BASE_IDS: [&str; 2] = ["map:World", "map:WorldCoasts"];
 
 #[derive(Deserialize)]
 struct Node {
@@ -87,11 +93,12 @@ pub fn tree() -> &'static MapTree {
     static TREE: OnceLock<MapTree> = OnceLock::new();
     TREE.get_or_init(|| {
         let root: Root = serde_json::from_str(COUNTRIES).expect("bundled map list is valid");
+        let is_base = |n: &Node| n.id == "World" || n.id == "WorldCoasts";
+        let base = root.g.iter().filter(|n| is_base(n)).map(|n| MapRegion { id: n.id.clone(), size: n.s, sha1_base64: n.sha1_base64.clone() }).collect();
         let mut countries: Vec<MapCountry> = root
             .g
             .iter()
-            // World and WorldCoasts ship inside the CoMaps app itself.
-            .filter(|n| n.id != "World" && n.id != "WorldCoasts")
+            .filter(|n| !is_base(n))
             .map(|n| {
                 let mut regions = Vec::new();
                 leaves(n, &mut regions);
@@ -99,7 +106,7 @@ pub fn tree() -> &'static MapTree {
             })
             .collect();
         countries.sort_by(|a, b| a.id.cmp(&b.id));
-        MapTree { version: root.v, series: root.map_series, countries }
+        MapTree { version: root.v, series: root.map_series, countries, base }
     })
 }
 
@@ -150,6 +157,7 @@ pub fn packs() -> Vec<Pack> {
         .countries
         .iter()
         .flat_map(|c| c.regions.iter())
+        .chain(t.base.iter())
         .map(|r| Pack {
             id: format!("{MAP_ID_PREFIX}{}", r.id),
             title: Localized { en: local_name(&r.id, "en"), sr: local_name(&r.id, "sr") },
@@ -224,6 +232,12 @@ mod tests {
         assert_eq!(mne.files[0].path, "maps/260830/Montenegro.mwm");
         assert_eq!(mne.files[0].urls[0], "https://mapgen-fi-1.comaps.app/maps/2026.06.28/260830/Montenegro.mwm");
         assert_eq!(mne.files[0].sha1_base64.as_deref().map(str::len), Some(28));
+        assert_eq!(t.base.len(), 2);
+        for id in BASE_IDS {
+            let b = p.iter().find(|x| x.id == id).unwrap();
+            assert!(b.size > 1_000_000 && b.files[0].sha1_base64.is_some(), "{id}");
+        }
+        assert!(!t.countries.iter().any(|c| c.id.starts_with("World")));
         assert_eq!(local_name("Serbia", "sr"), "Srbija");
         assert_eq!(local_name("Serbia", "en"), "Serbia");
         assert_eq!(local_name("Macedonia", "en"), "North Macedonia");

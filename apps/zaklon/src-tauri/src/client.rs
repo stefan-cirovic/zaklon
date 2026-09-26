@@ -280,7 +280,12 @@ impl ClientState {
 
     /// Download a (large) file from the hub into `dest`, resuming from
     /// `dest.part`, checking the SHA-256 the hub reports, then renaming.
-    pub async fn fetch_to_file(&self, path: &str, dest: &std::path::Path, progress: impl Fn(u64, u64)) -> Result<(), String> {
+    /// Download from the hub into `dest`, resuming a `.part` file left by an
+    /// earlier try, checking the SHA-256 the hub sends. The checksum is
+    /// computed while data arrives, so there is no long wait at the end.
+    /// `progress(done, total, verifying)`: `verifying` is true while the part
+    /// that was already on the phone is read back before resuming.
+    pub async fn fetch_to_file(&self, path: &str, dest: &std::path::Path, progress: impl Fn(u64, u64, bool) + Send + Sync + 'static) -> Result<(), String> {
         use futures_util::StreamExt;
         use std::io::Write;
 
@@ -300,6 +305,7 @@ impl ClientState {
             .map_err(|e| e.to_string())?;
 
         let part = dest.with_extension("gguf.part");
+        let progress = Arc::new(progress);
         let mut last_err = String::from("hub not reachable");
         for host in Self::ordered_hosts(&link) {
             let have = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
@@ -324,6 +330,35 @@ impl ClientState {
             let body_len = res.content_length().unwrap_or(0);
             let total = if resumed { have + body_len } else { body_len };
             let mut done = if resumed { have } else { 0 };
+            // Hash what is already on the phone once, then keep hashing as data arrives.
+            let mut hasher = Sha256::new();
+            if resumed {
+                let (part2, p2) = (part.clone(), progress.clone());
+                hasher = tokio::task::spawn_blocking(move || -> std::io::Result<Sha256> {
+                    use std::io::Read;
+                    let mut h = Sha256::new();
+                    let mut f = std::fs::File::open(&part2)?;
+                    let mut buf = vec![0u8; 1 << 20];
+                    let mut read = 0u64;
+                    let mut last = std::time::Instant::now();
+                    loop {
+                        let n = f.read(&mut buf)?;
+                        if n == 0 {
+                            break;
+                        }
+                        h.update(&buf[..n]);
+                        read += n as u64;
+                        if last.elapsed() >= Duration::from_millis(300) {
+                            p2(read, have, true);
+                            last = std::time::Instant::now();
+                        }
+                    }
+                    Ok(h)
+                })
+                .await
+                .map_err(|e| e.to_string())?
+                .map_err(|e| e.to_string())?;
+            }
             let mut file = if resumed {
                 std::fs::OpenOptions::new().append(true).open(&part).map_err(|e| e.to_string())?
             } else {
@@ -334,28 +369,20 @@ impl ClientState {
             while let Some(chunk) = stream.next().await {
                 let chunk = chunk.map_err(|e| format!("connection lost: {}", short_err(&e)))?;
                 file.write_all(&chunk).map_err(|e| e.to_string())?;
+                hasher.update(&chunk);
                 done += chunk.len() as u64;
                 if last_report.elapsed() >= Duration::from_millis(300) {
-                    progress(done, total);
+                    progress(done, total, false);
                     last_report = std::time::Instant::now();
                 }
             }
             file.flush().map_err(|e| e.to_string())?;
             drop(file);
-            progress(done, total);
+            progress(done, total, false);
             if done < total {
                 return Err("connection lost; try again to continue".into());
             }
-            let part2 = part.clone();
-            let actual = tokio::task::spawn_blocking(move || -> std::io::Result<String> {
-                let mut f = std::fs::File::open(&part2)?;
-                let mut h = Sha256::new();
-                std::io::copy(&mut f, &mut h)?;
-                Ok(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
-            })
-            .await
-            .map_err(|e| e.to_string())?
-            .map_err(|e| e.to_string())?;
+            let actual: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
             if !sha.is_empty() && !actual.eq_ignore_ascii_case(&sha) {
                 let _ = std::fs::remove_file(&part);
                 return Err("checksum mismatch: the copy was damaged and discarded; try again".into());

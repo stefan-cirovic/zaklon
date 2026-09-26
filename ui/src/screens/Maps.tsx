@@ -5,6 +5,7 @@ import { errText } from "../errors";
 import { fmtBytes } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
 import Qr from "../components/Qr";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 type T = (k: Key) => string;
 type Status = "not_installed" | "queued" | "downloading" | "paused" | "verifying" | "installed" | "failed";
@@ -38,7 +39,26 @@ function countryState(c: Country) {
   return { installed, all: installed === c.regions.length, some: installed > 0, busy, failed, done };
 }
 
-export default function Maps({ t, lang }: { t: T; lang: Lang }) {
+/** Clipboard, with a fallback for web views that do not allow it. */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  }
+}
+
+export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: boolean }) {
+  const [copied, setCopied] = useState(false);
   const [data, setData] = useState<MapsReply | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -101,7 +121,11 @@ export default function Maps({ t, lang }: { t: T; lang: Lang }) {
           <ol className="steps">
             <li>
               {t("mapsStep1")}
-              {appReady && appUrl ? (
+              {appReady && appUrl && !isHub ? (
+                <div className="qr-line">
+                  <button className="btn" onClick={() => openUrl(appUrl).catch((e) => setErr(errText(t, e)))}>{t("mapsInstallApp")}</button>
+                </div>
+              ) : appReady && appUrl ? (
                 <div className="qr-line">
                   <Qr value={appUrl} size={140} label={t("mapsAppQr")} />
                   <code className="url">{appUrl}</code>
@@ -114,8 +138,13 @@ export default function Maps({ t, lang }: { t: T; lang: Lang }) {
               {t("mapsStep2")}
               {server && (
                 <div className="qr-line">
-                  <Qr value={server} size={140} label={t("mapsServerQr")} />
+                  {isHub && <Qr value={server} size={140} label={t("mapsServerQr")} />}
                   <code className="url">{server}</code>
+                  {!isHub && (
+                    <button className="btn secondary small" onClick={async () => setCopied(await copyText(server))}>
+                      {copied ? t("copied") : t("copyAddress")}
+                    </button>
+                  )}
                 </div>
               )}
             </li>

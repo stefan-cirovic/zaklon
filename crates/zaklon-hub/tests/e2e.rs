@@ -490,9 +490,20 @@ async fn full_hub_flow() {
     // 16. The install page is public, the APK folder serves only files that exist.
     let page = reqwest::get(format!("{}/get", hub.install)).await.unwrap();
     assert_eq!(page.status().as_u16(), 200);
-    assert!(page.text().await.unwrap().contains("Install Zaklon"));
+    assert!(page.text().await.unwrap().contains("Instaliraj Zaklon"), "in the household's language (Serbian here)");
     let apk = reqwest::get(format!("{}/apk/zaklon.apk", hub.install)).await.unwrap();
     assert_eq!(apk.status().as_u16(), 404);
+    // With both apps on the hub, Zaklon comes first and CoMaps is explained separately.
+    let apk_dir = hub.root.join("library/apk");
+    std::fs::create_dir_all(&apk_dir).unwrap();
+    std::fs::write(apk_dir.join("comaps.apk"), b"x").unwrap();
+    std::fs::write(apk_dir.join("zaklon.apk"), b"x").unwrap();
+    let page = reqwest::get(format!("{}/get", hub.install)).await.unwrap().text().await.unwrap();
+    let (zaklon, comaps) = (page.find("Preuzmi Zaklon").unwrap(), page.find("Preuzmi CoMaps").unwrap());
+    assert!(zaklon < comaps, "Zaklon first");
+    assert!(page.contains("Aplikacija za mape (po želji)"));
+    std::fs::remove_file(apk_dir.join("comaps.apk")).unwrap();
+    std::fs::remove_file(apk_dir.join("zaklon.apk")).unwrap();
     let sneaky = reqwest::get(format!("{}/apk/..%2F..%2Fhousehold%2Fhub.json", hub.install)).await.unwrap();
     assert_ne!(sneaky.status().as_u16(), 200, "no path traversal out of the APK folder");
 
@@ -501,6 +512,7 @@ async fn full_hub_flow() {
     let (_, maps) = hub.get("/api/maps").await;
     assert_eq!(maps["version"], 260830);
     assert!(maps["countries"].as_array().unwrap().len() > 200);
+    assert!(maps["countries"].as_array().unwrap().iter().all(|c| !c["id"].as_str().unwrap().starts_with("World")), "the world overview is not a country");
     assert!(maps["server_urls"][0].as_str().unwrap().starts_with("http://"));
     let map_dir = hub.root.join("library/maps/260830");
     std::fs::create_dir_all(&map_dir).unwrap();

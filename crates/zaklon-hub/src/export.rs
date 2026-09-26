@@ -92,7 +92,8 @@ impl Exporter {
         // the library engine for knowledge packs, the CoMaps app for maps.
         let mut ids: Vec<String> = ids.to_vec();
         let cats: Vec<Category> = ids.iter().filter_map(|id| downloads.catalog().pack(id).map(|p| p.category.clone())).collect();
-        for (cat, dep) in [(Category::Knowledge, "kiwix-tools"), (Category::Maps, zaklon_core::maps::COMAPS_APK_ID)] {
+        let [world, coasts] = zaklon_core::maps::BASE_IDS;
+        for (cat, dep) in [(Category::Knowledge, "kiwix-tools"), (Category::Maps, zaklon_core::maps::COMAPS_APK_ID), (Category::Maps, world), (Category::Maps, coasts)] {
             if cats.contains(&cat) && downloads.is_installed(dep) && !ids.iter().any(|i| i == dep) {
                 ids.push(dep.to_string());
             }

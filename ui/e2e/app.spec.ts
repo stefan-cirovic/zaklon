@@ -352,3 +352,19 @@ test("add-ons: copy to USB and import offer the laptop's drives", async ({ page 
   await expect(importDrive.locator("option").nth(1)).toHaveText(/[A-Z]:.*free/);
   await noHorizontalScroll(page);
 });
+
+test("a download that the hub accepts without a body is not reported as an error", async ({ page }) => {
+  await ensureSetUp(page);
+  // The hub answers 202 with an empty body; answer the same way without going online.
+  let asked = false;
+  await page.route("**/api/maps/Montenegro/download", (route) => {
+    asked = true;
+    return route.fulfill({ status: 202, body: "" });
+  });
+  await page.goto("/#maps");
+  await page.getByRole("searchbox", { name: /Search a country/ }).fill("montenegro");
+  await page.locator(".map-country").filter({ hasText: /^Montenegro/ }).getByRole("button", { name: "Download" }).click();
+  await expect.poll(() => asked).toBe(true);
+  await page.waitForTimeout(300);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});

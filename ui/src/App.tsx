@@ -207,7 +207,7 @@ export default function App() {
           </div>
         )}
         {tab === "library" && <Library t={t} lang={lang} go={setTab} />}
-        {tab === "maps" && <Maps t={t} lang={lang} />}
+        {tab === "maps" && <Maps t={t} lang={lang} isHub={isHub} />}
         {tab === "supplies" && <Supplies t={t} />}
         {tab === "assistant" &&
           (isHub ? (
