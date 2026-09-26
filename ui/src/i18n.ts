@@ -62,6 +62,11 @@ const en = {
   defaultPhoneName: "Phone", hoursShort: "h", minutesShort: "min", unavailable: "Not available right now.",
   showingLastKnown: "Showing the last known data; the hub is not answering.", useOne: "Use one", addOne: "Add one", addPlace: "Add place",
   loadingOrUnavailable: "Loading… (or the hub is not answering)",
+  aiEngineMissing: "The AI engine is not part of this app version.", phoneAiIntro: "AI that runs on this phone, also without the hub. Copy a model from the hub once (over Wi-Fi), then start it.",
+  modelsOnPhone: "Models on this phone", noModelsOnPhone: "No model on this phone yet.", modelsOnHub: "Models on the hub",
+  noModelsOnHub: "The hub has no AI models yet. Download one in Add-ons on the laptop.", copyToPhone: "Copy to phone", copyingModel: "Copying the model…",
+  aiStart: "Start", aiStop: "Stop", aiLoading: "Loading…", aiRunning: "running", askSomething: "Ask something",
+  askExample: "e.g. How do I purify water without a filter?", aiThinking: "Thinking…", tokensPerSecond: "words/s",
 
 };
 
@@ -127,6 +132,11 @@ const sr: typeof en = {
   defaultPhoneName: "Telefon", hoursShort: "h", minutesShort: "min", unavailable: "Trenutno nije dostupno.",
   showingLastKnown: "Prikazani su poslednji poznati podaci; hub se ne javlja.", useOne: "Potroši jedan", addOne: "Dodaj jedan", addPlace: "Dodaj mesto",
   loadingOrUnavailable: "Učitava se… (ili se hub ne javlja)",
+  aiEngineMissing: "AI motor nije deo ove verzije aplikacije.", phoneAiIntro: "AI koji radi na ovom telefonu, i bez huba. Jednom kopiraj model sa huba (preko WiFi-ja), pa ga pokreni.",
+  modelsOnPhone: "Modeli na ovom telefonu", noModelsOnPhone: "Na ovom telefonu još nema modela.", modelsOnHub: "Modeli na hubu",
+  noModelsOnHub: "Hub još nema AI modele. Preuzmi neki u Dodacima na laptopu.", copyToPhone: "Kopiraj na telefon", copyingModel: "Kopiranje modela…",
+  aiStart: "Pokreni", aiStop: "Zaustavi", aiLoading: "Učitava se…", aiRunning: "radi", askSomething: "Pitaj nešto",
+  askExample: "npr. Kako da prečistim vodu bez filtera?", aiThinking: "Razmišlja…", tokensPerSecond: "reči/s",
 
 };
 

@@ -3,6 +3,7 @@
 //! hub on the network.
 
 mod client;
+mod local_ai;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod desktop;
 
@@ -76,6 +77,49 @@ async fn client_content_base(state: tauri::State<'_, Arc<ClientState>>) -> Resul
     state.inner().content_base().await
 }
 
+// ---- on-device AI (phones; on desktop the engine is simply absent) -------------
+
+#[tauri::command]
+fn local_ai_status(ai: tauri::State<'_, Arc<local_ai::LocalAi>>) -> local_ai::Status {
+    ai.status()
+}
+
+#[tauri::command]
+fn local_ai_copy(
+    ai: tauri::State<'_, Arc<local_ai::LocalAi>>,
+    client: tauri::State<'_, Arc<ClientState>>,
+    model_id: String,
+    file: String,
+) -> Result<(), String> {
+    ai.start_copy(client.inner().clone(), model_id, file)
+}
+
+#[tauri::command]
+async fn local_ai_start(ai: tauri::State<'_, Arc<local_ai::LocalAi>>, file: String) -> Result<(), String> {
+    let ai = ai.inner().clone();
+    ai.start(&file).await
+}
+
+#[tauri::command]
+fn local_ai_stop(ai: tauri::State<'_, Arc<local_ai::LocalAi>>) {
+    ai.stop()
+}
+
+#[tauri::command]
+fn local_ai_delete(ai: tauri::State<'_, Arc<local_ai::LocalAi>>, file: String) -> Result<(), String> {
+    ai.delete_model(&file)
+}
+
+#[tauri::command]
+async fn local_ai_ask(
+    ai: tauri::State<'_, Arc<local_ai::LocalAi>>,
+    prompt: String,
+    language: String,
+) -> Result<local_ai::Answer, String> {
+    let ai = ai.inner().clone();
+    ai.ask(&prompt, &language).await
+}
+
 #[tauri::command]
 async fn client_discover() -> Result<Vec<DiscoveredHub>, String> {
     client::discover().await
@@ -110,6 +154,7 @@ pub fn run() {
     builder
         .setup(move |app| {
             let dir = app.path().app_data_dir().unwrap_or_else(|_| std::env::temp_dir().join("zaklon"));
+            app.manage(Arc::new(local_ai::LocalAi::new(&dir)));
             app.manage(Arc::new(ClientState::load(dir)));
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
@@ -129,7 +174,13 @@ pub fn run() {
             client_request,
             client_forget,
             client_discover,
-            client_content_base
+            client_content_base,
+            local_ai_status,
+            local_ai_copy,
+            local_ai_start,
+            local_ai_stop,
+            local_ai_delete,
+            local_ai_ask
         ])
         .run(tauri::generate_context!())
         .expect("error while running Zaklon");

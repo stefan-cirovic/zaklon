@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-26",
+  "generated": "2026-09-27",
   "packs": [
     {
       "id": "wikipedia-sr-maxi",
@@ -298,6 +298,93 @@
           "size": 18301924,
           "unpack": "zip",
           "unpack_to": "bin/kiwix"
+        }
+      ]
+    },
+    {
+      "id": "qwen35-08b",
+      "title": {
+        "en": "Small AI model (Qwen3.5 0.8B)",
+        "sr": "Mali AI model (Qwen3.5 0.8B)"
+      },
+      "description": {
+        "en": "Fastest; for phones with 4 GB of memory. Basic answers.",
+        "sr": "Najbrži; za telefone sa 4 GB memorije. Osnovni odgovori."
+      },
+      "category": "model",
+      "version": "2026",
+      "size": 833592096,
+      "languages": [],
+      "recommended_for": [],
+      "license": "Apache-2.0",
+      "attribution": "Qwen team, Alibaba Cloud",
+      "source": "https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF",
+      "files": [
+        {
+          "path": "models/Qwen3.5-0.8B-Q8_0.gguf",
+          "urls": [
+            "https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q8_0.gguf"
+          ],
+          "sha256": "37ae482d336108d23516fa35e8e0c4126688d81018b87178a18d752a1357814f",
+          "size": 833592096
+        }
+      ]
+    },
+    {
+      "id": "qwen35-2b",
+      "title": {
+        "en": "AI model for phones (Qwen3.5 2B)",
+        "sr": "AI model za telefone (Qwen3.5 2B)"
+      },
+      "description": {
+        "en": "Good balance for phones with 6 GB of memory or more, and for older laptops. Understands Serbian.",
+        "sr": "Dobar odnos brzine i kvaliteta za telefone sa 6 GB memorije i više, i za starije laptopove. Razume srpski."
+      },
+      "category": "model",
+      "version": "2026",
+      "size": 1280835840,
+      "languages": [],
+      "recommended_for": [],
+      "license": "Apache-2.0",
+      "attribution": "Qwen team, Alibaba Cloud",
+      "source": "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF",
+      "files": [
+        {
+          "path": "models/Qwen3.5-2B-Q4_K_M.gguf",
+          "urls": [
+            "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-Q4_K_M.gguf"
+          ],
+          "sha256": "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223",
+          "size": 1280835840
+        }
+      ]
+    },
+    {
+      "id": "qwen35-4b",
+      "title": {
+        "en": "AI model for laptops (Qwen3.5 4B)",
+        "sr": "AI model za laptopove (Qwen3.5 4B)"
+      },
+      "description": {
+        "en": "Recommended for laptops with 12-16 GB of memory. Clearly better answers.",
+        "sr": "Preporučen za laptopove sa 12-16 GB memorije. Znatno bolji odgovori."
+      },
+      "category": "model",
+      "version": "2026",
+      "size": 2740937888,
+      "languages": [],
+      "recommended_for": [],
+      "license": "Apache-2.0",
+      "attribution": "Qwen team, Alibaba Cloud",
+      "source": "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF",
+      "files": [
+        {
+          "path": "models/Qwen3.5-4B-Q4_K_M.gguf",
+          "urls": [
+            "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf"
+          ],
+          "sha256": "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4",
+          "size": 2740937888
         }
       ]
     }

@@ -11,6 +11,7 @@ import Placeholder from "./screens/Placeholder";
 import Addons from "./screens/Addons";
 import Library from "./screens/Library";
 import Supplies from "./screens/Supplies";
+import PhoneAi from "./screens/PhoneAi";
 
 const TABS: { id: string; key: Key; ico: string }[] = [
   { id: "home", key: "home", ico: "⌂" },
@@ -181,7 +182,17 @@ export default function App() {
         {tab === "library" && <Library t={t} lang={lang} go={setTab} />}
         {tab === "maps" && <Placeholder title={t("maps")} text={t("comingSoon")} />}
         {tab === "supplies" && <Supplies t={t} />}
-        {tab === "assistant" && <Placeholder title={t("assistant")} text={t("comingSoon")} />}
+        {tab === "assistant" &&
+          (isHub ? (
+            <Placeholder title={t("assistant")} text={t("comingSoon")} />
+          ) : (
+            <div className="stack">
+              <div className="page-head">
+                <h1>{t("assistant")}</h1>
+              </div>
+              <PhoneAi t={t} lang={lang} />
+            </div>
+          ))}
         {tab === "addons" && <Addons t={t} lang={lang} isHub={isHub} />}
         {status?.version && <p className="muted footer-note">Zaklon {status.version}</p>}
       </main>

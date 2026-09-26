@@ -66,6 +66,8 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/shopping/clear-done", post(shopping_clear_done))
         .route("/api/shopping/{id}", axum::routing::patch(shopping_update).delete(shopping_delete))
         .route("/api/history", get(history))
+        .route("/api/models", get(models_list))
+        .route("/api/models/{id}/file", get(model_file))
         .route("/api/library", get(library_books))
         .route("/api/library/search", get(library_search))
         .route("/kiwix/{*rest}", get(kiwix_proxy))
@@ -826,4 +828,106 @@ struct HistoryQuery {
 
 async fn history(State(state): State<Arc<HubState>>, _caller: Caller, axum::extract::Query(q): axum::extract::Query<HistoryQuery>) -> Result<Json<Vec<zaklon_core::supplies::HistoryEntry>>, ApiError> {
     Ok(Json(state.db.history(q.limit.unwrap_or(100).clamp(1, 500))?))
+}
+
+// ---- AI models for phones -----------------------------------------------------
+
+#[derive(Serialize)]
+struct ModelInfo {
+    id: String,
+    title_en: String,
+    title_sr: String,
+    file: String,
+    size: u64,
+    sha256: String,
+}
+
+/// Installed AI models a phone can copy from the hub.
+async fn models_list(State(state): State<Arc<HubState>>, _caller: Caller) -> Json<Vec<ModelInfo>> {
+    let models = state
+        .downloads
+        .snapshot()
+        .into_iter()
+        .filter(|v| {
+            v.pack.category == zaklon_core::catalog::Category::Model
+                && v.state.status == zaklon_core::catalog::PackStatus::Installed
+        })
+        .filter_map(|v| {
+            let f = v.pack.files.first()?.clone();
+            Some(ModelInfo {
+                id: v.pack.id.clone(),
+                title_en: v.pack.title.en.clone(),
+                title_sr: v.pack.title.sr.clone(),
+                file: std::path::Path::new(&f.path).file_name()?.to_string_lossy().to_string(),
+                size: f.size,
+                sha256: f.sha256.clone(),
+            })
+        })
+        .collect();
+    Json(models)
+}
+
+/// Stream an installed model file, with `Range: bytes=N-` support so a
+/// phone can resume a large copy after the Wi-Fi drops.
+async fn model_file(
+    State(state): State<Arc<HubState>>,
+    _caller: Caller,
+    Path(id): Path<String>,
+    headers: axum::http::HeaderMap,
+) -> Result<Response, ApiError> {
+    use axum::http::header;
+    use tokio::io::AsyncSeekExt;
+
+    let pack = state.downloads.catalog().pack(&id).cloned().ok_or_else(|| not_found("no such model"))?;
+    if pack.category != zaklon_core::catalog::Category::Model || !state.downloads.is_installed(&id) {
+        return Err(not_found("model is not installed on the hub"));
+    }
+    let f = pack.files.first().ok_or_else(|| not_found("no file"))?;
+    let path = state.downloads.library_dir().join(&f.path);
+    let mut file = tokio::fs::File::open(&path).await.map_err(|e| anyhow::anyhow!(e))?;
+    let total = file.metadata().await.map_err(|e| anyhow::anyhow!(e))?.len();
+
+    let start = headers
+        .get(header::RANGE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("bytes="))
+        .and_then(|v| v.split('-').next())
+        .and_then(|v| v.trim().parse::<u64>().ok());
+    let name = std::path::Path::new(&f.path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+
+    match start {
+        Some(from) if from >= total => Ok((StatusCode::RANGE_NOT_SATISFIABLE, [(header::CONTENT_RANGE, format!("bytes */{total}"))]).into_response()),
+        Some(from) => {
+            file.seek(std::io::SeekFrom::Start(from)).await.map_err(|e| anyhow::anyhow!(e))?;
+            let body = axum::body::Body::from_stream(tokio_util::io::ReaderStream::with_capacity(file, 1 << 20));
+            Ok((
+                StatusCode::PARTIAL_CONTENT,
+                [
+                    (header::CONTENT_TYPE, "application/octet-stream".to_string()),
+                    (header::CONTENT_LENGTH, (total - from).to_string()),
+                    (header::CONTENT_RANGE, format!("bytes {from}-{}/{total}", total - 1)),
+                    (header::ACCEPT_RANGES, "bytes".to_string()),
+                    (header::HeaderName::from_static("x-zaklon-file"), name),
+                    (header::HeaderName::from_static("x-zaklon-sha256"), f.sha256.clone()),
+                ],
+                body,
+            )
+                .into_response())
+        }
+        None => {
+            let body = axum::body::Body::from_stream(tokio_util::io::ReaderStream::with_capacity(file, 1 << 20));
+            Ok((
+                StatusCode::OK,
+                [
+                    (header::CONTENT_TYPE, "application/octet-stream".to_string()),
+                    (header::CONTENT_LENGTH, total.to_string()),
+                    (header::ACCEPT_RANGES, "bytes".to_string()),
+                    (header::HeaderName::from_static("x-zaklon-file"), name),
+                    (header::HeaderName::from_static("x-zaklon-sha256"), f.sha256.clone()),
+                ],
+                body,
+            )
+                .into_response())
+        }
+    }
 }

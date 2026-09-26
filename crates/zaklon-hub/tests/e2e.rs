@@ -166,6 +166,18 @@ async fn start_hub() -> Hub {
                 "size": payload.len()
             }]
         }, {
+            "id": "test-model",
+            "title": { "en": "Test model" },
+            "category": "model",
+            "version": "1",
+            "size": payload.len(),
+            "files": [{
+                "path": "models/test-model.gguf",
+                "urls": [format!("{server}/tiny_test_2026-01.zim")],
+                "sha256": sha256_hex(&payload),
+                "size": payload.len()
+            }]
+        }, {
             "id": "broken-pack",
             "title": { "en": "Broken pack" },
             "category": "knowledge",
@@ -381,6 +393,28 @@ async fn full_hub_flow() {
     let pack = wait_pack(&hub, "test-pack", &["installed", "failed"]).await;
     assert_eq!(pack["state"]["status"], "installed", "{pack}");
     assert_eq!(sha256_hex(&std::fs::read(&installed).unwrap()), sha256_hex(&payload));
+
+    // 14b. AI models: a phone lists installed models and copies one, resuming midway.
+    hub.post("/api/packs/test-model/download", json!({})).await;
+    let pack = wait_pack(&hub, "test-model", &["installed", "failed"]).await;
+    assert_eq!(pack["state"]["status"], "installed", "{pack}");
+    let models: Value = as_phone(reqwest::Method::GET, "/api/models").send().await.unwrap().json().await.unwrap();
+    assert_eq!(models[0]["id"], "test-model");
+    assert_eq!(models[0]["size"], 3_000_000);
+    let whole = as_phone(reqwest::Method::GET, "/api/models/test-model/file").send().await.unwrap();
+    assert_eq!(whole.status().as_u16(), 200);
+    let first = whole.bytes().await.unwrap();
+    let tail = as_phone(reqwest::Method::GET, "/api/models/test-model/file")
+        .header("range", "bytes=2000000-")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(tail.status().as_u16(), 206);
+    let tail = tail.bytes().await.unwrap();
+    assert_eq!(&first[2_000_000..], &tail[..], "resumed part matches");
+    assert_eq!(sha256_hex(&first), models[0]["sha256"].as_str().unwrap());
+    let r = as_phone(reqwest::Method::GET, "/api/models/test-pack/file").send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 404, "only models are served this way");
 
     // 15. Library pages may never run scripts (sandbox), even opened directly.
     let r = hub.http.get(format!("{}/kiwix/content/x/y", hub.local)).send().await.unwrap();

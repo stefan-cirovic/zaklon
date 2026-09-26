@@ -23,7 +23,8 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 sha2.workspace = true
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-manual-roots", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-manual-roots", "json", "stream"] }
+futures-util = "0.3"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rand.workspace = true
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query"] }

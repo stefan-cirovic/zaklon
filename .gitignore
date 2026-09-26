@@ -31,3 +31,6 @@ minisign.key
 Thumbs.db
 .vscode/
 .idea/
+
+# llama.cpp Android binaries (fetched by scripts/fetch-android-llama.sh)
+apps/zaklon/src-tauri/gen/android/app/src/main/llama-libs/

@@ -208,3 +208,5 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 .home-cta { display: flex; justify-content: center; }
 .home-cta .btn { min-width: 220px; }
+
+.answer { white-space: pre-wrap; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; line-height: 1.55; }

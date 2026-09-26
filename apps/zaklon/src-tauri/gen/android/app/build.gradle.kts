@@ -19,7 +19,8 @@ android {
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
         applicationId = "com.zaklon.app"
-        minSdk = 24
+        // Android 9: the minimum agreed for Zaklon, and what llama.cpp is built for.
+        minSdk = 28
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
@@ -47,6 +48,15 @@ android {
     }
     kotlinOptions {
         jvmTarget = "1.8"
+    }
+    // The on-device AI engine (llama.cpp server and libraries, fetched by
+    // scripts/fetch-android-llama.sh). Libraries must be extracted to disk so
+    // the server can be started as a separate process.
+    sourceSets["main"].jniLibs.srcDir("src/main/llama-libs")
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
     buildFeatures {
         buildConfig = true

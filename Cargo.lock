@@ -6140,6 +6140,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "futures-util",
  "rand 0.8.8",
  "reqwest 0.12.28",
  "rustls",
@@ -6196,6 +6197,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tokio",
+ "tokio-util",
  "tower-http",
  "tracing",
  "tracing-appender",

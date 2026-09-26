@@ -278,6 +278,94 @@ impl ClientState {
         Err(last_err)
     }
 
+    /// Download a (large) file from the hub into `dest`, resuming from
+    /// `dest.part`, checking the SHA-256 the hub reports, then renaming.
+    pub async fn fetch_to_file(&self, path: &str, dest: &std::path::Path, progress: impl Fn(u64, u64)) -> Result<(), String> {
+        use futures_util::StreamExt;
+        use std::io::Write;
+
+        let link = self.link().ok_or("not paired with a hub")?;
+        // No total timeout here (a model is over a gigabyte), only a stall timeout.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let tls = rustls::ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(PinVerifier { fingerprint: link.fingerprint.clone() }))
+            .with_no_client_auth();
+        let client = reqwest::Client::builder()
+            .use_preconfigured_tls(tls)
+            .connect_timeout(CONNECT_TIMEOUT)
+            .read_timeout(Duration::from_secs(60))
+            .no_proxy()
+            .build()
+            .map_err(|e| e.to_string())?;
+
+        let part = dest.with_extension("gguf.part");
+        let mut last_err = String::from("hub not reachable");
+        for host in Self::ordered_hosts(&link) {
+            let have = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
+            let url = format!("https://{}:{}{}", host, link.port, path);
+            let mut req = client.get(&url).header("authorization", format!("Bearer {}", link.device_token));
+            if have > 0 {
+                req = req.header("range", format!("bytes={have}-"));
+            }
+            let res = match req.send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    last_err = format!("{host}: {}", short_err(&e));
+                    continue;
+                }
+            };
+            let status = res.status();
+            if !status.is_success() {
+                return Err(format!("hub replied {status}"));
+            }
+            let sha = res.headers().get("x-zaklon-sha256").and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
+            let resumed = status == reqwest::StatusCode::PARTIAL_CONTENT;
+            let body_len = res.content_length().unwrap_or(0);
+            let total = if resumed { have + body_len } else { body_len };
+            let mut done = if resumed { have } else { 0 };
+            let mut file = if resumed {
+                std::fs::OpenOptions::new().append(true).open(&part).map_err(|e| e.to_string())?
+            } else {
+                std::fs::File::create(&part).map_err(|e| e.to_string())?
+            };
+            let mut stream = res.bytes_stream();
+            let mut last_report = std::time::Instant::now();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| format!("connection lost: {}", short_err(&e)))?;
+                file.write_all(&chunk).map_err(|e| e.to_string())?;
+                done += chunk.len() as u64;
+                if last_report.elapsed() >= Duration::from_millis(300) {
+                    progress(done, total);
+                    last_report = std::time::Instant::now();
+                }
+            }
+            file.flush().map_err(|e| e.to_string())?;
+            drop(file);
+            progress(done, total);
+            if done < total {
+                return Err("connection lost; try again to continue".into());
+            }
+            let part2 = part.clone();
+            let actual = tokio::task::spawn_blocking(move || -> std::io::Result<String> {
+                let mut f = std::fs::File::open(&part2)?;
+                let mut h = Sha256::new();
+                std::io::copy(&mut f, &mut h)?;
+                Ok(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+            if !sha.is_empty() && !actual.eq_ignore_ascii_case(&sha) {
+                let _ = std::fs::remove_file(&part);
+                return Err("checksum mismatch: the copy was damaged and discarded; try again".into());
+            }
+            std::fs::rename(&part, dest).map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+        Err(last_err)
+    }
+
     /// Send an authenticated request to the hub, trying the last good host first.
     pub async fn request(&self, method: String, path: String, body: Option<String>) -> Result<ClientResponse, String> {
         let Some(link) = self.link() else {
