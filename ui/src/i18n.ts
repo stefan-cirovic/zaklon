@@ -72,6 +72,15 @@ const en = {
   nothingToPutAway: "Nothing to put away.", putAwayNow: "Put away", addsToStock: "adds to stock", newItem: "new item",
   bought: "Bought", batches: "Batches", batchesShort: "batches", total: "Total", noBatches: "None in stock.",
   addBatch: "Add", newBatchQuantity: "Quantity of a new batch", newBatchExpiry: "Expiry date of a new batch",
+  addonsMapsNote: "Maps of the world are chosen on their own screen:",
+  mapsIntro: "Offline maps of the whole world, in pieces. Choose what you need; the hub downloads it once and phones get it over Wi-Fi.",
+  mapsOnPhone: "Maps on a phone", mapsStep1: "Install the CoMaps app from the hub:", mapsAppComes: "The app is added to the hub with the first map you download below.",
+  mapsAppQr: "QR code for the CoMaps app", mapsStep2: "In CoMaps, open Settings and set the map download server to this address:",
+  mapsServerQr: "QR code for the map server address", mapsStep3: "Download maps in CoMaps as usual: they now come from the hub, also without internet.",
+  mapsOnHub: "Maps on the hub", mapsInstalledSize: "On the hub", mapsSearch: "Search a country or region…",
+  mapsSuggestedHint: "Suggested for this region; search to find any other country.", mapsSearchHint: "Search to find a country.",
+  mapsRegions: "regions", mapsSomeFailed: "Some pieces did not download. Try again.",
+  mapsAttribution: "Map data © OpenStreetMap contributors (ODbL). Maps prepared by CoMaps.",
 
 };
 
@@ -147,6 +156,15 @@ const sr: typeof en = {
   nothingToPutAway: "Nema ništa za raspoređivanje.", putAwayNow: "Rasporedi", addsToStock: "dodaje se u zalihe", newItem: "nova stavka",
   bought: "Kupljeno", batches: "Serije", batchesShort: "serije", total: "Ukupno", noBatches: "Nema na stanju.",
   addBatch: "Dodaj", newBatchQuantity: "Količina nove serije", newBatchExpiry: "Rok nove serije",
+  addonsMapsNote: "Mape sveta biraju se na posebnom ekranu:",
+  mapsIntro: "Offline mape celog sveta, po delovima. Izaberi šta ti treba; hub preuzima jednom, a telefoni dobijaju preko WiFi-ja.",
+  mapsOnPhone: "Mape na telefonu", mapsStep1: "Instaliraj aplikaciju CoMaps sa huba:", mapsAppComes: "Aplikacija stiže na hub zajedno sa prvom mapom koju preuzmeš ispod.",
+  mapsAppQr: "QR kod za aplikaciju CoMaps", mapsStep2: "U CoMaps otvori Podešavanja i za server za preuzimanje mapa upiši ovu adresu:",
+  mapsServerQr: "QR kod za adresu servera mapa", mapsStep3: "Preuzimaj mape u CoMaps kao i obično: sada stižu sa huba, i bez interneta.",
+  mapsOnHub: "Mape na hubu", mapsInstalledSize: "Na hubu", mapsSearch: "Pretraži državu ili region…",
+  mapsSuggestedHint: "Predlog za ovaj region; pretraži da nađeš bilo koju drugu državu.", mapsSearchHint: "Pretraži da nađeš državu.",
+  mapsRegions: "regiona", mapsSomeFailed: "Neki delovi nisu preuzeti. Pokušaj ponovo.",
+  mapsAttribution: "Podaci mapa © OpenStreetMap saradnici (ODbL). Mape pripremio CoMaps.",
 
 };
 

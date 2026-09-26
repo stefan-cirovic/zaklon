@@ -12,6 +12,7 @@ import Addons from "./screens/Addons";
 import Library from "./screens/Library";
 import Supplies from "./screens/Supplies";
 import PhoneAi from "./screens/PhoneAi";
+import Maps from "./screens/Maps";
 
 const TABS: { id: string; key: Key; ico: string }[] = [
   { id: "home", key: "home", ico: "⌂" },
@@ -180,7 +181,7 @@ export default function App() {
           </div>
         )}
         {tab === "library" && <Library t={t} lang={lang} go={setTab} />}
-        {tab === "maps" && <Placeholder title={t("maps")} text={t("comingSoon")} />}
+        {tab === "maps" && <Maps t={t} lang={lang} />}
         {tab === "supplies" && <Supplies t={t} />}
         {tab === "assistant" &&
           (isHub ? (

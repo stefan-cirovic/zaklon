@@ -79,6 +79,7 @@ export default function Addons({ t, lang, isHub }: Props) {
       <div>
         <h1>{t("addons")}</h1>
         <p className="muted">{t("addonsIntro")}</p>
+        <p className="muted" style={{ fontSize: 14 }}>{t("addonsMapsNote")} <a href="#maps">{t("maps")}</a>.</p>
       </div>
       {err && <p className="error" role="alert">{err}</p>}
       {data && (

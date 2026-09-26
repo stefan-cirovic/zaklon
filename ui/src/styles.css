@@ -94,7 +94,7 @@ p { margin: 0 0 12px; }
 .btn.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
 .btn.danger { background: transparent; color: var(--warn); border: 1px solid var(--line); }
 .btn:disabled { opacity: 0.5; cursor: default; }
-input[type="text"], input[type="password"], select {
+input[type="text"], input[type="password"], input[type="search"], select {
   width: 100%; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
   padding: 12px 14px; min-height: 44px; outline: none;
 }
@@ -218,3 +218,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .static-value { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-height: 44px; color: var(--text); }
 .item.shop .shop-text { flex: 1; min-width: 0; }
 .panel.put-away { text-align: left; }
+
+/* Maps */
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 14px; text-align: left; }
+.qr-line { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+code.url { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 15px; word-break: break-all; color: var(--text); font-family: inherit; }
+.item.map-country { flex-direction: column; align-items: stretch; }
+.map-name { font-weight: 600; }
+.regions .region { padding: 6px 0; border-top: 1px solid var(--line); }
+.panel.maps-phone { text-align: left; }

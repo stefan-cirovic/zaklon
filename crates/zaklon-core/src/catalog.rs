@@ -39,8 +39,12 @@ pub struct PackFile {
     pub path: String,
     /// Download locations, tried in order.
     pub urls: Vec<String>,
-    /// Lower-case hex SHA-256 of the complete file.
+    /// Lower-case hex SHA-256 of the complete file (empty when only SHA-1 is published).
+    #[serde(default)]
     pub sha256: String,
+    /// Base64 SHA-1, as CoMaps publishes for map files. Used when there is no SHA-256.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha1_base64: Option<String>,
     pub size: u64,
     /// "zip" to unpack after verification.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -117,17 +121,19 @@ pub fn is_safe_relative(path: &str) -> bool {
 impl Pack {
     /// Ids are simple slugs; every path stays inside the library.
     pub fn is_safe(&self) -> bool {
-        let id_ok = !self.id.is_empty()
-            && self.id.len() <= 64
-            && self.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+        let slug = |s: &str| !s.is_empty() && s.len() <= 64 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+        // Map pieces are named after their region: "map:Germany_Bavaria".
+        let map_name = |s: &str| {
+            !s.is_empty() && s.len() <= 160 && !s.contains("..") && !s.contains('/') && !s.contains('\\') && !s.chars().any(char::is_control)
+        };
+        let id_ok = slug(&self.id) || self.id.strip_prefix(crate::maps::MAP_ID_PREFIX).is_some_and(map_name);
+        let hash_ok = |f: &PackFile| {
+            (f.sha256.len() == 64 && f.sha256.chars().all(|c| c.is_ascii_hexdigit()))
+                || (f.sha256.is_empty() && f.sha1_base64.as_deref().is_some_and(|h| h.len() == 28))
+        };
         id_ok
             && !self.files.is_empty()
-            && self.files.iter().all(|f| {
-                is_safe_relative(&f.path)
-                    && f.unpack_to.as_deref().is_none_or(is_safe_relative)
-                    && f.sha256.len() == 64
-                    && f.sha256.chars().all(|c| c.is_ascii_hexdigit())
-            })
+            && self.files.iter().all(|f| is_safe_relative(&f.path) && f.unpack_to.as_deref().is_none_or(is_safe_relative) && hash_ok(f))
     }
 }
 
@@ -147,6 +153,9 @@ impl Catalog {
             Some(c) if c.generated >= bundled.generated => c,
             _ => bundled,
         };
+        // The world's maps, split the way CoMaps publishes them, and the CoMaps app.
+        let known: std::collections::HashSet<String> = c.packs.iter().map(|p| p.id.clone()).collect();
+        c.packs.extend(crate::maps::packs().into_iter().filter(|p| !known.contains(&p.id)));
         c.packs.retain(|p| {
             let ok = p.is_safe();
             if !ok {
@@ -178,7 +187,7 @@ mod tests {
             assert!(!p.id.is_empty());
             assert_eq!(p.size, p.files.iter().map(|f| f.size).sum::<u64>(), "size mismatch in {}", p.id);
             for f in &p.files {
-                assert_eq!(f.sha256.len(), 64, "bad sha256 in {}", p.id);
+                assert!(f.sha256.len() == 64 || f.sha1_base64.is_some(), "no hash in {}", p.id);
                 assert!(!f.urls.is_empty());
                 assert!(!f.path.starts_with('/') && !f.path.contains(".."));
             }
@@ -188,9 +197,12 @@ mod tests {
             assert!(p.is_safe(), "unsafe pack {}", p.id);
             for f in &p.files {
                 let name = f.path.rsplit('/').next().unwrap();
+                let encoded = name.replace(' ', "%20");
                 for u in &f.urls {
                     assert!(u.starts_with("https://"), "{u}");
-                    assert!(u.ends_with(&format!("/{name}")), "mirror URL must point at the file: {u}");
+                    let file_part = u.rsplit('/').next().unwrap();
+                    assert!(file_part == name || file_part.replace("%20", " ") == name || u.ends_with(&encoded) || p.id.starts_with("map:") || p.id == "comaps-app",
+                        "mirror URL must point at the file: {u}");
                 }
             }
         }

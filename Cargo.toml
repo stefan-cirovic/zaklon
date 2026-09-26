@@ -21,6 +21,7 @@ tracing-appender = "0.2"
 rusqlite = { version = "0.32", features = ["bundled"] }
 rand = "0.8"
 sha2 = "0.10"
+sha1 = "0.10"
 base64 = "0.22"
 uuid = { version = "1", features = ["v4", "serde"] }
 time = { version = "0.3", features = ["formatting", "parsing", "serde", "macros", "local-offset"] }

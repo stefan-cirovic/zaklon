@@ -70,6 +70,9 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/put-away", get(put_away_list))
         .route("/api/put-away/{id}", post(put_away))
         .route("/api/history", get(history))
+        .route("/api/maps", get(maps_overview))
+        .route("/api/maps/{country}/download", post(maps_country_download))
+        .route("/api/maps/{country}", axum::routing::delete(maps_country_remove))
         .route("/api/models", get(models_list))
         .route("/api/models/{id}/file", get(model_file))
         .route("/api/library", get(library_books))
@@ -577,7 +580,9 @@ struct CatalogReply {
 
 async fn catalog(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<CatalogReply>, ApiError> {
     let d = &state.downloads;
-    Ok(Json(CatalogReply { packs: d.snapshot(), system: crate::downloads::system_info(d.library_dir()) }))
+    // Map pieces (over a thousand) have their own screen and endpoint.
+    let packs = d.snapshot().into_iter().filter(|v| v.pack.category != zaklon_core::catalog::Category::Maps).collect();
+    Ok(Json(CatalogReply { packs, system: crate::downloads::system_info(d.library_dir()) }))
 }
 
 async fn system(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<crate::downloads::SystemInfo>, ApiError> {
@@ -1030,4 +1035,124 @@ async fn model_file(
                 .into_response())
         }
     }
+}
+
+// ---- maps -------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct MapRegionView {
+    id: String,
+    name: String,
+    name_sr: String,
+    size: u64,
+    status: zaklon_core::catalog::PackStatus,
+    bytes_done: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+#[derive(Serialize)]
+struct MapCountryView {
+    id: String,
+    name: String,
+    name_sr: String,
+    size: u64,
+    regions: Vec<MapRegionView>,
+}
+
+#[derive(Serialize)]
+struct MapsReply {
+    version: u64,
+    /// What to type into CoMaps as the map download server.
+    server_urls: Vec<String>,
+    /// Where phones download the CoMaps app from the hub, once it is on the hub.
+    app_urls: Vec<String>,
+    app: zaklon_core::catalog::PackState,
+    installed_bytes: u64,
+    countries: Vec<MapCountryView>,
+}
+
+async fn maps_overview(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<MapsReply>, ApiError> {
+    use zaklon_core::catalog::{PackState, PackStatus};
+    use zaklon_core::maps;
+    let tree = maps::tree();
+    let states: std::collections::HashMap<String, PackState> =
+        state.downloads.snapshot().into_iter().map(|v| (v.pack.id, v.state)).collect();
+    let cfg = state.config();
+    let hosts: Vec<String> = state.lan_addresses().iter().map(|a| a.to_string()).collect();
+    let mut installed_bytes = 0;
+    let countries = tree
+        .countries
+        .iter()
+        .map(|c| MapCountryView {
+            id: c.id.clone(),
+            name: maps::local_name(&c.id, "en"),
+            name_sr: maps::local_name(&c.id, "sr"),
+            size: c.size,
+            regions: c
+                .regions
+                .iter()
+                .map(|r| {
+                    let st = states.get(&format!("{}{}", maps::MAP_ID_PREFIX, r.id)).cloned().unwrap_or_else(|| PackState::not_installed(r.size));
+                    if st.status == PackStatus::Installed {
+                        installed_bytes += r.size;
+                    }
+                    MapRegionView {
+                        id: r.id.clone(),
+                        name: maps::local_name(&r.id, "en"),
+                        name_sr: maps::local_name(&r.id, "sr"),
+                        size: r.size,
+                        status: st.status,
+                        bytes_done: st.bytes_done,
+                        error: st.error,
+                    }
+                })
+                .collect(),
+        })
+        .collect();
+    Ok(Json(MapsReply {
+        version: tree.version,
+        server_urls: hosts.iter().map(|h| format!("http://{h}:{}/", cfg.install_port)).collect(),
+        app_urls: hosts.iter().map(|h| format!("http://{h}:{}/apk/comaps.apk", cfg.install_port)).collect(),
+        app: states.get(zaklon_core::maps::COMAPS_APK_ID).cloned().unwrap_or_else(|| PackState::not_installed(0)),
+        installed_bytes,
+        countries,
+    }))
+}
+
+fn country_regions(country: &str) -> Option<Vec<String>> {
+    zaklon_core::maps::tree()
+        .countries
+        .iter()
+        .find(|c| c.id == country)
+        .map(|c| c.regions.iter().map(|r| format!("{}{}", zaklon_core::maps::MAP_ID_PREFIX, r.id)).collect())
+}
+
+/// Download every piece of a country (and the CoMaps app, the first time).
+async fn maps_country_download(State(state): State<Arc<HubState>>, _caller: Caller, Path(country): Path<String>) -> Result<StatusCode, ApiError> {
+    let ids = country_regions(&country).ok_or_else(|| not_found("no such country"))?;
+    if !state.downloads.is_installed(zaklon_core::maps::COMAPS_APK_ID) {
+        let _ = state.downloads.enqueue(zaklon_core::maps::COMAPS_APK_ID);
+    }
+    for id in ids {
+        if !state.downloads.is_installed(&id) {
+            state.downloads.enqueue(&id).map_err(|e| bad(&e))?;
+        }
+    }
+    Ok(StatusCode::ACCEPTED)
+}
+
+async fn maps_country_remove(State(state): State<Arc<HubState>>, caller: Caller, Path(country): Path<String>) -> Result<StatusCode, ApiError> {
+    let ids = country_regions(&country).ok_or_else(|| not_found("no such country"))?;
+    tracing::info!(by = %caller.actor(), country = %country, "maps removed");
+    for id in ids {
+        let st = state.downloads.state_of(&id).map(|s| s.status);
+        if matches!(st, Some(zaklon_core::catalog::PackStatus::Downloading | zaklon_core::catalog::PackStatus::Verifying)) {
+            let _ = state.downloads.pause(&id);
+            tokio::time::sleep(Duration::from_millis(1500)).await;
+        }
+        let d = state.downloads.clone();
+        tokio::task::spawn_blocking(move || d.remove(&id)).await.map_err(|e| anyhow::anyhow!(e))?.map_err(|e| bad(&e))?;
+    }
+    Ok(StatusCode::NO_CONTENT)
 }

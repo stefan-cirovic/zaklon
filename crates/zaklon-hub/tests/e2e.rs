@@ -470,6 +470,25 @@ async fn full_hub_flow() {
     let sneaky = reqwest::get(format!("{}/apk/..%2F..%2Fhousehold%2Fhub.json", hub.install)).await.unwrap();
     assert_ne!(sneaky.status().as_u16(), 200, "no path traversal out of the APK folder");
 
+    // 16b. Maps: the list of the world's pieces; a map file placed in the
+    // library is served at the path CoMaps asks for, with Range.
+    let (_, maps) = hub.get("/api/maps").await;
+    assert_eq!(maps["version"], 260830);
+    assert!(maps["countries"].as_array().unwrap().len() > 200);
+    assert!(maps["server_urls"][0].as_str().unwrap().starts_with("http://"));
+    let map_dir = hub.root.join("library/maps/260830");
+    std::fs::create_dir_all(&map_dir).unwrap();
+    std::fs::write(map_dir.join("Test Land.mwm"), b"0123456789").unwrap();
+    for path in ["/maps/2026.06.28/260830/Test%20Land.mwm", "/maps/260830/Test%20Land.mwm"] {
+        let r = hub.http.get(format!("{}{path}", hub.install)).header("range", "bytes=4-").send().await.unwrap();
+        assert_eq!(r.status().as_u16(), 206, "{path}");
+        assert_eq!(&r.bytes().await.unwrap()[..], b"456789");
+    }
+    let r = reqwest::get(format!("{}/maps/260830/..%2F..%2Fhousehold%2Fhub.json", hub.install)).await.unwrap();
+    assert_eq!(r.status().as_u16(), 404, "no escaping the maps folder");
+    let (_, catalog) = hub.get("/api/catalog").await;
+    assert!(catalog["packs"].as_array().unwrap().iter().all(|p| p["category"] != "maps"), "maps are not in the add-ons list");
+
     // 17. Discovery beacon answers with the same fingerprint.
     let sock = tokio::net::UdpSocket::bind(("127.0.0.1", 0)).await.unwrap();
     // A short request gets no answer (no amplification)...

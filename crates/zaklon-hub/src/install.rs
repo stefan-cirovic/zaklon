@@ -1,6 +1,9 @@
-//! Plain-HTTP "install the app" site on port 8480. Deliberately tiny: a page
-//! explaining the two steps and the APK files from `library/apk`. Nothing
-//! private is reachable here.
+//! Plain-HTTP site on port 8480 for phones that are not paired yet or use
+//! other apps: a page explaining how to install Zaklon, the APK files from
+//! `library/apk`, and the offline map files for CoMaps (public OpenStreetMap
+//! data), at the paths CoMaps asks for when the hub is set as its map
+//! download server: /maps/<series>/<version>/<Region>.mwm. Nothing private
+//! is reachable here.
 
 use std::sync::Arc;
 
@@ -19,7 +22,35 @@ pub fn router(state: Arc<HubState>) -> Router {
         .route("/", get(page))
         .route("/get", get(page))
         .nest_service("/apk", ServeDir::new(apk_dir))
+        .route("/maps/{*rest}", get(map_file))
         .with_state(state)
+}
+
+/// A map piece for CoMaps, with Range support (CoMaps resumes downloads).
+async fn map_file(
+    axum::extract::State(state): axum::extract::State<Arc<HubState>>,
+    axum::extract::Path(rest): axum::extract::Path<String>,
+    req: axum::extract::Request,
+) -> axum::response::Response {
+    use axum::http::StatusCode;
+    use tower::ServiceExt;
+    let parts: Vec<&str> = rest.split('/').filter(|p| !p.is_empty()).collect();
+    // .../<version>/<Region>.mwm  (with or without the series before it)
+    let (Some(file), Some(version)) = (parts.last(), parts.len().checked_sub(2).and_then(|i| parts.get(i))) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let safe = file.ends_with(".mwm") && !file.contains("..") && !file.contains('\\') && version.chars().all(|c| c.is_ascii_digit());
+    if !safe {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let path = state.config().library_dir().join("maps").join(version).join(file);
+    if !path.is_file() {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    match tower_http::services::ServeFile::new(path).oneshot(req).await {
+        Ok(r) => r.into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
 }
 
 async fn page(axum::extract::State(state): axum::extract::State<Arc<HubState>>) -> impl IntoResponse {

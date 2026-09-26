@@ -280,3 +280,32 @@ test("shopping: bought goes to Put away, which adds a dated batch", async ({ pag
   await candles.getByRole("button", { name: /^Delete/ }).click();
   await expect(candles).toHaveCount(0);
 });
+
+test("maps: the phone steps show the hub address, and the world is searchable", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.goto("/#maps");
+  await expect(page.getByRole("heading", { name: "Maps", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Maps on a phone" })).toBeVisible();
+  await expect(page.locator("code.url").first()).toHaveText(/^http:\/\/.+:\d+\/$/);
+  await expect(page.getByText(/added to the hub with the first map/)).toBeVisible();
+  const search = page.getByRole("searchbox", { name: /Search a country/ });
+  await search.fill("serbia");
+  const serbia = page.locator(".map-country").filter({ hasText: /^Serbia/ });
+  await expect(serbia).toHaveCount(1);
+  await expect(serbia.getByRole("button", { name: "Download" })).toBeVisible();
+  await search.fill("srbija"); // Serbian names are searchable too
+  await expect(serbia).toHaveCount(1);
+  await search.fill("germany");
+  const germany = page.locator(".map-country").filter({ hasText: /^Germany/ });
+  await expect(germany.getByText(/regions/)).toBeVisible();
+  await germany.getByRole("button", { name: "▾" }).click();
+  await expect(germany.locator(".region").first()).toBeVisible();
+  expect(await germany.locator(".region").count()).toBeGreaterThan(5);
+  await search.fill("zzzz-nowhere");
+  await expect(page.getByText("Nothing found.")).toBeVisible();
+  await noHorizontalScroll(page);
+  // Map pieces are not repeated in the add-ons list; there is a link instead.
+  await page.goto("/#addons");
+  await expect(page.getByText(/Maps of the world are chosen on their own screen/)).toBeVisible();
+  await expect(page.getByText("Montenegro")).toHaveCount(0);
+});

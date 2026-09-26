@@ -4,6 +4,7 @@
 pub mod catalog;
 pub mod config;
 pub mod db;
+pub mod maps;
 pub mod pairing;
 pub mod supplies;
 pub mod tls;

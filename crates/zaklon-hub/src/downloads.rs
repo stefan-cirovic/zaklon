@@ -291,7 +291,7 @@ impl Downloads {
         }
         let tmp = part_path(&dest);
         let copied = copy_with_hash(src, &tmp).map_err(|e| format!("copying {}: {e}", f.path))?;
-        if copied != f.sha256 {
+        if !copied.matches(f) {
             let _ = std::fs::remove_file(&tmp);
             return Err(format!("checksum mismatch for {}", f.path));
         }
@@ -477,7 +477,7 @@ impl Downloads {
             Ok(Err(e)) => return Outcome::Failed(format!("reading file: {e}")),
             Err(e) => return Outcome::Failed(format!("verify task: {e}")),
         };
-        if hash != f.sha256 {
+        if !hash.matches(f) {
             let _ = std::fs::remove_file(&part);
             self.set(id, |s| s.bytes_done = s.bytes_done.saturating_sub(f.size));
             return Outcome::Failed("checksum mismatch, the file was discarded; try again".into());
@@ -651,35 +651,73 @@ fn part_path(dest: &Path) -> PathBuf {
     PathBuf::from(p)
 }
 
-fn hash_file(path: &Path) -> std::io::Result<String> {
+/// SHA-256 and SHA-1 of a file, computed in one pass. Our catalog uses
+/// SHA-256; CoMaps publishes SHA-1 (base64) for its map files.
+struct FileDigest {
+    sha256: String,
+    sha1_base64: String,
+}
+
+impl FileDigest {
+    fn matches(&self, f: &PackFile) -> bool {
+        if !f.sha256.is_empty() {
+            return self.sha256.eq_ignore_ascii_case(&f.sha256);
+        }
+        f.sha1_base64.as_deref().is_some_and(|h| h == self.sha1_base64)
+    }
+}
+
+struct Hashers {
+    sha256: Sha256,
+    sha1: sha1::Sha1,
+}
+
+impl Hashers {
+    fn new() -> Self {
+        Self { sha256: Sha256::new(), sha1: sha1::Sha1::new() }
+    }
+    fn update(&mut self, b: &[u8]) {
+        self.sha256.update(b);
+        sha1::Digest::update(&mut self.sha1, b);
+    }
+    fn finish(self) -> FileDigest {
+        use base64::Engine;
+        FileDigest {
+            sha256: self.sha256.finalize().iter().map(|b| format!("{b:02x}")).collect(),
+            sha1_base64: base64::engine::general_purpose::STANDARD.encode(sha1::Digest::finalize(self.sha1)),
+        }
+    }
+}
+
+fn hash_file(path: &Path) -> std::io::Result<FileDigest> {
     let mut file = std::fs::File::open(path)?;
-    let mut hasher = Sha256::new();
+    let mut h = Hashers::new();
     let mut buf = vec![0u8; 1 << 20];
     loop {
         let n = file.read(&mut buf)?;
         if n == 0 {
             break;
         }
-        hasher.update(&buf[..n]);
+        h.update(&buf[..n]);
     }
-    Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
+    Ok(h.finish())
 }
 
-fn copy_with_hash(src: &Path, dest: &Path) -> std::io::Result<String> {
+fn copy_with_hash(src: &Path, dest: &Path) -> std::io::Result<FileDigest> {
     let mut input = std::fs::File::open(src)?;
     let mut output = std::fs::File::create(dest)?;
-    let mut hasher = Sha256::new();
+    let mut h = Hashers::new();
     let mut buf = vec![0u8; 1 << 20];
     loop {
         let n = input.read(&mut buf)?;
         if n == 0 {
             break;
         }
-        hasher.update(&buf[..n]);
+        h.update(&buf[..n]);
         output.write_all(&buf[..n])?;
     }
     output.flush()?;
-    Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
+    Ok(h.finish())
 }
 
 fn unpack(library: &Path, f: &PackFile, archive: &Path) -> Result<(), String> {
@@ -768,7 +806,9 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let p = dir.join("x.bin");
         std::fs::write(&p, b"abc").unwrap();
-        assert_eq!(hash_file(&p).unwrap(), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        let d = hash_file(&p).unwrap();
+        assert_eq!(d.sha256, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        assert_eq!(d.sha1_base64, "qZk+NkcGgWq6PiVxeFDCbJzQ2J0=", "SHA-1 of abc");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
