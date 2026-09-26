@@ -441,7 +441,7 @@ impl Library {
 /// the hub exits for any reason (even when killed), which makes Windows end
 /// kiwix-serve too. Without this, an update or a crash leaves it running.
 #[cfg(windows)]
-mod job {
+pub(crate) mod job {
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,

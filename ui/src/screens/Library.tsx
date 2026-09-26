@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, contentBase } from "../api";
+import Reader from "../components/Reader";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
 import { cyrToLat, latinArticles } from "../format";
@@ -84,24 +85,9 @@ export default function Library({ t, lang, go }: Props) {
   const bookTitle = (en: string, sr: string) => (lang === "sr" && sr ? sr : en);
   const latin = latinArticles(lang);
   const show = (s: string) => (latin ? cyrToLat(s) : s);
-  const readerUrl = (url: string) => (latin ? url.replace(/^\/kiwix\//, "/kiwix-lat/") : url);
 
   if (reader && base !== null) {
-    return (
-      <div className="reader">
-        <div className="reader-bar">
-          <button className="btn secondary" onClick={() => setReader(null)}>← {t("back")}</button>
-          <div className="reader-title">{show(reader.title)}</div>
-        </div>
-        <iframe
-          className="reader-frame"
-          src={base + readerUrl(reader.url)}
-          title={reader.title}
-          sandbox="allow-same-origin allow-popups"
-          referrerPolicy="no-referrer"
-        />
-      </div>
-    );
+    return <Reader t={t} lang={lang} url={reader.url} title={reader.title} onClose={() => setReader(null)} />;
   }
 
   const engine = lib?.engine;

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-27",
+  "generated": "2026-09-28",
   "packs": [
     {
       "id": "wikipedia-sr-maxi",
@@ -298,6 +298,37 @@
           "size": 18301924,
           "unpack": "zip",
           "unpack_to": "bin/kiwix"
+        }
+      ]
+    },
+    {
+      "id": "llama-cpp",
+      "title": {
+        "en": "AI engine (llama.cpp)",
+        "sr": "AI motor (llama.cpp)"
+      },
+      "description": {
+        "en": "Runs the assistant's AI models on this computer. Installed automatically with the first AI model.",
+        "sr": "Pokreće AI modele asistenta na ovom računaru. Instalira se automatski uz prvi AI model."
+      },
+      "category": "app",
+      "version": "b11202",
+      "size": 19154895,
+      "languages": [],
+      "recommended_for": [],
+      "license": "MIT",
+      "attribution": "llama.cpp contributors",
+      "source": "https://github.com/ggml-org/llama.cpp",
+      "files": [
+        {
+          "path": "bin/llama-b11202-bin-win-cpu-x64.zip",
+          "urls": [
+            "https://github.com/ggml-org/llama.cpp/releases/download/b11202/llama-b11202-bin-win-cpu-x64.zip"
+          ],
+          "sha256": "99e553cdc91ca631132950a8cba2b13ac9550b82bd82fe1d1210c09475b8fe91",
+          "size": 19154895,
+          "unpack": "zip",
+          "unpack_to": "bin/llama"
         }
       ]
     },

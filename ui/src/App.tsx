@@ -7,12 +7,11 @@ import ConfirmButton from "./components/ConfirmButton";
 import Home from "./screens/Home";
 import Household from "./screens/Household";
 import Connect from "./screens/Connect";
-import Placeholder from "./screens/Placeholder";
 import Addons from "./screens/Addons";
 import Library from "./screens/Library";
 import Supplies from "./screens/Supplies";
-import PhoneAi from "./screens/PhoneAi";
 import Maps from "./screens/Maps";
+import Assistant from "./screens/Assistant";
 import { ACCENTS, type Accent, type Look } from "./screens/HouseholdMore";
 
 const TABS: { id: string; key: Key; ico: string }[] = [
@@ -209,17 +208,7 @@ export default function App() {
         {tab === "library" && <Library t={t} lang={lang} go={setTab} />}
         {tab === "maps" && <Maps t={t} lang={lang} isHub={isHub} />}
         {tab === "supplies" && <Supplies t={t} />}
-        {tab === "assistant" &&
-          (isHub ? (
-            <Placeholder title={t("assistant")} text={t("comingSoon")} />
-          ) : (
-            <div className="stack">
-              <div className="page-head">
-                <h1>{t("assistant")}</h1>
-              </div>
-              <PhoneAi t={t} lang={lang} />
-            </div>
-          ))}
+        {tab === "assistant" && <Assistant t={t} lang={lang} isHub={isHub} go={setTab} />}
         {tab === "addons" && <Addons t={t} lang={lang} isHub={isHub} />}
         {status?.version && <p className="muted footer-note">Zaklon {status.version}</p>}
       </main>

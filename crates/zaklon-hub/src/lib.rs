@@ -7,6 +7,7 @@
 //! engine (kiwix-serve) on a private loopback port.
 
 pub mod api;
+pub mod assistant;
 pub mod discovery;
 pub mod downloads;
 pub mod export;
@@ -55,6 +56,7 @@ pub struct HubState {
     pub downloads: Arc<Downloads>,
     pub library: Arc<Library>,
     pub export: Arc<export::Exporter>,
+    pub assistant: Arc<assistant::Assistant>,
 }
 
 impl HubState {
@@ -100,6 +102,9 @@ impl Hub {
             config.catalog_dir().join("state.json"),
         );
         info!(root = %root.display(), hub = %config.hub_name, fp = %identity.fingerprint_display(), "hub opened");
+        let library = Library::new(downloads.clone());
+        let chosen = db.get_setting(assistant::SETTING_MODEL).ok().flatten();
+        let assistant = assistant::Assistant::new(downloads.clone(), library.clone(), chosen);
         Ok(Self {
             state: Arc::new(HubState {
                 config: Mutex::new(config),
@@ -109,8 +114,9 @@ impl Hub {
                 pairing: Mutex::new(HashMap::new()),
                 pairing_failures: Mutex::new(0),
                 recent_pairs: Mutex::new(HashMap::new()),
-                library: Library::new(downloads.clone()),
+                library,
                 export: export::Exporter::new(),
+                assistant,
                 downloads,
             }),
         })
@@ -155,6 +161,7 @@ impl Hub {
         let _discovery = discovery::start(state.clone()).await?;
         state.downloads.start();
         state.library.start();
+        state.assistant.start();
 
         tokio::select! {
             r = tls_srv => r.context("tls server")?,

@@ -368,3 +368,49 @@ test("a download that the hub accepts without a body is not reported as an error
   await page.waitForTimeout(300);
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
+
+test("assistant: without a model it offers the one that fits this computer", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.goto("/#assistant");
+  await expect(page.getByRole("heading", { name: "Assistant", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "The assistant needs an AI model" })).toBeVisible();
+  await expect(page.getByText(/Recommended for this computer with/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Download" })).toBeVisible();
+  await page.getByRole("button", { name: "Other models" }).click();
+  await expect(page.getByRole("heading", { name: "Add-ons" })).toBeVisible();
+  await expect(page.getByText("AI engine (llama.cpp)")).toBeVisible();
+});
+
+test("assistant: an answer shows its sources, which open the article", async ({ page }) => {
+  await ensureSetUp(page);
+  // A hub with a model and a library, answering from a source (served by the test, not a real model).
+  await page.route("**/api/assistant", (route) =>
+    route.fulfill({
+      json: {
+        engine: "ready", engine_installed: true, selected: "qwen35-2b", recommended: "qwen35-2b", ram_total: 8e9, books: 1,
+        models: [{ id: "qwen35-2b", title_en: "AI model for phones (Qwen3.5 2B)", title_sr: "x", size: 1e9, installed: true, recommended: true }],
+      },
+    }),
+  );
+  await page.route("**/api/assistant/ask", (route) => route.fulfill({ json: { id: "a1" } }));
+  await page.route("**/api/assistant/answers/a1", (route) =>
+    route.fulfill({
+      json: {
+        id: "a1", question: "How long do beans keep?", status: "done", grounded: true, language: "en", tokens_per_second: 12.5, error: null,
+        text: "Dry beans keep for **years** when stored dry [1].",
+        sources: [{ n: 1, title: "Bean", url: "/kiwix/content/test/A/Bean", book_title_en: "Wikipedia", book_title_sr: "Vikipedija" }],
+      },
+    }),
+  );
+  await page.goto("/#assistant");
+  await page.getByRole("textbox", { name: "Ask something" }).fill("How long do beans keep?");
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  await expect(page.getByText("Dry beans keep for")).toBeVisible();
+  await expect(page.locator(".answer-text strong")).toHaveText("years");
+  await expect(page.getByText("Sources", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /Bean · Wikipedia/ }).click();
+  await expect(page.locator(".reader-title")).toHaveText("Bean");
+  await page.getByRole("button", { name: /Back/ }).click();
+  await expect(page.getByText("Dry beans keep for")).toBeVisible();
+  await noHorizontalScroll(page);
+});

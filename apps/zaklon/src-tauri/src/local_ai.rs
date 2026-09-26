@@ -301,7 +301,8 @@ fn strip_thinking(s: &str) -> String {
     out.trim().to_string()
 }
 
-/// "sr" or "en" when the text clearly is one of them.
+/// "sr" or "en" when the text clearly is one of them. (Same as
+/// `zaklon_core::lang`; the phone app does not link the core crate.)
 pub fn question_language(text: &str) -> Option<&'static str> {
     let lower = text.to_lowercase();
     if lower.chars().any(|c| matches!(c, 'č' | 'ć' | 'ž' | 'š' | 'đ') || ('\u{0400}'..='\u{04FF}').contains(&c)) {

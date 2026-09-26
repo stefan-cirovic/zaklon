@@ -105,6 +105,18 @@ const en = {
   mapsOf: "Maps", nothingInstalled: "Nothing is installed yet.",
   errCopyRunning: "A copy is already running.", errCancelled: "Cancelled.", errDriveWrite: "Could not write to the drive. Was it unplugged or full?",
   errOutsideLibrary: "Choose a folder outside the Zaklon library.",
+  assistantIntro: "Ask about health, repairs, food and more. Answers come from your library, with sources.",
+  aiNeedsModel: "The assistant needs an AI model", aiRecommendedFor: "Recommended for this computer with",
+  aiDownloading: "Downloading…", aiOtherModels: "Other models", aiModel: "Model",
+  aiReady: "ready", aiStarting: "Starting the AI (the first time takes up to a minute)…", aiFailed: "the AI engine failed to start",
+  aiSleeping: "starts with the first question", aiNoLibrary: "no library", aiSearching: "Looking in the library…", aiWriting: "Writing…",
+  aiNoLibraryLong: "There are no knowledge packs yet, so answers come only from the model and may be wrong. Add some in",
+  aiEmptyChat: "Ask a question below. The assistant looks it up in the library first and shows where the answer comes from.",
+  aiNotGrounded: "Nothing about this was found in the library. This answer is from the model's general knowledge and may be wrong.",
+  errAiEngineMissing: "The AI engine is not installed yet. Download a model and it comes along.", errAiMemory: "The AI stopped while loading the model. The computer may not have enough free memory; try a smaller model.",
+  errAiEngine: "The AI engine did not answer. Try again.", errQuestionLong: "The question is too long.",
+  aiSources: "Sources", aiNewChat: "New conversation", aiOnThisPhone: "AI on this phone (without the hub)",
+  aiAwayFromHub: "The hub is not reachable, so this phone's own AI answers.", aiHubHasNoModel: "The hub has no AI model yet, so this phone's own AI answers.",
 
 };
 
@@ -213,6 +225,18 @@ const sr: typeof en = {
   mapsOf: "Mape", nothingInstalled: "Još ništa nije instalirano.",
   errCopyRunning: "Kopiranje je već u toku.", errCancelled: "Otkazano.", errDriveWrite: "Upis na disk nije uspeo. Da li je izvađen ili pun?",
   errOutsideLibrary: "Izaberi folder van Zaklon biblioteke.",
+  assistantIntro: "Pitaj o zdravlju, popravkama, hrani i drugom. Odgovori stižu iz tvoje biblioteke, sa izvorima.",
+  aiNeedsModel: "Asistentu treba AI model", aiRecommendedFor: "Preporuka za ovaj računar sa",
+  aiDownloading: "Preuzima se…", aiOtherModels: "Drugi modeli", aiModel: "Model",
+  aiReady: "spreman", aiStarting: "Pokrećem AI (prvi put traje do minut)…", aiFailed: "AI motor nije uspeo da se pokrene",
+  aiSleeping: "pokreće se uz prvo pitanje", aiNoLibrary: "nema biblioteke", aiSearching: "Tražim u biblioteci…", aiWriting: "Pišem…",
+  aiNoLibraryLong: "Još nema paketa znanja, pa odgovori dolaze samo od modela i mogu biti netačni. Dodaj ih u",
+  aiEmptyChat: "Postavi pitanje ispod. Asistent prvo traži u biblioteci i pokazuje odakle je odgovor.",
+  aiNotGrounded: "U biblioteci nije pronađeno ništa o ovome. Odgovor je iz opšteg znanja modela i može biti netačan.",
+  errAiEngineMissing: "AI motor još nije instaliran. Preuzmi model i stiže uz njega.", errAiMemory: "AI je stao dok je učitavao model. Računar možda nema dovoljno slobodne memorije; probaj manji model.",
+  errAiEngine: "AI motor nije odgovorio. Pokušaj ponovo.", errQuestionLong: "Pitanje je predugačko.",
+  aiSources: "Izvori", aiNewChat: "Nov razgovor", aiOnThisPhone: "AI na ovom telefonu (bez huba)",
+  aiAwayFromHub: "Hub nije dostupan, pa odgovara AI na ovom telefonu.", aiHubHasNoModel: "Hub još nema AI model, pa odgovara AI na ovom telefonu.",
 
 };
 

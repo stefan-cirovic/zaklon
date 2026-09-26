@@ -419,6 +419,35 @@ async fn full_hub_flow() {
     assert_eq!(r.status().as_u16(), 200);
     let (_, hw) = hub.get("/api/hardware").await;
     assert!(hw["ram_total"].as_u64().unwrap() > 0);
+
+    // The assistant: without the AI engine it says so, and a question
+    // finishes with a clear error instead of hanging.
+    let (st, ai) = hub.get("/api/assistant").await;
+    assert_eq!(st, 200);
+    assert_eq!(ai["engine"], "missing", "{ai}");
+    assert!(ai["models"].is_array(), "the test catalog has no models: {ai}");
+    assert!(ai["recommended"].as_str().unwrap().starts_with("qwen35-"));
+    let (st, _) = hub.post("/api/assistant/ask", json!({ "question": "   " })).await;
+    assert_eq!(st, 400, "an empty question is refused");
+    let (st, asked) = hub.post("/api/assistant/ask", json!({ "question": "Koliko traje pasulj?", "language": "sr" })).await;
+    assert_eq!(st, 200);
+    let answer_id = asked["id"].as_str().unwrap().to_string();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let answer = loop {
+        let (_, a) = hub.get(&format!("/api/assistant/answers/{answer_id}")).await;
+        if a["status"] == "done" || a["status"] == "failed" {
+            break a;
+        }
+        assert!(Instant::now() < deadline, "answer did not finish: {a}");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+    assert_eq!(answer["status"], "failed");
+    assert_eq!(answer["language"], "sr");
+    assert!(answer["error"].as_str().unwrap().contains("not installed") || answer["error"].as_str().unwrap().contains("no AI model"), "{answer}");
+    let (st, _) = hub.post("/api/assistant/model", json!({ "id": "not-a-model" })).await;
+    assert_eq!(st, 400);
+    let r = phone.get(format!("{}/api/assistant", hub.tls)).bearer_auth(&token).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 200, "phones use the hub's assistant");
     let (st, _) = hub.send(reqwest::Method::DELETE, "/api/packs/test-pack", None).await;
     assert_eq!(st, 204);
     assert!(!installed.exists());

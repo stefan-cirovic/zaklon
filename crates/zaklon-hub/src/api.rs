@@ -76,6 +76,11 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/maps", get(maps_overview))
         .route("/api/maps/{country}/download", post(maps_country_download))
         .route("/api/maps/{country}", axum::routing::delete(maps_country_remove))
+        .route("/api/assistant", get(assistant_overview))
+        .route("/api/assistant/model", post(assistant_select))
+        .route("/api/assistant/ask", post(assistant_ask))
+        .route("/api/assistant/answers/{id}", get(assistant_answer))
+        .route("/api/assistant/stop", post(assistant_stop))
         .route("/api/models", get(models_list))
         .route("/api/models/{id}/file", get(model_file))
         .route("/api/library", get(library_books))
@@ -597,6 +602,10 @@ async fn pack_download(State(state): State<Arc<HubState>>, _caller: Caller, Path
     if let Some(pack) = state.downloads.catalog().pack(&id) {
         if pack.category == zaklon_core::catalog::Category::Knowledge && !state.downloads.is_installed("kiwix-tools") {
             let _ = state.downloads.enqueue("kiwix-tools");
+        }
+        // AI models need the AI engine.
+        if pack.category == zaklon_core::catalog::Category::Model && !state.downloads.is_installed("llama-cpp") {
+            let _ = state.downloads.enqueue("llama-cpp");
         }
         // A map piece: CoMaps needs the world overview first, phones need the app.
         if pack.category == zaklon_core::catalog::Category::Maps {
@@ -1198,4 +1207,46 @@ async fn maps_country_remove(State(state): State<Arc<HubState>>, caller: Caller,
         tokio::task::spawn_blocking(move || d.remove(&id)).await.map_err(|e| anyhow::anyhow!(e))?.map_err(|e| bad(&e))?;
     }
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ---- assistant --------------------------------------------------------------------
+
+async fn assistant_overview(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<crate::assistant::Overview>, ApiError> {
+    let a = state.assistant.clone();
+    Ok(Json(tokio::task::spawn_blocking(move || a.overview()).await.map_err(|e| anyhow::anyhow!(e))?))
+}
+
+#[derive(Deserialize)]
+struct SelectModelBody {
+    id: String,
+}
+
+async fn assistant_select(State(state): State<Arc<HubState>>, _caller: Caller, Json(body): Json<SelectModelBody>) -> Result<StatusCode, ApiError> {
+    state.assistant.select(&body.id).map_err(|e| bad(&e))?;
+    state.db.set_setting(crate::assistant::SETTING_MODEL, &body.id)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct AskBody {
+    question: String,
+    #[serde(default)]
+    language: String,
+    #[serde(default)]
+    history: Vec<crate::assistant::Turn>,
+}
+
+async fn assistant_ask(State(state): State<Arc<HubState>>, caller: Caller, Json(body): Json<AskBody>) -> Result<Json<serde_json::Value>, ApiError> {
+    let id = state.assistant.ask(&body.question, &body.language, body.history).map_err(|e| bad(&e))?;
+    tracing::info!(by = %caller.actor(), "assistant asked");
+    Ok(Json(serde_json::json!({ "id": id })))
+}
+
+async fn assistant_answer(State(state): State<Arc<HubState>>, _caller: Caller, Path(id): Path<String>) -> Result<Json<crate::assistant::Answer>, ApiError> {
+    state.assistant.answer(&id).map(Json).ok_or_else(|| not_found("no such answer"))
+}
+
+async fn assistant_stop(State(state): State<Arc<HubState>>, _caller: Caller) -> StatusCode {
+    state.assistant.stop().await;
+    StatusCode::NO_CONTENT
 }
