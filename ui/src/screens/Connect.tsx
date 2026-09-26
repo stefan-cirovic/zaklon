@@ -1,18 +1,12 @@
 import { useState } from "react";
 import { clientDiscover, clientPair, type DiscoveredHub, type PairPayload } from "../api";
 import type { Key } from "../i18n";
+import { scan } from "../scan";
 
 type T = (k: Key) => string;
 type Props = { t: T; onLinked: () => void };
 
-async function scanQr(): Promise<string | null> {
-  const { scan, Format, checkPermissions, requestPermissions } = await import("@tauri-apps/plugin-barcode-scanner");
-  let perm = await checkPermissions();
-  if (perm !== "granted") perm = await requestPermissions();
-  if (perm !== "granted") return null;
-  const result = await scan({ windowed: false, formats: [Format.QRCode] });
-  return result.content;
-}
+const scanQr = () => scan("qr");
 
 export default function Connect({ t, onLinked }: Props) {
   const [payload, setPayload] = useState<PairPayload | null>(null);

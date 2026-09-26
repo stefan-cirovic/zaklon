@@ -33,6 +33,21 @@ const en = {
   noBooks: "No knowledge packs yet. Download one in Add-ons, for example Wikipedia in Serbian.",
   goToAddons: "Open Add-ons", engineStarting: "The library is starting…",
   engineFailed: "The library engine could not start. Try removing and downloading the \"Library engine\" add-on again.",
+  suppliesItems: "Items", shoppingList: "Shopping list", history: "History", scanBarcode: "Scan a barcode",
+  searchSupplies: "Search supplies…", all: "All", noItemsYet: "Nothing here yet. Add your first item.",
+  editItem: "Edit item", itemName: "Name", quantity: "Quantity", unit: "Unit", category: "Category", place: "Place",
+  newPlace: "New place (e.g. Cottage)", expiry: "Expiry date", minQuantity: "Warn below", optional: "optional",
+  barcode: "Barcode", scan: "Scan", notes: "Notes", save: "Save", delete: "Delete",
+  confirmDelete: "Delete this item? It stays in the history.", addToList: "Add to the list…",
+  listEmpty: "The shopping list is empty.", clearDone: "Remove ticked items", theLaptop: "laptop",
+  expired: "expired", today: "today", daysShort: "d", suppliesTotal: "Items", expiredItems: "Expired",
+  cat_food: "Food", cat_drink: "Drinks", cat_medicine: "Medicine", cat_hygiene: "Hygiene", cat_equipment: "Equipment",
+  cat_fuel: "Fuel", cat_other: "Other",
+  unit_pcs: "pcs", unit_kg: "kg", unit_g: "g", unit_l: "l", unit_ml: "ml", unit_pack: "pack",
+  place_pantry: "Pantry", place_fridge: "Fridge", place_freezer: "Freezer", place_medicine_cabinet: "Medicine cabinet",
+  place_garage: "Garage", place_basement: "Basement",
+  act_create: "added", act_update: "changed", act_consume: "used", act_add: "restocked", act_delete: "deleted",
+
 };
 
 const sr: typeof en = {
@@ -68,6 +83,21 @@ const sr: typeof en = {
   noBooks: "Još nema paketa znanja. Preuzmi neki u Dodacima, na primer Vikipediju na srpskom.",
   goToAddons: "Otvori Dodatke", engineStarting: "Biblioteka se pokreće…",
   engineFailed: "Motor biblioteke nije mogao da se pokrene. Probaj da ukloniš i ponovo preuzmeš dodatak \"Motor biblioteke\".",
+  suppliesItems: "Stavke", shoppingList: "Za kupovinu", history: "Istorija", scanBarcode: "Skeniraj barkod",
+  searchSupplies: "Pretraži zalihe…", all: "Sve", noItemsYet: "Još ništa. Dodaj prvu stavku.",
+  editItem: "Izmeni stavku", itemName: "Naziv", quantity: "Količina", unit: "Jedinica", category: "Kategorija", place: "Mesto",
+  newPlace: "Novo mesto (npr. Vikendica)", expiry: "Rok trajanja", minQuantity: "Upozori ispod", optional: "nije obavezno",
+  barcode: "Barkod", scan: "Skeniraj", notes: "Beleška", save: "Sačuvaj", delete: "Obriši",
+  confirmDelete: "Obrisati ovu stavku? Ostaje zabeležena u istoriji.", addToList: "Dodaj na listu…",
+  listEmpty: "Lista za kupovinu je prazna.", clearDone: "Ukloni štiklirano", theLaptop: "laptop",
+  expired: "isteklo", today: "danas", daysShort: "d", suppliesTotal: "Stavki", expiredItems: "Isteklo",
+  cat_food: "Hrana", cat_drink: "Piće", cat_medicine: "Lekovi", cat_hygiene: "Higijena", cat_equipment: "Oprema",
+  cat_fuel: "Gorivo", cat_other: "Ostalo",
+  unit_pcs: "kom", unit_kg: "kg", unit_g: "g", unit_l: "l", unit_ml: "ml", unit_pack: "pak.",
+  place_pantry: "Ostava", place_fridge: "Frižider", place_freezer: "Zamrzivač", place_medicine_cabinet: "Apoteka",
+  place_garage: "Garaža", place_basement: "Podrum",
+  act_create: "dodato", act_update: "izmenjeno", act_consume: "potrošeno", act_add: "dopunjeno", act_delete: "obrisano",
+
 };
 
 const dict: Record<Lang, typeof en> = { en, sr };

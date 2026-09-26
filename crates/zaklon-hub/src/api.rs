@@ -42,6 +42,17 @@ pub fn router(state: Arc<HubState>) -> Router {
         .route("/api/packs/{id}/download", post(pack_download))
         .route("/api/packs/{id}/pause", post(pack_pause))
         .route("/api/packs/{id}/export", post(pack_export))
+        .route("/api/supplies/summary", get(supplies_summary))
+        .route("/api/items", get(items_list).post(items_create))
+        .route("/api/items/{id}", get(items_get).patch(items_update).delete(items_delete))
+        .route("/api/items/{id}/adjust", post(items_adjust))
+        .route("/api/barcodes/{code}", get(barcode_lookup))
+        .route("/api/places", get(places_list).post(places_add))
+        .route("/api/places/{id}", axum::routing::delete(places_delete))
+        .route("/api/shopping", get(shopping_list).post(shopping_add))
+        .route("/api/shopping/clear-done", post(shopping_clear_done))
+        .route("/api/shopping/{id}", axum::routing::patch(shopping_update).delete(shopping_delete))
+        .route("/api/history", get(history))
         .route("/api/library", get(library_books))
         .route("/api/library/search", get(library_search))
         .route("/kiwix/{*rest}", get(kiwix_proxy))
@@ -88,10 +99,11 @@ pub enum Caller {
 }
 
 impl Caller {
+    /// Who did it, as shown in the history.
     fn actor(&self) -> String {
         match self {
             Caller::Local => "laptop".into(),
-            Caller::Device(d) => d.id.clone(),
+            Caller::Device(d) => d.name.clone(),
         }
     }
 }
@@ -572,4 +584,160 @@ async fn kiwix_proxy(State(state): State<Arc<HubState>>, _caller: Caller, uri: a
         }
         Err(_) => (StatusCode::SERVICE_UNAVAILABLE, "library engine is not running").into_response(),
     }
+}
+
+// ---- supplies ---------------------------------------------------------------
+
+use zaklon_core::supplies::{ItemInput, Item};
+
+fn not_found_item() -> ApiError {
+    not_found("no such item")
+}
+
+/// Validation problems from the storage layer are the caller's fault.
+fn invalid(e: anyhow::Error) -> ApiError {
+    let msg = e.to_string();
+    if msg.contains("required") || msg.contains("unknown") || msg.contains("must be") {
+        bad(&msg)
+    } else {
+        ApiError::from(e)
+    }
+}
+
+async fn supplies_summary(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<zaklon_core::supplies::Summary>, ApiError> {
+    Ok(Json(state.db.supplies_summary()?))
+}
+
+async fn items_list(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<Vec<Item>>, ApiError> {
+    Ok(Json(state.db.list_items()?))
+}
+
+async fn items_get(State(state): State<Arc<HubState>>, _caller: Caller, Path(id): Path<String>) -> Result<Json<Item>, ApiError> {
+    state.db.get_item(&id)?.map(Json).ok_or_else(not_found_item)
+}
+
+async fn items_create(State(state): State<Arc<HubState>>, caller: Caller, Json(body): Json<ItemInput>) -> Result<(StatusCode, Json<Item>), ApiError> {
+    let item = state.db.create_item(body, &caller.actor()).map_err(invalid)?;
+    Ok((StatusCode::CREATED, Json(item)))
+}
+
+async fn items_update(State(state): State<Arc<HubState>>, caller: Caller, Path(id): Path<String>, Json(body): Json<ItemInput>) -> Result<Json<Item>, ApiError> {
+    state.db.update_item(&id, body, &caller.actor()).map_err(invalid)?.map(Json).ok_or_else(not_found_item)
+}
+
+#[derive(Deserialize)]
+struct AdjustBody {
+    delta: f64,
+}
+
+async fn items_adjust(State(state): State<Arc<HubState>>, caller: Caller, Path(id): Path<String>, Json(body): Json<AdjustBody>) -> Result<Json<Item>, ApiError> {
+    if !body.delta.is_finite() || body.delta == 0.0 {
+        return Err(bad("delta must be a non-zero number"));
+    }
+    state.db.adjust_item(&id, body.delta, &caller.actor())?.map(Json).ok_or_else(not_found_item)
+}
+
+async fn items_delete(State(state): State<Arc<HubState>>, caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
+    if state.db.delete_item(&id, &caller.actor())? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(not_found_item())
+    }
+}
+
+#[derive(Serialize)]
+struct BarcodeReply {
+    barcode: String,
+    /// An item in stock with this barcode, if any.
+    item: Option<Item>,
+    /// What this barcode was called before, if it was ever used.
+    known: Option<zaklon_core::supplies::KnownBarcode>,
+}
+
+async fn barcode_lookup(State(state): State<Arc<HubState>>, _caller: Caller, Path(code): Path<String>) -> Result<Json<BarcodeReply>, ApiError> {
+    let code = code.trim().to_string();
+    if code.is_empty() || code.len() > 64 {
+        return Err(bad("bad barcode"));
+    }
+    Ok(Json(BarcodeReply {
+        item: state.db.find_item_by_barcode(&code)?,
+        known: state.db.lookup_barcode(&code)?,
+        barcode: code,
+    }))
+}
+
+async fn places_list(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<Vec<zaklon_core::supplies::Place>>, ApiError> {
+    Ok(Json(state.db.list_places()?))
+}
+
+#[derive(Deserialize)]
+struct NameBody {
+    name: String,
+}
+
+async fn places_add(State(state): State<Arc<HubState>>, _caller: Caller, Json(body): Json<NameBody>) -> Result<Json<zaklon_core::supplies::Place>, ApiError> {
+    Ok(Json(state.db.add_place(&body.name).map_err(invalid)?))
+}
+
+async fn places_delete(State(state): State<Arc<HubState>>, _caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
+    if state.db.delete_place(&id)? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(not_found("no such place"))
+    }
+}
+
+async fn shopping_list(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<Vec<zaklon_core::supplies::ShoppingEntry>>, ApiError> {
+    Ok(Json(state.db.shopping_list()?))
+}
+
+#[derive(Deserialize)]
+struct ShoppingBody {
+    text: String,
+    #[serde(default)]
+    quantity: Option<f64>,
+    #[serde(default)]
+    unit: Option<String>,
+    #[serde(default)]
+    item_id: Option<String>,
+}
+
+async fn shopping_add(State(state): State<Arc<HubState>>, caller: Caller, Json(b): Json<ShoppingBody>) -> Result<(StatusCode, Json<zaklon_core::supplies::ShoppingEntry>), ApiError> {
+    let e = state.db.add_shopping(&b.text, b.quantity, b.unit, b.item_id, &caller.actor()).map_err(invalid)?;
+    Ok((StatusCode::CREATED, Json(e)))
+}
+
+#[derive(Deserialize)]
+struct DoneBody {
+    done: bool,
+}
+
+async fn shopping_update(State(state): State<Arc<HubState>>, caller: Caller, Path(id): Path<String>, Json(b): Json<DoneBody>) -> Result<StatusCode, ApiError> {
+    if state.db.set_shopping_done(&id, b.done, &caller.actor())? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(not_found("no such entry"))
+    }
+}
+
+async fn shopping_delete(State(state): State<Arc<HubState>>, _caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
+    if state.db.delete_shopping(&id)? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(not_found("no such entry"))
+    }
+}
+
+async fn shopping_clear_done(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<serde_json::Value>, ApiError> {
+    Ok(Json(serde_json::json!({ "removed": state.db.clear_done_shopping()? })))
+}
+
+#[derive(Deserialize)]
+struct HistoryQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+async fn history(State(state): State<Arc<HubState>>, _caller: Caller, axum::extract::Query(q): axum::extract::Query<HistoryQuery>) -> Result<Json<Vec<zaklon_core::supplies::HistoryEntry>>, ApiError> {
+    Ok(Json(state.db.history(q.limit.unwrap_or(100).clamp(1, 500))?))
 }

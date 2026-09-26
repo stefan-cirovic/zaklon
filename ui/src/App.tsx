@@ -7,6 +7,7 @@ import Connect from "./screens/Connect";
 import Placeholder from "./screens/Placeholder";
 import Addons from "./screens/Addons";
 import Library from "./screens/Library";
+import Supplies from "./screens/Supplies";
 
 const TABS: { id: string; key: Key; ico: string }[] = [
   { id: "home", key: "home", ico: "⌂" },
@@ -121,7 +122,7 @@ export default function App() {
         )}
         {tab === "library" && <Library t={t} lang={lang} go={setTab} />}
         {tab === "maps" && <Placeholder title={t("maps")} text={t("comingSoon")} />}
-        {tab === "supplies" && <Placeholder title={t("supplies")} text={t("comingSoon")} />}
+        {tab === "supplies" && <Supplies t={t} />}
         {tab === "assistant" && <Placeholder title={t("assistant")} text={t("comingSoon")} />}
         {tab === "addons" && <Addons t={t} lang={lang} isHub={mode?.mode === "hub"} />}
         {mode && (

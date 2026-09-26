@@ -23,7 +23,7 @@ rand = "0.8"
 sha2 = "0.10"
 base64 = "0.22"
 uuid = { version = "1", features = ["v4", "serde"] }
-time = { version = "0.3", features = ["formatting", "parsing", "serde"] }
+time = { version = "0.3", features = ["formatting", "parsing", "serde", "macros", "local-offset"] }
 argon2 = "0.5"
 rcgen = { version = "0.13", default-features = false, features = ["pem", "ring", "crypto"] }
 
