@@ -53,8 +53,17 @@ export function inTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+/** True when this page is served by the hub on the laptop (desktop window or a browser on the laptop). */
+function servedByHub(): boolean {
+  return typeof location !== "undefined" && location.protocol === "http:" && /^(127\.0\.0\.1|localhost):8481$/.test(location.host);
+}
+
 export function getMode(): Promise<AppMode> {
   if (!modePromise) {
+    if (servedByHub()) {
+      modePromise = Promise.resolve({ mode: "hub", api_base: "", platform: "windows", version: "" });
+      return modePromise;
+    }
     modePromise = inTauri()
       ? invoke<AppMode>("app_mode")
       : Promise.resolve({
@@ -98,7 +107,7 @@ export async function api<T = unknown>(path: string, init: { method?: string; js
     return JSON.parse(res.body) as T;
   }
 
-  if (!mode.api_base) throw new ApiError(0, "not connected to a hub");
+  if (mode.api_base === null) throw new ApiError(0, "not connected to a hub");
   const res = await fetch(mode.api_base + path, {
     method,
     headers: body !== undefined ? { "content-type": "application/json" } : undefined,
@@ -125,4 +134,11 @@ export function clientForget(): Promise<void> {
 
 export function clientDiscover(): Promise<DiscoveredHub[]> {
   return invoke<DiscoveredHub[]>("client_discover");
+}
+
+/** Where library articles are loaded from: the hub itself on the laptop, the loopback proxy on phones. */
+export async function contentBase(): Promise<string> {
+  const mode = await getMode();
+  if (mode.mode === "client") return invoke<string>("client_content_base");
+  return mode.api_base ?? "";
 }

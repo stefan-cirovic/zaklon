@@ -6,6 +6,7 @@ import Household from "./screens/Household";
 import Connect from "./screens/Connect";
 import Placeholder from "./screens/Placeholder";
 import Addons from "./screens/Addons";
+import Library from "./screens/Library";
 
 const TABS: { id: string; key: Key; ico: string }[] = [
   { id: "home", key: "home", ico: "⌂" },
@@ -25,7 +26,17 @@ function readPref(key: string, fallback: string): string {
 }
 
 export default function App() {
-  const [tab, setTab] = useState("home");
+  const TAB_IDS = ["home", "library", "maps", "supplies", "assistant", "addons", "household"];
+  const initialTab = typeof location !== "undefined" ? location.hash.replace("#", "") : "";
+  const [tab, setTabState] = useState(TAB_IDS.includes(initialTab) ? initialTab : "home");
+  const setTab = (id: string) => {
+    setTabState(id);
+    try {
+      history.replaceState(null, "", `#${id}`);
+    } catch {
+      /* ignore */
+    }
+  };
   const [mode, setMode] = useState<AppMode | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -108,14 +119,14 @@ export default function App() {
             <Household status={status} t={t} lang={lang} setLang={setLang} refresh={refresh} />
           </div>
         )}
-        {tab === "library" && <Placeholder title={t("library")} text={t("comingSoon")} />}
+        {tab === "library" && <Library t={t} lang={lang} go={setTab} />}
         {tab === "maps" && <Placeholder title={t("maps")} text={t("comingSoon")} />}
         {tab === "supplies" && <Placeholder title={t("supplies")} text={t("comingSoon")} />}
         {tab === "assistant" && <Placeholder title={t("assistant")} text={t("comingSoon")} />}
         {tab === "addons" && <Addons t={t} lang={lang} isHub={mode?.mode === "hub"} />}
         {mode && (
           <p className="muted" style={{ marginTop: 32, fontSize: 12 }}>
-            {mode.mode} · {mode.platform} · {mode.version}
+            {[mode.mode, mode.platform, mode.version || status?.version].filter(Boolean).join(" · ")}
           </p>
         )}
       </main>

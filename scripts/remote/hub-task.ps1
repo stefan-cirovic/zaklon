@@ -10,6 +10,8 @@ $task = 'Zaklon_Hub'
 
 Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue
 Stop-Process -Name 'zaklon-hub' -Force -ErrorAction SilentlyContinue
+# Library engine processes left behind by hub versions before the job-object fix.
+Get-Process -Name 'kiwix-serve' -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($Root, [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force -ErrorAction SilentlyContinue
 
 # Firewall: one clean rule per port, replacing anything left from earlier attempts.
 Get-NetFirewallRule | Where-Object { $_.DisplayName -like '*Zaklon*' } | Remove-NetFirewallRule -ErrorAction SilentlyContinue

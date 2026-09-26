@@ -1,13 +1,16 @@
 //! The Zaklon hub library. Opens the household folder, then serves:
 //! - HTTPS on `config.port` (default 8484) for paired phones,
 //! - HTTP on 127.0.0.1:8481 for the desktop window,
-//! - HTTP on 0.0.0.0:8480 for the "install the app" page and APK files,
-//! and announces itself with DNS-SD plus a UDP beacon.
+//! - HTTP on 0.0.0.0:8480 for the "install the app" page and APK files.
+//!
+//! It announces itself with DNS-SD plus a UDP beacon, and runs the library
+//! engine (kiwix-serve) on a private loopback port.
 
 pub mod api;
 pub mod discovery;
 pub mod downloads;
 pub mod install;
+pub mod kiwix;
 pub mod ui;
 
 use std::collections::HashMap;
@@ -22,6 +25,7 @@ use zaklon_core::catalog::Catalog;
 use zaklon_core::tls::Identity;
 
 use downloads::Downloads;
+use kiwix::Library;
 use zaklon_core::{Config, Db};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -41,6 +45,7 @@ pub struct HubState {
     pub started: Instant,
     pub pairing: Mutex<HashMap<String, PairingSession>>,
     pub downloads: Arc<Downloads>,
+    pub library: Arc<Library>,
 }
 
 impl HubState {
@@ -93,6 +98,7 @@ impl Hub {
                 identity,
                 started: Instant::now(),
                 pairing: Mutex::new(HashMap::new()),
+                library: Library::new(downloads.clone()),
                 downloads,
             }),
         })
@@ -135,6 +141,7 @@ impl Hub {
 
         let _discovery = discovery::start(state.clone()).await?;
         state.downloads.start();
+        state.library.start();
 
         tokio::select! {
             r = tls_srv => r.context("tls server")?,

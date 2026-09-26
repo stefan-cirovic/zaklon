@@ -28,6 +28,11 @@ const en = {
   installed: "Installed", verifying: "Verifying…", importTitle: "Import from a USB stick or folder",
   importIntro: "Pick the folder that holds the pack files (or its zaklon-packs subfolder). Files are verified before they are used.",
   importBtn: "Import", imported: "Imported", nothingToImport: "No matching pack files were found there.",
+  libraryIntro: "Search and read the knowledge packs stored on the hub. Works without internet.",
+  searchPlaceholder: "Search the library…", books: "Books", noResults: "Nothing found.", back: "Back",
+  noBooks: "No knowledge packs yet. Download one in Add-ons, for example Wikipedia in Serbian.",
+  goToAddons: "Open Add-ons", engineStarting: "The library is starting…",
+  engineFailed: "The library engine could not start. Try removing and downloading the \"Library engine\" add-on again.",
 };
 
 const sr: typeof en = {
@@ -58,6 +63,11 @@ const sr: typeof en = {
   installed: "Instalirano", verifying: "Provera…", importTitle: "Uvoz sa USB-a ili iz foldera",
   importIntro: "Izaberi folder u kome su fajlovi paketa (ili njegov podfolder zaklon-packs). Fajlovi se proveravaju pre upotrebe.",
   importBtn: "Uvezi", imported: "Uvezeno", nothingToImport: "Tamo nema odgovarajućih fajlova paketa.",
+  libraryIntro: "Pretražuj i čitaj pakete znanja sa huba. Radi bez interneta.",
+  searchPlaceholder: "Pretraži biblioteku…", books: "Knjige", noResults: "Ništa nije pronađeno.", back: "Nazad",
+  noBooks: "Još nema paketa znanja. Preuzmi neki u Dodacima, na primer Vikipediju na srpskom.",
+  goToAddons: "Otvori Dodatke", engineStarting: "Biblioteka se pokreće…",
+  engineFailed: "Motor biblioteke nije mogao da se pokrene. Probaj da ukloniš i ponovo preuzmeš dodatak \"Motor biblioteke\".",
 };
 
 const dict: Record<Lang, typeof en> = { en, sr };

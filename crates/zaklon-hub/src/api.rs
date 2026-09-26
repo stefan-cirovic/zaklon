@@ -42,6 +42,9 @@ pub fn router(state: Arc<HubState>) -> Router {
         .route("/api/packs/{id}/download", post(pack_download))
         .route("/api/packs/{id}/pause", post(pack_pause))
         .route("/api/packs/{id}/export", post(pack_export))
+        .route("/api/library", get(library_books))
+        .route("/api/library/search", get(library_search))
+        .route("/kiwix/{*rest}", get(kiwix_proxy))
         .fallback(crate::ui::serve)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -108,7 +111,8 @@ impl FromRequestParts<Arc<HubState>> for Caller {
         }
         let peer = parts.extensions.get::<ConnectInfo<SocketAddr>>().map(|c| c.0);
         match peer {
-            Some(addr) if addr.ip().is_loopback() => Ok(Caller::Local),
+            Some(addr) if addr.ip().is_loopback() && local_request_is_ours(parts) => Ok(Caller::Local),
+            Some(addr) if addr.ip().is_loopback() => Err(forbidden("request from another website")),
             _ => Err(unauthorized()),
         }
     }
@@ -140,6 +144,26 @@ impl FromRequestParts<Arc<HubState>> for Local {
             Caller::Local => Ok(Local),
             Caller::Device(_) => Err(forbidden("only the laptop can do this")),
         }
+    }
+}
+
+/// A loopback request is trusted only when it comes from the hub's own pages
+/// (or from a non-browser client). This stops other websites open in a browser
+/// on the laptop from driving the hub (CSRF), and stops DNS-rebinding tricks.
+fn local_request_is_ours(parts: &Parts) -> bool {
+    let header = |name: &str| parts.headers.get(name).and_then(|v| v.to_str().ok());
+    let local_hosts = [
+        format!("127.0.0.1:{}", crate::LOCAL_PORT),
+        format!("localhost:{}", crate::LOCAL_PORT),
+    ];
+    if let Some(host) = header("host") {
+        if !local_hosts.iter().any(|h| h.eq_ignore_ascii_case(host)) {
+            return false;
+        }
+    }
+    match header("origin") {
+        None => true,
+        Some(origin) => local_hosts.iter().any(|h| origin.eq_ignore_ascii_case(&format!("http://{h}"))),
     }
 }
 
@@ -484,4 +508,68 @@ async fn pack_export(State(state): State<Arc<HubState>>, _: Local, Path(id): Pat
         .map_err(|e| anyhow::anyhow!(e))?
         .map_err(|e| bad(&e))?;
     Ok(Json(serde_json::json!({ "exported_to": target.display().to_string() })))
+}
+
+// ---- library ----------------------------------------------------------------
+
+#[derive(Serialize)]
+struct LibraryReply {
+    engine: crate::kiwix::EngineState,
+    books: Vec<crate::kiwix::Book>,
+}
+
+async fn library_books(State(state): State<Arc<HubState>>, _caller: Caller) -> Json<LibraryReply> {
+    Json(LibraryReply { engine: state.library.state(), books: state.library.books() })
+}
+
+#[derive(Deserialize)]
+struct SearchQuery {
+    q: String,
+    #[serde(default)]
+    book: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+async fn library_search(
+    State(state): State<Arc<HubState>>,
+    _caller: Caller,
+    axum::extract::Query(q): axum::extract::Query<SearchQuery>,
+) -> Json<Vec<crate::kiwix::SearchResult>> {
+    let limit = q.limit.unwrap_or(25).clamp(1, 50);
+    Json(state.library.search(&q.q, q.book.as_deref(), limit).await)
+}
+
+/// Articles, images and styles of installed knowledge packs, read-only.
+async fn kiwix_proxy(State(state): State<Arc<HubState>>, _caller: Caller, uri: axum::http::Uri) -> Response {
+    let path = uri.path_and_query().map(|p| p.as_str()).unwrap_or("/");
+    if !path.starts_with("/kiwix/") {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    match state.library.fetch(path).await {
+        Ok(res) => {
+            let status = StatusCode::from_u16(res.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+            let ctype = res
+                .headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("application/octet-stream")
+                .to_string();
+            let cache = if ctype.starts_with("text/html") { "no-cache" } else { "private, max-age=86400" };
+            match res.bytes().await {
+                Ok(body) => (
+                    status,
+                    [
+                        (axum::http::header::CONTENT_TYPE, ctype),
+                        (axum::http::header::CACHE_CONTROL, cache.to_string()),
+                        (axum::http::header::HeaderName::from_static("x-content-type-options"), "nosniff".to_string()),
+                    ],
+                    body,
+                )
+                    .into_response(),
+                Err(_) => StatusCode::BAD_GATEWAY.into_response(),
+            }
+        }
+        Err(_) => (StatusCode::SERVICE_UNAVAILABLE, "library engine is not running").into_response(),
+    }
 }

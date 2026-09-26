@@ -6,7 +6,7 @@ Zaklon is developed in the open, without a fixed deadline, in order of technical
 
 Validate the riskiest pieces before building modules:
 
-- [ ] Android app (Tauri 2) connects to the Rust hub over pinned TLS on a laptop-created Wi-Fi network with no internet.
+- [x] Android app (Tauri 2) connects to the Rust hub over pinned TLS on the local network with no internet (tested on a real phone, 2026-09-26). Laptop-created Wi-Fi still to test.
 - [ ] On-device AI on Android (small Qwen3.5 model) with the model downloaded from the hub.
 - [ ] Barcode scanning from the Android app.
 - [ ] 20 GB pack download with resume, verification and USB import; kiwix-serve and llama-server supervised as sidecars on Windows.
@@ -14,7 +14,7 @@ Validate the riskiest pieces before building modules:
 ## 1.0
 
 1. Hub core, pairing, Household screen, Windows installer.
-2. Library: kiwix-serve, catalog, downloads, USB export/import.
+2. Library: kiwix-serve, catalog, downloads, USB export/import. *Working: supervised kiwix-serve, search across books in Latin and Cyrillic (also without diacritics), reader on laptop and phone.*
 3. Supplies: items, barcodes, history, backup/restore.
 4. Maps: CoMaps APK and map files served by the hub.
 5. Assistant: hub model, then phone model, then opt-in online research.

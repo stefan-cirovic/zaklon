@@ -10,23 +10,16 @@
     "beforeBuildCommand": "pnpm --filter ui build"
   },
   "app": {
-    "windows": [
-      {
-        "title": "Zaklon",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 900,
-        "minHeight": 600,
-        "backgroundColor": "#0b0d10"
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "publisher": "Zaklon",
     "category": "Utility",
     "shortDescription": "Offline home base: knowledge, maps, supplies and a local AI assistant.",
@@ -40,7 +33,9 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["English"]
+        "languages": [
+          "English"
+        ]
       }
     }
   }

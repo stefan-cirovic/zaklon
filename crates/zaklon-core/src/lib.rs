@@ -6,6 +6,7 @@ pub mod config;
 pub mod db;
 pub mod pairing;
 pub mod tls;
+pub mod translit;
 
 pub use config::Config;
 pub use db::Db;

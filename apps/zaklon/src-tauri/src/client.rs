@@ -86,6 +86,8 @@ pub struct DiscoveredHub {
 pub struct ClientState {
     dir: PathBuf,
     link: Mutex<Option<HubLink>>,
+    /// Base URL of the loopback content proxy, once started.
+    content_base: tokio::sync::Mutex<Option<String>>,
 }
 
 impl ClientState {
@@ -93,7 +95,7 @@ impl ClientState {
         let link = std::fs::read(dir.join(LINK_FILE))
             .ok()
             .and_then(|bytes| serde_json::from_slice::<HubLink>(&bytes).ok());
-        Self { dir, link: Mutex::new(link) }
+        Self { dir, link: Mutex::new(link), content_base: tokio::sync::Mutex::new(None) }
     }
 
     fn link(&self) -> Option<HubLink> {
@@ -333,5 +335,85 @@ fn short_err(e: &reqwest::Error) -> String {
     } else {
         let s = e.to_string();
         s.split(": ").last().unwrap_or(&s).to_string()
+    }
+}
+
+// ---- loopback content proxy -------------------------------------------------
+//
+// Library articles are HTML pages with images and styles, shown in a frame.
+// The frame cannot add the device token or pin the hub certificate, so the app
+// runs a tiny read-only proxy on 127.0.0.1 that does both. It only forwards
+// GET /<secret>/kiwix/... ; the random secret keeps other apps on the phone
+// from using it.
+
+impl ClientState {
+    /// Start the proxy on first use and return its base URL.
+    pub async fn content_base(self: &Arc<Self>) -> Result<String, String> {
+        let mut base = self.content_base.lock().await;
+        if let Some(b) = base.as_ref() {
+            return Ok(b.clone());
+        }
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.map_err(|e| e.to_string())?;
+        let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+        let secret: String = {
+            use rand::RngCore;
+            let mut b = [0u8; 16];
+            rand::thread_rng().fill_bytes(&mut b);
+            b.iter().map(|x| format!("{x:02x}")).collect()
+        };
+        let me = self.clone();
+        let prefix = format!("/{secret}");
+        let app = axum::Router::new().fallback(move |uri: axum::http::Uri| {
+            let me = me.clone();
+            let prefix = prefix.clone();
+            async move { me.proxy(uri, &prefix).await }
+        });
+        tokio::spawn(async move {
+            if let Err(e) = axum::serve(listener, app).await {
+                tracing::warn!("content proxy stopped: {e}");
+            }
+        });
+        let b = format!("http://127.0.0.1:{port}/{secret}");
+        *base = Some(b.clone());
+        Ok(b)
+    }
+
+    async fn proxy(&self, uri: axum::http::Uri, prefix: &str) -> axum::response::Response {
+        use axum::http::{header, StatusCode};
+        use axum::response::IntoResponse;
+        let full = uri.path_and_query().map(|p| p.as_str()).unwrap_or("/");
+        let Some(rest) = full.strip_prefix(prefix) else { return StatusCode::NOT_FOUND.into_response() };
+        if !rest.starts_with("/kiwix/") {
+            return StatusCode::NOT_FOUND.into_response();
+        }
+        let Some(link) = self.link() else {
+            return (StatusCode::SERVICE_UNAVAILABLE, "not paired").into_response();
+        };
+        let Ok(client) = pinned_client(&link.fingerprint) else { return StatusCode::BAD_GATEWAY.into_response() };
+        let mut hosts = link.hosts.clone();
+        if let Some(last) = &link.last_host {
+            hosts.retain(|h| h != last);
+            hosts.insert(0, last.clone());
+        }
+        for host in hosts {
+            let url = format!("https://{}:{}{}", host, link.port, rest);
+            let sent = client
+                .get(&url)
+                .header("authorization", format!("Bearer {}", link.device_token))
+                .send()
+                .await;
+            let Ok(res) = sent else { continue };
+            let status = StatusCode::from_u16(res.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+            let header_str = |name: &str, dflt: &str| {
+                res.headers().get(name).and_then(|v| v.to_str().ok()).unwrap_or(dflt).to_string()
+            };
+            let ctype = header_str("content-type", "application/octet-stream");
+            let cache = header_str("cache-control", "no-cache");
+            return match res.bytes().await {
+                Ok(body) => (status, [(header::CONTENT_TYPE, ctype), (header::CACHE_CONTROL, cache)], body).into_response(),
+                Err(_) => StatusCode::BAD_GATEWAY.into_response(),
+            };
+        }
+        (StatusCode::BAD_GATEWAY, "hub not reachable").into_response()
     }
 }
