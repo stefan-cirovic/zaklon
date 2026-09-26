@@ -44,7 +44,7 @@ p { margin: 0 0 12px; }
 
 /* Layout */
 .shell { display: grid; grid-template-rows: 1fr auto; min-height: 100%; }
-.content { padding: 20px 16px calc(20px + env(safe-area-inset-bottom)); max-width: 1100px; width: 100%; margin: 0 auto; }
+.content { padding: calc(40px + env(safe-area-inset-top, 0px)) 16px calc(20px + env(safe-area-inset-bottom, 0px)); max-width: 1100px; width: 100%; margin: 0 auto; }
 .nav {
   display: flex; justify-content: space-around; align-items: stretch;
   border-top: 1px solid var(--line); background: var(--panel);
@@ -111,3 +111,8 @@ label.field { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
 /* Progress */
 .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 4px 0; }
 .bar > i { display: block; height: 100%; background: var(--accent); }
+
+/* Full-screen centered layout (phone connect screen) */
+.center-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+.center-screen > .stack { width: 100%; max-width: 420px; text-align: center; }
+.center-screen label.field, .center-screen .list, .center-screen .panel { text-align: left; }

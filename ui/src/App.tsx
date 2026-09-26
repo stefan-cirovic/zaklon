@@ -84,11 +84,9 @@ export default function App() {
 
   if (mode?.mode === "client" && link && !link.linked) {
     return (
-      <div className="shell">
-        <main className="content">
-          <Connect t={t} onLinked={async () => { setLink(await clientState()); refresh(); }} />
-        </main>
-      </div>
+      <main className="center-screen">
+        <Connect t={t} onLinked={async () => { setLink(await clientState()); refresh(); }} />
+      </main>
     );
   }
 

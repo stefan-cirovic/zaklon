@@ -76,7 +76,7 @@ export default function Connect({ t, onLinked }: Props) {
   };
 
   return (
-    <div className="stack" style={{ maxWidth: 480 }}>
+    <div className="stack">
       <div>
         <h1>{t("connectTitle")}</h1>
         <p className="muted">{t("connectIntro")}</p>
