@@ -9,9 +9,11 @@
 pub mod api;
 pub mod discovery;
 pub mod downloads;
+pub mod export;
 pub mod install;
 pub mod kiwix;
 pub mod latin;
+pub mod machine;
 pub mod ui;
 
 use std::collections::HashMap;
@@ -52,6 +54,7 @@ pub struct HubState {
     pub recent_pairs: Mutex<HashMap<String, (Instant, String, api::Paired)>>,
     pub downloads: Arc<Downloads>,
     pub library: Arc<Library>,
+    pub export: Arc<export::Exporter>,
 }
 
 impl HubState {
@@ -107,6 +110,7 @@ impl Hub {
                 pairing_failures: Mutex::new(0),
                 recent_pairs: Mutex::new(HashMap::new()),
                 library: Library::new(downloads.clone()),
+                export: export::Exporter::new(),
                 downloads,
             }),
         })

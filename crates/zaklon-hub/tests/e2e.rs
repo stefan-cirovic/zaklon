@@ -390,9 +390,35 @@ async fn full_hub_flow() {
 
     // 13. Export to a "USB stick", remove, import back.
     let usb = temp_dir("usb");
-    let (st, _) = hub.post("/api/packs/test-pack/export", json!({ "dir": usb.display().to_string() })).await;
-    assert_eq!(st, 200);
+    let (st, err) = hub.post("/api/export", json!({ "dir": usb.display().to_string(), "ids": ["broken-pack"] })).await;
+    assert_eq!(st, 400, "only installed packs can be copied: {err}");
+    let (st, _) = hub.post("/api/export", json!({ "dir": usb.join("missing").display().to_string(), "ids": ["test-pack"] })).await;
+    assert_eq!(st, 400, "the folder must exist");
+    let (st, _) = hub.post("/api/export", json!({ "dir": usb.display().to_string(), "ids": ["test-pack"] })).await;
+    assert_eq!(st, 202);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let ex = loop {
+        let (_, ex) = hub.get("/api/export").await;
+        if ex["running"] == false {
+            break ex;
+        }
+        assert!(Instant::now() < deadline, "copy did not finish: {ex}");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+    assert_eq!(ex["finished"], true, "{ex}");
+    assert_eq!(ex["bytes_done"], 3_000_000);
     assert!(usb.join("zaklon-packs/tiny_test_2026-01.zim").is_file());
+    assert!(usb.join("zaklon-packs/README.txt").is_file());
+    assert!(!usb.join("zaklon-packs/tiny_test_2026-01.zim.part").exists());
+    // A phone cannot write to the laptop's drives or list them.
+    let r = phone.post(format!("{}/api/export", hub.tls)).bearer_auth(&token).json(&json!({ "dir": usb.display().to_string(), "ids": ["test-pack"] })).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 403);
+    let r = phone.get(format!("{}/api/drives", hub.tls)).bearer_auth(&token).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 403);
+    let r = phone.get(format!("{}/api/hardware", hub.tls)).bearer_auth(&token).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 200);
+    let (_, hw) = hub.get("/api/hardware").await;
+    assert!(hw["ram_total"].as_u64().unwrap() > 0);
     let (st, _) = hub.send(reqwest::Method::DELETE, "/api/packs/test-pack", None).await;
     assert_eq!(st, 204);
     assert!(!installed.exists());

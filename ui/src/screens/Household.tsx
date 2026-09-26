@@ -5,6 +5,7 @@ import { errText } from "../errors";
 import { fmtDateTime, latinArticles, securityCode, setLatinArticles } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
 import Qr from "../components/Qr";
+import { About, Appearance, ChangePassword, ThisHub, type Look } from "./HouseholdMore";
 
 type T = (k: Key) => string;
 type Props = {
@@ -17,14 +18,23 @@ type Props = {
   isHub: boolean;
   /** This phone's own device id (phones only). */
   ownDeviceId: string | null;
+  look: Look;
 };
 
-export default function Household({ status, t, lang, setLang, refresh, isHub, ownDeviceId }: Props) {
+export default function Household({ status, t, lang, setLang, refresh, isHub, ownDeviceId, look }: Props) {
   if (!status) return <p className="muted">…</p>;
   if (!status.set_up) {
     return isHub ? <Setup t={t} lang={lang} setLang={setLang} onDone={refresh} defaultName={status.hub_name} /> : <p className="muted">{t("hubNotSetUp")}</p>;
   }
-  return <Devices t={t} status={status} lang={lang} setLang={setLang} isHub={isHub} ownDeviceId={ownDeviceId} />;
+  return (
+    <div className="stack">
+      <Devices t={t} status={status} lang={lang} setLang={setLang} isHub={isHub} ownDeviceId={ownDeviceId} />
+      <Appearance t={t} look={look} />
+      {isHub && <ChangePassword t={t} />}
+      <ThisHub t={t} status={status} isHub={isHub} />
+      <About t={t} status={status} />
+    </div>
+  );
 }
 
 type SetupProps = { t: T; lang: Lang; setLang: (l: Lang) => void; onDone: () => void; defaultName: string };
@@ -246,12 +256,6 @@ function Devices({ t, status, lang, setLang, isHub, ownDeviceId }: DevicesProps)
           </div>
         )}
       </div>
-      {isHub && (
-        <div className="panel">
-          <div className="label">{t("dataFolder")}</div>
-          <div style={{ wordBreak: "break-all" }}>{status.root ?? "–"}</div>
-        </div>
-      )}
     </div>
   );
 }

@@ -150,7 +150,7 @@ test("language switch to Serbian and back, with Serbian number format", async ({
   await expect(page.locator(".item.supply", { hasText: name }).locator(".qty-val")).toContainText("1,5");
   await page.goto("/#household");
   await page.locator("select").first().selectOption("en");
-  await expect(page.getByRole("heading", { name: "Household" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Household", exact: true })).toBeVisible();
 });
 
 test("library without packs points to add-ons, which lists the catalog", async ({ page }) => {
@@ -308,4 +308,47 @@ test("maps: the phone steps show the hub address, and the world is searchable", 
   await page.goto("/#addons");
   await expect(page.getByText(/Maps of the world are chosen on their own screen/)).toBeVisible();
   await expect(page.getByText("Montenegro")).toHaveCount(0);
+});
+
+test("household: accent colour is remembered, password can be changed, hub facts and privacy are shown", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.goto("/#household");
+  await page.getByRole("radio", { name: "Blue" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-accent", "blue");
+  await page.getByLabel(/Pure black background/).check();
+  await expect(page.locator("html")).toHaveAttribute("data-oled", "1");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-accent", "blue");
+  await expect(page.getByRole("radio", { name: "Blue" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: "Green" }).click();
+  await page.getByLabel(/Pure black background/).uncheck();
+
+  const form = page.locator("form").filter({ has: page.getByRole("heading", { name: "Household password" }) });
+  await form.getByLabel("New password").fill("something else");
+  await form.getByLabel("Repeat password").fill("something elsE");
+  await form.getByRole("button", { name: "Change password" }).click();
+  await expect(form.getByRole("alert")).toHaveText(/do not match/i);
+  await form.getByLabel("New password").fill(PASSWORD);
+  await form.getByLabel("Repeat password").fill(PASSWORD);
+  await form.getByRole("button", { name: "Change password" }).click();
+  await expect(form.getByText("Password changed.")).toBeVisible();
+
+  await expect(page.getByRole("heading", { name: "This hub" })).toBeVisible();
+  await expect(page.getByText("Memory")).toBeVisible();
+  await page.getByText("Privacy", { exact: true }).click();
+  await expect(page.getByText(/No tracking, no analytics/)).toBeVisible();
+  await page.getByText("Licenses and credits").click();
+  await expect(page.getByText("Kiwix (kiwix-serve)")).toBeVisible();
+  await noHorizontalScroll(page);
+});
+
+test("add-ons: copy to USB and import offer the laptop's drives", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.goto("/#addons");
+  await expect(page.getByRole("heading", { name: "Copy to USB" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Import from a USB stick or folder" })).toBeVisible();
+  const importDrive = page.getByRole("combobox", { name: "Import from a USB stick or folder", exact: true });
+  await expect.poll(async () => importDrive.locator("option").count()).toBeGreaterThan(1);
+  await expect(importDrive.locator("option").nth(1)).toHaveText(/[A-Z]:.*free/);
+  await noHorizontalScroll(page);
 });

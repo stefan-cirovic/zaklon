@@ -54,7 +54,10 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/packs/{id}", axum::routing::delete(pack_remove))
         .route("/api/packs/{id}/download", post(pack_download))
         .route("/api/packs/{id}/pause", post(pack_pause))
-        .route("/api/packs/{id}/export", post(pack_export))
+        .route("/api/export", get(export_status).post(export_start))
+        .route("/api/export/cancel", post(export_cancel))
+        .route("/api/drives", get(drives))
+        .route("/api/hardware", get(hardware))
         .route("/api/supplies/summary", get(supplies_summary))
         .route("/api/items", get(items_list).post(items_create))
         .route("/api/items/{id}", get(items_get).patch(items_update).delete(items_delete))
@@ -636,17 +639,41 @@ async fn packs_import(State(state): State<Arc<HubState>>, _: Local, Json(body): 
     Ok(Json(serde_json::json!({ "imported": imported })))
 }
 
-async fn pack_export(State(state): State<Arc<HubState>>, _: Local, Path(id): Path<String>, Json(body): Json<DirBody>) -> Result<Json<serde_json::Value>, ApiError> {
+#[derive(Deserialize)]
+struct ExportBody {
+    dir: String,
+    ids: Vec<String>,
+}
+
+/// Copy packs to a folder (a USB drive) in the background. Laptop only:
+/// it writes to the laptop's own drives.
+async fn export_start(State(state): State<Arc<HubState>>, _: Local, Json(body): Json<ExportBody>) -> Result<StatusCode, ApiError> {
     let dir = std::path::PathBuf::from(body.dir.trim());
-    if !dir.is_dir() {
-        return Err(bad("that folder does not exist"));
-    }
-    let d = state.downloads.clone();
-    let target = tokio::task::spawn_blocking(move || d.export_to_dir(&id, &dir))
+    let (ex, d) = (state.export.clone(), state.downloads.clone());
+    tokio::task::spawn_blocking(move || ex.start(&d, &body.ids, &dir))
         .await
         .map_err(|e| anyhow::anyhow!(e))?
         .map_err(|e| bad(&e))?;
-    Ok(Json(serde_json::json!({ "exported_to": target.display().to_string() })))
+    tracing::info!(files = state.export.state().files_total, "copy to drive started");
+    Ok(StatusCode::ACCEPTED)
+}
+
+async fn export_status(State(state): State<Arc<HubState>>, _: Local) -> Json<crate::export::ExportState> {
+    Json(state.export.state())
+}
+
+async fn export_cancel(State(state): State<Arc<HubState>>, _: Local) -> StatusCode {
+    state.export.cancel();
+    StatusCode::NO_CONTENT
+}
+
+/// Drives of the laptop, for copying packs to and from USB.
+async fn drives(_: Local) -> Result<Json<Vec<crate::machine::Drive>>, ApiError> {
+    Ok(Json(tokio::task::spawn_blocking(crate::machine::drives).await.map_err(|e| anyhow::anyhow!(e))?))
+}
+
+async fn hardware(_caller: Caller) -> Result<Json<crate::machine::Hardware>, ApiError> {
+    Ok(Json(tokio::task::spawn_blocking(crate::machine::hardware).await.map_err(|e| anyhow::anyhow!(e))?))
 }
 
 // ---- library ----------------------------------------------------------------

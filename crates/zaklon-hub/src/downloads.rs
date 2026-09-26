@@ -299,22 +299,6 @@ impl Downloads {
         rename_retry(&tmp, &dest).map_err(|e| format!("moving {} into place: {e}", f.path))
     }
 
-    /// Copy an installed pack's files to `dir/zaklon-packs` (USB stick).
-    pub fn export_to_dir(&self, id: &str, dir: &Path) -> Result<PathBuf, String> {
-        let pack = self.catalog.pack(id).ok_or("unknown pack")?;
-        if !self.is_installed(id) {
-            return Err("pack is not installed".into());
-        }
-        let target = dir.join("zaklon-packs");
-        std::fs::create_dir_all(&target).map_err(|e| e.to_string())?;
-        for f in &pack.files {
-            let src = self.library.join(&f.path);
-            let name = Path::new(&f.path).file_name().ok_or("bad path")?;
-            std::fs::copy(&src, target.join(name)).map_err(|e| format!("copying {}: {e}", f.path))?;
-        }
-        Ok(target)
-    }
-
     // ---- internals ----------------------------------------------------------
 
     fn set(&self, id: &str, f: impl FnOnce(&mut PackState)) {

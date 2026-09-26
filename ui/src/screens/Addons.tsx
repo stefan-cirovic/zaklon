@@ -4,6 +4,9 @@ import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
 import { fmtBytes } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
+import { CopyToUsb, DrivePicker, type CopyItem } from "../components/Usb";
+
+type MapCountry = { id: string; name: string; name_sr: string; regions: { id: string; size: number; status: string }[] };
 
 type T = (k: Key) => string;
 type Props = { t: T; lang: Lang; isHub: boolean };
@@ -34,6 +37,16 @@ export default function Addons({ t, lang, isHub }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [importDir, setImportDir] = useState("");
   const [note, setNote] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [maps, setMaps] = useState<MapCountry[]>([]);
+
+  // Installed maps can be copied to USB too (the laptop only).
+  useEffect(() => {
+    if (!isHub) return;
+    api<{ countries: MapCountry[] }>("/api/maps")
+      .then((m) => setMaps(m.countries.filter((c) => c.regions.some((r) => r.status === "installed"))))
+      .catch(() => {});
+  }, [isHub]);
 
   const load = useCallback(async () => {
     try {
@@ -62,17 +75,36 @@ export default function Addons({ t, lang, isHub }: Props) {
 
   const doImport = async () => {
     setNote(null);
+    setErr(null);
+    setImporting(true);
     try {
       const r = await api<{ imported: string[] }>("/api/packs/import", { json: { dir: importDir } });
-      setNote(r.imported.length ? `${t("imported")}: ${r.imported.join(", ")}` : t("nothingToImport"));
+      setNote(r.imported.length ? `${t("imported")}: ${r.imported.length}` : t("nothingToImport"));
       load();
     } catch (e) {
       setErr(errText(t, e));
+    } finally {
+      setImporting(false);
     }
   };
 
   const title = (l: Localized) => (lang === "sr" && l.sr ? l.sr : l.en);
   const groups: Pack["category"][] = ["knowledge", "maps", "model", "app"];
+  // Apps (library engine, CoMaps) come along automatically with what needs them.
+  const copyItems: CopyItem[] = [
+    ...(data?.packs ?? [])
+      .filter((p) => p.state.status === "installed" && p.category !== "app")
+      .map((p) => ({ key: p.id, label: title(p.title), ids: [p.id], size: p.size })),
+    ...maps.map((c) => {
+      const regions = c.regions.filter((r) => r.status === "installed");
+      return {
+        key: `map-country:${c.id}`,
+        label: `${t("mapsOf")}: ${lang === "sr" ? c.name_sr : c.name}`,
+        ids: regions.map((r) => `map:${r.id}`),
+        size: regions.reduce((s, r) => s + r.size, 0),
+      };
+    }),
+  ];
 
   return (
     <div className="stack">
@@ -115,13 +147,16 @@ export default function Addons({ t, lang, isHub }: Props) {
           </div>
         );
       })}
+      {isHub && data && <CopyToUsb t={t} lang={lang} items={copyItems} />}
       {isHub && (
-        <div className="panel stack">
+        <div className="panel stack left">
           <h2>{t("importTitle")}</h2>
-          <p className="muted">{t("importIntro")}</p>
-          <div className="row">
-            <input type="text" value={importDir} onChange={(e) => setImportDir(e.target.value)} placeholder="E:\" aria-label={t("importTitle")} />
-            <button className="btn secondary" onClick={doImport} disabled={!importDir.trim()}>{t("importBtn")}</button>
+          <p className="muted" style={{ margin: 0 }}>{t("importIntro")}</p>
+          <DrivePicker t={t} value={importDir} onChange={setImportDir} label={t("importTitle")} />
+          <div>
+            <button className="btn secondary" onClick={doImport} disabled={!importDir.trim() || importing}>
+              {importing ? t("verifying") : t("importBtn")}
+            </button>
           </div>
           {note && <p className="ok">{note}</p>}
         </div>

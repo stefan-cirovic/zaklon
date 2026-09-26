@@ -13,6 +13,7 @@ import Library from "./screens/Library";
 import Supplies from "./screens/Supplies";
 import PhoneAi from "./screens/PhoneAi";
 import Maps from "./screens/Maps";
+import { ACCENTS, type Accent, type Look } from "./screens/HouseholdMore";
 
 const TABS: { id: string; key: Key; ico: string }[] = [
   { id: "home", key: "home", ico: "⌂" },
@@ -47,7 +48,31 @@ export default function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lang, setLangState] = useState<Lang>((readPref("zaklon.lang", "") as Lang) || "en");
-  const [accent] = useState(readPref("zaklon.accent", "green"));
+  const [accent, setAccentState] = useState<Accent>(() => {
+    const a = readPref("zaklon.accent", "green") as Accent;
+    return ACCENTS.includes(a) ? a : "green";
+  });
+  const [oled, setOledState] = useState(() => readPref("zaklon.oled", "0") === "1");
+  const look: Look = {
+    accent,
+    oled,
+    setAccent: (a) => {
+      setAccentState(a);
+      try {
+        localStorage.setItem("zaklon.accent", a);
+      } catch {
+        /* private mode: just for this session */
+      }
+    },
+    setOled: (on) => {
+      setOledState(on);
+      try {
+        localStorage.setItem("zaklon.oled", on ? "1" : "0");
+      } catch {
+        /* private mode: just for this session */
+      }
+    },
+  };
   const [link, setLink] = useState<LinkSummary | null>(null);
   const [notice, setNotice] = useState<Key | null>(null);
   const connected = useRef(false);
@@ -128,8 +153,9 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.accent = accent;
+    document.documentElement.dataset.oled = oled ? "1" : "0";
     document.documentElement.lang = lang === "sr" ? "sr-Latn" : "en";
-  }, [accent, lang]);
+  }, [accent, oled, lang]);
 
   const needsSetup = status !== null && !status.set_up;
   useEffect(() => {
@@ -177,7 +203,7 @@ export default function App() {
                 <ConfirmButton label={t("forgetHub")} confirmLabel={t("yesForget")} cancelLabel={t("cancel")} onConfirm={forget} />
               </div>
             )}
-            <Household status={status} t={t} lang={lang} setLang={setLang} refresh={refresh} isHub={isHub} ownDeviceId={link?.device_id ?? null} />
+            <Household status={status} t={t} lang={lang} setLang={setLang} refresh={refresh} isHub={isHub} ownDeviceId={link?.device_id ?? null} look={look} />
           </div>
         )}
         {tab === "library" && <Library t={t} lang={lang} go={setTab} />}

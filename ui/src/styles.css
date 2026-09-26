@@ -227,3 +227,22 @@ code.url { background: var(--panel-2); border: 1px solid var(--line); border-rad
 .map-name { font-weight: 600; }
 .regions .region { padding: 6px 0; border-top: 1px solid var(--line); }
 .panel.maps-phone { text-align: left; }
+
+/* Household: appearance, this hub, about */
+.panel.left { text-align: left; }
+.panel h2 { margin: 0; }
+.swatches { display: flex; gap: 12px; flex-wrap: wrap; }
+.swatch { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--line); cursor: pointer; padding: 0; }
+.swatch.on { outline: 2px solid var(--text); outline-offset: 3px; }
+.swatch-green { background: #4ade80; }
+.swatch-white { background: #f2f4f7; }
+.swatch-purple { background: #c084fc; }
+.swatch-blue { background: #60a5fa; }
+.swatch-amber { background: #fbbf24; }
+dl.facts { margin: 0; display: grid; gap: 10px; }
+dl.facts > div { display: grid; grid-template-columns: 170px 1fr; gap: 12px; }
+dl.facts dt { color: var(--muted); font-size: 14px; }
+dl.facts dd { margin: 0; word-break: break-word; }
+@media (max-width: 599px) { dl.facts > div { grid-template-columns: 1fr; gap: 0; } }
+details > summary { cursor: pointer; color: var(--accent); padding: 6px 0; min-height: 32px; }
+ul.plain { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 6px; font-size: 15px; }
