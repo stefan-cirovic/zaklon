@@ -143,6 +143,7 @@ function Devices({ t, status, lang, setLang }: DevicesProps) {
         <div className="panel stack">
           <h2>{t("pairTitle")}</h2>
           <p>{t("pairStep1")}</p>
+          {host && <Qr value={`http://${host}:${pair.payload.install_port}/get`} size={180} />}
           <p className="value" style={{ fontSize: 20 }}>
             {host ? `http://${host}:${pair.payload.install_port}/get` : "–"}
           </p>
