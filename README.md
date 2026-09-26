@@ -4,7 +4,7 @@
 
 *Zaklon* is the Serbian word for shelter. A laptop runs the hub; the phones in your home connect to it over Wi-Fi, with or without internet. It is built for the bad day, and it is useful on every ordinary day in between.
 
-> Status: design complete, implementation starting. Nothing to install yet. Follow the [roadmap](docs/roadmap.md).
+> Status: early development. The hub, phone pairing, library, supplies and add-ons work; maps and the assistant are next. Follow the [roadmap](docs/roadmap.md).
 
 ## What it does
 
@@ -31,6 +31,12 @@ Inspired by projects such as [Internet-in-a-Box](https://internet-in-a-box.org),
 ## Why the name
 
 "Zaklon" is short, easy to say in any language, and means exactly what the project is: the place you go when everything else is down. It is understood across Serbia, Croatia, Bosnia, Montenegro, Slovenia and North Macedonia, and it was free of conflicting apps and domains when we checked.
+
+## Installing (Windows)
+
+Run `Zaklon_<version>_x64-setup.exe`. It installs for the current user, needs no internet (everything it needs is inside), and asks where to put Zaklon: the program and all household data (`data` folder) live in that one folder. Zaklon starts with Windows and keeps running in the tray when its window is closed, so phones stay connected; use the tray icon to quit or to turn off starting with Windows. Uninstalling removes the program but keeps the `data` folder.
+
+On a phone on the same Wi-Fi, open `http://<laptop address>:8480/get` (the address and a QR code are shown under Household → Add a phone) to install the Android app.
 
 ## Contributing and support
 

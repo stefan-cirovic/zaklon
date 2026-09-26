@@ -35,8 +35,17 @@
         "installMode": "currentUser",
         "languages": [
           "English"
-        ]
+        ],
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico"
+      },
+      "webviewInstallMode": {
+        "type": "offlineInstaller",
+        "silent": true
       }
-    }
+    },
+    "longDescription": "Zaklon keeps a household's knowledge library, maps, supplies and a local AI assistant working without internet. Free and open source (GPL-3.0-or-later).",
+    "copyright": "Zaklon contributors, GPL-3.0-or-later",
+    "homepage": "https://zaklon.com"
   }
 }

@@ -3,6 +3,8 @@
 //! hub on the network.
 
 mod client;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod desktop;
 
 use std::sync::Arc;
 
@@ -79,71 +81,40 @@ async fn client_discover() -> Result<Vec<DiscoveredHub>, String> {
     client::discover().await
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn start_hub() {
-    std::thread::Builder::new()
-        .name("zaklon-hub".into())
-        .spawn(|| {
-            let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("tokio runtime");
-            rt.block_on(async {
-                let root = zaklon_hub::default_root();
-                match zaklon_hub::Hub::open(&root) {
-                    Ok(hub) => {
-                        if let Err(e) = hub.run().await {
-                            tracing::error!("hub stopped: {e:#}");
-                        }
-                    }
-                    Err(e) => tracing::error!("hub failed to open {}: {e:#}", root.display()),
-                }
-            });
-        })
-        .expect("spawn hub thread");
-}
-
-/// The desktop window shows the interface served by the hub itself, so the
-/// page and the API share one origin (no cross-origin requests at all).
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn open_hub_window(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], zaklon_hub::LOCAL_PORT));
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
-    while std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(300)).is_err() {
-        if std::time::Instant::now() > deadline {
-            tracing::error!("hub did not start listening on {addr}");
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(150));
-    }
-    let url: tauri::Url = format!("http://{addr}/").parse()?;
-    tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::External(url))
-        .title("Zaklon")
-        .inner_size(1200.0, 800.0)
-        .min_inner_size(900.0, 600.0)
-        .background_color(tauri::window::Color(11, 13, 16, 255))
-        .build()?;
-    Ok(())
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let root = desktop::data_root();
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let _log_guard = desktop::init_logging(&root);
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "zaklon_hub=info,zaklon_core=info,zaklon_app_lib=info".into()),
+                .unwrap_or_else(|_| "zaklon_app_lib=info".into()),
         )
         .try_init();
 
     let builder = tauri::Builder::default();
     #[cfg(any(target_os = "android", target_os = "ios"))]
     let builder = builder.plugin(tauri_plugin_barcode_scanner::init());
+    // Desktop: one copy only (a second start just shows the window), and start with Windows.
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let builder = builder
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| desktop::show_main(app)))
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![desktop::MINIMIZED_ARG]),
+        ));
 
     builder
-        .setup(|app| {
+        .setup(move |app| {
             let dir = app.path().app_data_dir().unwrap_or_else(|_| std::env::temp_dir().join("zaklon"));
             app.manage(Arc::new(ClientState::load(dir)));
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
-                start_hub();
-                open_hub_window(app)?;
+                desktop::start_hub(root.clone());
+                desktop::setup(app, &root)?;
             }
             #[cfg(any(target_os = "android", target_os = "ios"))]
             {

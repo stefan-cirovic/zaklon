@@ -13,7 +13,7 @@ Validate the riskiest pieces before building modules:
 
 ## 1.0
 
-1. Hub core, pairing, Household screen, Windows installer.
+1. Hub core, pairing, Household screen, Windows installer. *Done: per-user installer with bundled WebView2 (works offline), tray icon, start with Windows, single instance, data kept on uninstall.*
 2. Library: kiwix-serve, catalog, downloads, USB export/import. *Working: supervised kiwix-serve, search across books in Latin and Cyrillic (also without diacritics), reader on laptop and phone.*
 3. Supplies: items, barcodes, history, backup/restore.
 4. Maps: CoMaps APK and map files served by the hub.
