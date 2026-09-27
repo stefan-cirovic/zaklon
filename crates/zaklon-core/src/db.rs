@@ -1,15 +1,20 @@
 //! SQLite storage for the household database. One connection guarded by a
 //! mutex is plenty for a household; WAL mode keeps reads cheap.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
+/// Kept here too for callers that know it from before [`crate::dates`].
+pub use crate::dates::now_rfc3339;
+
 pub struct Db {
     conn: Mutex<Connection>,
+    /// The database file; `None` for an in-memory database.
+    path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,6 +26,10 @@ pub struct Device {
     pub last_seen: Option<String>,
 }
 
+// Older databases also hold an empty `profiles` table from an early plan
+// (id, name, avatar, language, accent, password_hash, created_at); nothing
+// reads it. Profiles (docs/SPEC.md) must not assume `CREATE TABLE IF NOT
+// EXISTS profiles` gives them their own shape there.
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -33,15 +42,6 @@ CREATE TABLE IF NOT EXISTS devices (
     token_hash TEXT NOT NULL,
     created_at TEXT NOT NULL,
     last_seen TEXT
-);
-CREATE TABLE IF NOT EXISTS profiles (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    avatar TEXT,
-    language TEXT NOT NULL DEFAULT 'en',
-    accent TEXT NOT NULL DEFAULT 'green',
-    password_hash TEXT,
-    created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS items (
     id TEXT PRIMARY KEY,
@@ -81,7 +81,7 @@ impl Db {
         conn.execute_batch(crate::supplies::SCHEMA).context("applying supplies schema")?;
         conn.execute_batch(crate::memory::SCHEMA).context("applying memory schema")?;
         crate::supplies::migrate(&conn).context("migrating supplies")?;
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self { conn: Mutex::new(conn), path: Some(path.to_path_buf()) })
     }
 
     pub fn open_in_memory() -> Result<Self> {
@@ -90,14 +90,26 @@ impl Db {
         conn.execute_batch(crate::supplies::SCHEMA)?;
         conn.execute_batch(crate::memory::SCHEMA)?;
         crate::supplies::migrate(&conn)?;
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self { conn: Mutex::new(conn), path: None })
     }
 
-    /// A consistent copy of the whole database into a new file, safe while in use.
+    /// A consistent copy of the whole database into a new file, safe while in
+    /// use. It reads through a connection of its own, so requests keep using
+    /// the database while a large copy is written (WAL lets readers and the
+    /// writer work side by side).
     pub fn snapshot_to(&self, path: &Path) -> Result<()> {
         let _ = std::fs::remove_file(path);
-        let conn = self.lock();
-        conn.execute("VACUUM INTO ?1", [path.to_string_lossy().as_ref()])?;
+        let target = path.to_string_lossy();
+        match &self.path {
+            Some(file) => {
+                let conn = Connection::open(file).with_context(|| format!("opening {}", file.display()))?;
+                conn.busy_timeout(std::time::Duration::from_secs(5))?;
+                conn.execute("VACUUM INTO ?1", [target.as_ref()])?;
+            }
+            None => {
+                self.lock().execute("VACUUM INTO ?1", [target.as_ref()])?;
+            }
+        }
         Ok(())
     }
 
@@ -209,15 +221,6 @@ impl Db {
     }
 }
 
-/// RFC 3339 timestamp in UTC, second precision.
-pub fn now_rfc3339() -> String {
-    time::OffsetDateTime::now_utc()
-        .replace_nanosecond(0)
-        .unwrap_or_else(|_| time::OffsetDateTime::now_utc())
-        .format(&time::format_description::well_known::Rfc3339)
-        .unwrap_or_default()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,5 +242,21 @@ mod tests {
         assert_eq!(found.id, "d1");
         assert!(db.delete_device("d1").unwrap());
         assert_eq!(db.count_devices().unwrap(), 0);
+    }
+
+    #[test]
+    fn a_snapshot_does_not_wait_for_the_shared_connection() {
+        let dir = std::env::temp_dir().join(format!("zaklon-snapshot-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("household.db")).unwrap();
+        db.set_setting("marker", "kept").unwrap();
+        // A request busy with the database while a backup copies it.
+        let busy = db.lock();
+        db.snapshot_to(&dir.join("copy.db")).unwrap();
+        drop(busy);
+        let copy = Db::open(&dir.join("copy.db")).unwrap();
+        assert_eq!(copy.get_setting("marker").unwrap().as_deref(), Some("kept"));
+        drop((db, copy));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

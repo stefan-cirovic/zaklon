@@ -11,11 +11,15 @@
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
+use zaklon_core::dates::file_stamp;
 use zaklon_core::{Config, Db};
+
+/// Kept here too for callers that know it from before `zaklon_core::dates`.
+pub use zaklon_core::dates::now_rfc3339;
 
 const FORMAT: u32 = 1;
 const AUTO_PREFIX: &str = "zaklon-auto-";
@@ -44,38 +48,12 @@ pub struct BackupFile {
     pub automatic: bool,
 }
 
-pub fn now_rfc3339() -> String {
-    let secs = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let (y, m, d, hh, mm, ss) = civil(secs);
-    format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}Z")
-}
-
-/// UTC civil time from Unix seconds.
-fn civil(secs: u64) -> (i64, i64, i64, u64, u64, u64) {
-    let days = (secs / 86_400) as i64;
-    let rem = secs % 86_400;
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = yoe + era * 400 + i64::from(m <= 2);
-    (y, m, d, rem / 3600, rem % 3600 / 60, rem % 60)
-}
-
-fn stamp() -> String {
-    let secs = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let (y, m, d, hh, mm, ss) = civil(secs);
-    format!("{y:04}-{m:02}-{d:02}-{hh:02}{mm:02}{ss:02}")
-}
-
-/// Write a backup zip into `dir`; returns its path.
+/// Write a backup zip into `dir`; returns its path. Slow disk work: call it
+/// from a blocking thread. The database stays usable meanwhile.
 pub fn create(cfg: &Config, db: &Db, dir: &Path, automatic: bool) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
-    let name = if automatic { format!("{AUTO_PREFIX}{}.zip", stamp()) } else { format!("zaklon-backup-{}.zip", stamp()) };
+    let stamp = file_stamp();
+    let name = if automatic { format!("{AUTO_PREFIX}{stamp}.zip") } else { format!("zaklon-backup-{stamp}.zip") };
     let target = dir.join(&name);
     let part = dir.join(format!("{name}.part"));
 
@@ -93,12 +71,17 @@ pub fn create(cfg: &Config, db: &Db, dir: &Path, automatic: bool) -> Result<Path
             hub_id: cfg.hub_id.clone(),
             hub_name: cfg.hub_name.clone(),
         };
+        zip.start_file("manifest.json", opts).map_err(|e| e.to_string())?;
+        zip.write_all(&serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        // The database can be large: streamed, not read into memory.
+        zip.start_file("household.db", opts).map_err(|e| e.to_string())?;
+        let mut copy = std::fs::File::open(&tmp_db).map_err(|e| e.to_string())?;
+        std::io::copy(&mut copy, &mut zip).map_err(|e| format!("writing the backup: {e}"))?;
+        drop(copy);
         let mut add = |name: &str, bytes: &[u8]| -> Result<(), String> {
             zip.start_file(name, opts).map_err(|e| e.to_string())?;
             zip.write_all(bytes).map_err(|e| e.to_string())
         };
-        add("manifest.json", &serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?)?;
-        add("household.db", &std::fs::read(&tmp_db).map_err(|e| e.to_string())?)?;
         add("hub.json", &std::fs::read(cfg.config_path()).map_err(|e| e.to_string())?)?;
         if let Ok(rd) = std::fs::read_dir(cfg.tls_dir()) {
             for e in rd.flatten() {
@@ -223,10 +206,11 @@ pub fn stage_restore(cfg: &Config, zip_path: &Path) -> Result<Manifest, String> 
         if !have_db || !pending.join("hub.json").is_file() {
             return Err("the backup is incomplete".into());
         }
-        // It must open as a household database.
+        // It must open as a household database, and the hub must be able
+        // to start with its settings: a restore that cannot start is refused
+        // now, not found out after the swap.
         Db::open(&pending.join("household.db")).map_err(|_| "the backup's database is damaged".to_string())?;
-        serde_json::from_slice::<serde_json::Value>(&std::fs::read(pending.join("hub.json")).map_err(|e| e.to_string())?)
-            .map_err(|_| "the backup's settings are damaged".to_string())?;
+        settings_ok(&pending)?;
         Ok(())
     })();
     if let Err(e) = result {
@@ -238,6 +222,12 @@ pub fn stage_restore(cfg: &Config, zip_path: &Path) -> Result<Manifest, String> 
     std::fs::rename(&pending, &ready).map_err(|e| format!("preparing the restore: {e}"))?;
     info!(from = %zip_path.display(), "restore staged; it completes on the next start");
     Ok(manifest)
+}
+
+/// The unpacked backup's hub.json is settings this hub can start with.
+fn settings_ok(dir: &Path) -> Result<(), String> {
+    let text = std::fs::read_to_string(dir.join("hub.json")).map_err(|_| "the backup's settings are damaged".to_string())?;
+    Config::from_json(&text).map(|_| ()).map_err(|_| "the backup's settings are damaged".to_string())
 }
 
 pub fn restore_pending(root: &Path) -> bool {
@@ -257,6 +247,12 @@ pub fn finish_pending_restore(root: &Path) -> Result<bool, String> {
         let _ = std::fs::remove_dir_all(&pending);
         return Err("the prepared restore was incomplete and was discarded".into());
     }
+    // Checked when it was prepared, but perhaps by an older version that
+    // checked less: never swap in settings the hub cannot start with.
+    if let Err(e) = settings_ok(&pending) {
+        let _ = std::fs::remove_dir_all(&pending);
+        return Err(format!("{e}; the prepared restore was discarded"));
+    }
     let household = root.join("household");
     let fresh = root.join("household.new");
     let _ = std::fs::remove_dir_all(&fresh);
@@ -272,7 +268,7 @@ pub fn finish_pending_restore(root: &Path) -> Result<bool, String> {
         }
     }
     std::fs::create_dir_all(root.join("backups")).map_err(|e| e.to_string())?;
-    let keep = root.join("backups").join(format!("household-before-restore-{}", stamp()));
+    let keep = root.join("backups").join(format!("household-before-restore-{}", file_stamp()));
     if household.exists() {
         std::fs::rename(&household, &keep).map_err(|e| format!("setting the old data aside: {e}"))?;
     }
@@ -335,6 +331,70 @@ mod tests {
         std::fs::write(pending.join("household.db"), b"half").unwrap();
         assert!(finish_pending_restore(&root).is_err());
         assert!(!restore_pending(&root), "discarded");
+        let db = Db::open(&cfg.db_path()).unwrap();
+        assert_eq!(db.get_setting("marker").unwrap().as_deref(), Some("current"));
+        drop(db);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A copy of the backup `good` with some of its files replaced.
+    fn with_files(good: &Path, replace: &[(&str, &[u8])]) -> PathBuf {
+        let path = good.with_file_name(format!("changed-{}.zip", uuid::Uuid::new_v4()));
+        let mut src = zip::ZipArchive::new(std::fs::File::open(good).unwrap()).unwrap();
+        let mut out = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        let opts = zip::write::SimpleFileOptions::default();
+        for i in 0..src.len() {
+            let mut e = src.by_index(i).unwrap();
+            let name = e.name().to_string();
+            let mut bytes = Vec::new();
+            e.read_to_end(&mut bytes).unwrap();
+            let bytes = replace.iter().find(|(n, _)| *n == name).map_or(bytes, |(_, b)| b.to_vec());
+            out.start_file(name, opts).unwrap();
+            out.write_all(&bytes).unwrap();
+        }
+        out.finish().unwrap();
+        path
+    }
+
+    #[test]
+    fn settings_the_hub_cannot_start_with_are_refused() {
+        let root = std::env::temp_dir().join(format!("zaklon-backup-test-{}", uuid::Uuid::new_v4()));
+        let cfg = Config::load_or_init(&root).unwrap();
+        let db = Db::open(&cfg.db_path()).unwrap();
+        let good = create(&cfg, &db, &cfg.backups_dir(), false).unwrap();
+        drop(db);
+        // Valid JSON, but not the settings of a hub.
+        let bads: [&[u8]; 4] = [b"[1, 2]", b"{}", br#"{"hub_id": "x", "port": "8484"}"#, b"not json"];
+        for bad in bads {
+            let zip = with_files(&good, &[("hub.json", bad)]);
+            let err = stage_restore(&cfg, &zip).expect_err(&String::from_utf8_lossy(bad));
+            assert!(err.contains("settings are damaged"), "{err}");
+            assert!(!restore_pending(&root));
+        }
+        // Settings from an older version, with fields missing, restore.
+        let zip = with_files(&good, &[("hub.json", &br#"{"hub_id": "from-an-old-version", "port": 8484}"#[..])]);
+        stage_restore(&cfg, &zip).unwrap();
+        assert!(finish_pending_restore(&root).unwrap());
+        assert_eq!(Config::load_or_init(&root).unwrap().hub_id, "from-an-old-version");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A restore prepared by an older version, which only checked that the
+    /// settings were JSON, is not swapped in if the hub could not start.
+    #[test]
+    fn a_prepared_restore_with_bad_settings_is_discarded() {
+        let root = std::env::temp_dir().join(format!("zaklon-backup-test-{}", uuid::Uuid::new_v4()));
+        let cfg = Config::load_or_init(&root).unwrap();
+        let db = Db::open(&cfg.db_path()).unwrap();
+        db.set_setting("marker", "current").unwrap();
+        let zip = create(&cfg, &db, &cfg.backups_dir(), false).unwrap();
+        drop(db);
+        stage_restore(&cfg, &zip).unwrap();
+        std::fs::write(root.join(PENDING).join("hub.json"), br#"{"language": "sr"}"#).unwrap();
+        let err = finish_pending_restore(&root).expect_err("not swapped in");
+        assert!(err.contains("discarded"), "{err}");
+        assert!(!restore_pending(&root));
+        assert_eq!(Config::load_or_init(&root).unwrap().hub_id, cfg.hub_id, "the hub starts as before");
         let db = Db::open(&cfg.db_path()).unwrap();
         assert_eq!(db.get_setting("marker").unwrap().as_deref(), Some("current"));
         drop(db);
@@ -476,6 +536,21 @@ mod tests {
         // All are "old" by name but new by time: nothing is due, nothing pruned.
         auto_backup_if_due(&cfg, &db);
         assert_eq!(std::fs::read_dir(cfg.backups_dir()).unwrap().count(), 9);
+
+        // Two days old by time: a new one is made and only the last seven stay.
+        let old = std::time::SystemTime::now() - Duration::from_secs(2 * 24 * 3600);
+        for e in std::fs::read_dir(cfg.backups_dir()).unwrap().flatten() {
+            std::fs::File::options().write(true).open(e.path()).unwrap().set_modified(old).unwrap();
+        }
+        auto_backup_if_due(&cfg, &db);
+        let mut names: Vec<String> =
+            std::fs::read_dir(cfg.backups_dir()).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        names.sort();
+        assert_eq!(names.len(), KEEP_AUTO, "{names:?}");
+        assert_eq!(names[0], format!("{AUTO_PREFIX}2020-01-03-000000.zip"), "the oldest went");
+        let newest = names.last().unwrap();
+        assert!(!newest.starts_with(&format!("{AUTO_PREFIX}2020")), "today's is kept: {names:?}");
+        assert!(read_manifest(&cfg.backups_dir().join(newest)).is_some());
         drop(db);
         let _ = std::fs::remove_dir_all(&root);
     }

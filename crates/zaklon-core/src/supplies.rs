@@ -11,11 +11,24 @@ use anyhow::{bail, Result};
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 use serde::{Deserialize, Serialize};
 
-use crate::db::{now_rfc3339, Db};
+use crate::dates::{is_date, now_rfc3339, plus_days};
+use crate::db::Db;
+
+/// Kept here too for callers that know it from before [`crate::dates`].
+pub use crate::dates::today;
 
 pub const CATEGORIES: &[&str] = &["food", "drink", "medicine", "hygiene", "equipment", "fuel", "other"];
 pub const UNITS: &[&str] = &["pcs", "kg", "g", "l", "ml", "pack"];
-pub const PRESET_PLACES: &[&str] = &["pantry", "fridge", "freezer", "medicine_cabinet", "garage", "basement"];
+/// Built-in places: the id stored in an item's `place`, then the name in
+/// English and in Serbian (the same names the interface shows).
+pub const PRESET_PLACES: &[(&str, &str, &str)] = &[
+    ("pantry", "Pantry", "Ostava"),
+    ("fridge", "Fridge", "Frižider"),
+    ("freezer", "Freezer", "Zamrzivač"),
+    ("medicine_cabinet", "Medicine cabinet", "Kućna apoteka"),
+    ("garage", "Garage", "Garaža"),
+    ("basement", "Basement", "Podrum"),
+];
 
 /// Items expiring within this many days show up as "expiring soon".
 pub const EXPIRING_DAYS: i64 = 30;
@@ -69,6 +82,10 @@ pub(crate) fn migrate(conn: &Connection) -> Result<()> {
              UPDATE shopping SET status = 'bought' WHERE done = 1;",
         )?;
     }
+    // Older versions marked an entry "putting" while putting it away, and a
+    // crash halfway hid it for good. Show it again with the things to put
+    // away, where the household can put it away or remove it.
+    conn.execute("UPDATE shopping SET status = 'bought' WHERE status = 'putting'", [])?;
     // Batches: items from before batches existed get one batch each.
     let done: bool = conn
         .prepare("SELECT 1 FROM settings WHERE key = 'migration_batches_v1'")?
@@ -242,16 +259,10 @@ fn clamp_qty(q: f64) -> f64 {
     (q.clamp(0.0, MAX_QUANTITY) * 1000.0).round() / 1000.0
 }
 
-/// A real calendar date written as YYYY-MM-DD (rejects 2027-02-31).
-fn valid_date(d: &str) -> bool {
-    let fmt = time::macros::format_description!("[year]-[month]-[day]");
-    d.len() == 10 && time::Date::parse(d, &fmt).is_ok()
-}
-
 fn checked_date(d: Option<String>) -> Result<Option<String>> {
     let d = clean(d);
     if let Some(v) = &d {
-        if !valid_date(v) {
+        if !is_date(v) {
             bail!("expiry must be a date like 2027-03-31");
         }
     }
@@ -281,23 +292,6 @@ const ITEM_COLS: &str =
 
 /// Batches of an item, the one that expires first first (no date last).
 const BATCH_ORDER: &str = "ORDER BY (expiry IS NULL), expiry, added_at";
-
-/// Today's date on this computer (local time), "YYYY-MM-DD".
-pub fn today() -> String {
-    let d = time::OffsetDateTime::now_local().unwrap_or_else(|_| time::OffsetDateTime::now_utc()).date();
-    format!("{:04}-{:02}-{:02}", d.year(), u8::from(d.month()), d.day())
-}
-
-fn plus_days(date: &str, days: i64) -> String {
-    let fmt = time::macros::format_description!("[year]-[month]-[day]");
-    match time::Date::parse(date, &fmt) {
-        Ok(d) => {
-            let n = d + time::Duration::days(days);
-            format!("{:04}-{:02}-{:02}", n.year(), u8::from(n.month()), n.day())
-        }
-        Err(_) => date.to_string(),
-    }
-}
 
 // ---- helpers that run inside one transaction ---------------------------------
 
@@ -415,6 +409,91 @@ fn remember_barcode_tx(conn: &Connection, barcode: &str, name: &str, unit: Optio
     Ok(())
 }
 
+fn create_item_tx(tx: &Transaction, input: ItemInput, actor: &str) -> Result<Item> {
+    let name = clean(input.name).ok_or_else(|| anyhow::anyhow!("name is required"))?;
+    let unit = clean(input.unit).unwrap_or_else(|| "pcs".into());
+    let category = clean(input.category).unwrap_or_else(|| "other".into());
+    if !CATEGORIES.contains(&category.as_str()) {
+        bail!("unknown category");
+    }
+    let expiry = checked_date(input.expiry.flatten())?;
+    let quantity = clamp_qty(input.quantity.unwrap_or(1.0));
+    let id = uuid::Uuid::new_v4().to_string();
+    let name: String = name.chars().take(120).collect();
+    let unit: String = unit.chars().take(20).collect();
+    let place = clean_max(input.place.flatten(), 60);
+    let barcode = clean_max(input.barcode.flatten(), 64);
+    let min_quantity = input.min_quantity.flatten().filter(|m| m.is_finite() && *m >= 0.0).map(clamp_qty);
+    let notes = clean_max(input.notes.flatten(), 500);
+
+    tx.execute(
+        &format!("INSERT INTO items ({ITEM_COLS}, deleted) VALUES (?1, ?2, 0, ?3, ?4, ?5, NULL, ?6, ?7, ?8, ?9, ?10, 0)"),
+        params![id, name, unit, category, place, barcode, min_quantity, notes, now_rfc3339(), actor],
+    )?;
+    add_batch_tx(tx, &id, quantity, expiry)?;
+    resync(tx, &id, actor)?;
+    if let Some(code) = &barcode {
+        remember_barcode_tx(tx, code, &name, Some(&unit), Some(&category))?;
+    }
+    let item = load_item(tx, &id)?.ok_or_else(|| anyhow::anyhow!("item vanished"))?;
+    history_tx(tx, "item", &id, "create", actor, None, Some(&item))?;
+    Ok(item)
+}
+
+fn put_away_tx(
+    tx: &Transaction,
+    input: PutAwayInput,
+    actor: &str,
+    entry_item: Option<String>,
+    text: String,
+    entry_unit: Option<String>,
+) -> Result<Item> {
+    let quantity = clamp_qty(input.quantity);
+    if quantity <= 0.0 {
+        bail!("quantity must be more than zero");
+    }
+    let expiry = checked_date(input.expiry)?;
+    let existing = match input.item_id.or(entry_item) {
+        Some(id) => load_item(tx, &id)?,
+        None => None,
+    };
+    let Some(before) = existing else {
+        return create_item_tx(
+            tx,
+            ItemInput {
+                name: Some(input.name.unwrap_or(text)),
+                quantity: Some(quantity),
+                unit: input.unit.or(entry_unit),
+                category: input.category.or(Some("food".into())),
+                place: Some(input.place),
+                expiry: Some(expiry),
+                barcode: Some(input.barcode),
+                ..Default::default()
+            },
+            actor,
+        );
+    };
+    add_batch_tx(tx, &before.id, quantity, expiry)?;
+    let place = clean_max(input.place, 60);
+    if place.is_some() && place != before.place {
+        tx.execute("UPDATE items SET place = ?2 WHERE id = ?1", params![before.id, place])?;
+    }
+    resync(tx, &before.id, actor)?;
+    let after = load_item(tx, &before.id)?.ok_or_else(|| anyhow::anyhow!("item vanished"))?;
+    history_tx(tx, "item", &before.id, "add", actor, Some(&before), Some(&after))?;
+    Ok(after)
+}
+
+/// The name people read for a place stored on an item: a built-in place in
+/// `language` ("sr" or "en"), a household place by its name. Anything else
+/// (a name written by hand) is shown as it is.
+pub fn place_name(places: &[Place], stored: &str, language: &str) -> String {
+    if let Some((_, en, sr)) = PRESET_PLACES.iter().find(|(id, _, _)| *id == stored) {
+        return if language == "sr" { sr } else { en }.to_string();
+    }
+    places.iter().find(|p| p.id == stored).map_or_else(|| stored.to_string(), |p| p.name.clone())
+}
+
 impl Db {
     // ---- items ----------------------------------------------------------
 
@@ -444,6 +523,18 @@ impl Db {
         Ok(items)
     }
 
+    /// The items with each place given as the name people read, in
+    /// `language`, rather than the id the app stores. For the assistant and
+    /// anything else that shows items outside the supplies screen.
+    pub fn list_items_for_reading(&self, language: &str) -> Result<Vec<Item>> {
+        let places = self.list_places()?;
+        let mut items = self.list_items()?;
+        for i in &mut items {
+            i.place = i.place.take().map(|p| place_name(&places, &p, language));
+        }
+        Ok(items)
+    }
+
     pub fn get_item(&self, id: &str) -> Result<Option<Item>> {
         let conn = self.lock();
         load_item(&conn, id)
@@ -465,35 +556,9 @@ impl Db {
     }
 
     pub fn create_item(&self, input: ItemInput, actor: &str) -> Result<Item> {
-        let name = clean(input.name).ok_or_else(|| anyhow::anyhow!("name is required"))?;
-        let unit = clean(input.unit).unwrap_or_else(|| "pcs".into());
-        let category = clean(input.category).unwrap_or_else(|| "other".into());
-        if !CATEGORIES.contains(&category.as_str()) {
-            bail!("unknown category");
-        }
-        let expiry = checked_date(input.expiry.flatten())?;
-        let quantity = clamp_qty(input.quantity.unwrap_or(1.0));
-        let id = uuid::Uuid::new_v4().to_string();
-        let name: String = name.chars().take(120).collect();
-        let unit: String = unit.chars().take(20).collect();
-        let place = clean_max(input.place.flatten(), 60);
-        let barcode = clean_max(input.barcode.flatten(), 64);
-        let min_quantity = input.min_quantity.flatten().filter(|m| m.is_finite() && *m >= 0.0).map(clamp_qty);
-        let notes = clean_max(input.notes.flatten(), 500);
-
         let mut conn = self.lock();
         let tx = conn.transaction()?;
-        tx.execute(
-            &format!("INSERT INTO items ({ITEM_COLS}, deleted) VALUES (?1, ?2, 0, ?3, ?4, ?5, NULL, ?6, ?7, ?8, ?9, ?10, 0)"),
-            params![id, name, unit, category, place, barcode, min_quantity, notes, now_rfc3339(), actor],
-        )?;
-        add_batch_tx(&tx, &id, quantity, expiry)?;
-        resync(&tx, &id, actor)?;
-        if let Some(code) = &barcode {
-            remember_barcode_tx(&tx, code, &name, Some(&unit), Some(&category))?;
-        }
-        let item = load_item(&tx, &id)?.ok_or_else(|| anyhow::anyhow!("item vanished"))?;
-        history_tx(&tx, "item", &id, "create", actor, None, Some(&item))?;
+        let item = create_item_tx(&tx, input, actor)?;
         tx.commit()?;
         Ok(item)
     }
@@ -699,7 +764,7 @@ impl Db {
 
     pub fn list_places(&self) -> Result<Vec<Place>> {
         let mut out: Vec<Place> =
-            PRESET_PLACES.iter().map(|p| Place { id: p.to_string(), name: p.to_string(), preset: true }).collect();
+            PRESET_PLACES.iter().map(|(id, _, _)| Place { id: id.to_string(), name: id.to_string(), preset: true }).collect();
         let conn = self.lock();
         let mut stmt = conn.prepare("SELECT id, name FROM places ORDER BY name COLLATE NOCASE")?;
         let rows = stmt.query_map([], |r| Ok(Place { id: r.get(0)?, name: r.get(1)?, preset: false }))?;
@@ -727,17 +792,32 @@ impl Db {
         })?)
     }
 
-    pub fn delete_place(&self, id: &str) -> Result<bool> {
-        let conn = self.lock();
-        Ok(conn.execute("DELETE FROM places WHERE id = ?1", params![id])? > 0)
+    /// Remove a household place. Items kept there no longer say where they
+    /// are, rather than pointing at a place that does not exist.
+    pub fn delete_place(&self, id: &str, actor: &str) -> Result<bool> {
+        let mut conn = self.lock();
+        let tx = conn.transaction()?;
+        if tx.execute("DELETE FROM places WHERE id = ?1", params![id])? == 0 {
+            return Ok(false);
+        }
+        let ids: Vec<String> = tx
+            .prepare("SELECT id FROM items WHERE place = ?1 AND deleted = 0")?
+            .query_map(params![id], |r| r.get(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        for item_id in ids {
+            let before = load_item(&tx, &item_id)?;
+            tx.execute(
+                "UPDATE items SET place = NULL, updated_at = ?2, updated_by = ?3 WHERE id = ?1",
+                params![item_id, now_rfc3339(), actor],
+            )?;
+            let after = load_item(&tx, &item_id)?;
+            history_tx(&tx, "item", &item_id, "update", actor, before.as_ref(), after.as_ref())?;
+        }
+        tx.commit()?;
+        Ok(true)
     }
 
     // ---- barcodes -------------------------------------------------------
-
-    pub fn remember_barcode(&self, barcode: &str, name: &str, unit: Option<&str>, category: Option<&str>) -> Result<()> {
-        let conn = self.lock();
-        remember_barcode_tx(&conn, barcode, name, unit, category)
-    }
 
     pub fn lookup_barcode(&self, barcode: &str) -> Result<Option<KnownBarcode>> {
         let conn = self.lock();
@@ -869,7 +949,7 @@ impl Db {
             let conn = self.lock();
             let already: bool = conn
                 .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM shopping WHERE item_id = ?1 AND status IN ('open', 'bought', 'putting'))",
+                    "SELECT EXISTS(SELECT 1 FROM shopping WHERE item_id = ?1 AND status IN ('open', 'bought'))",
                     params![item.id],
                     |r| r.get(0),
                 )?;
@@ -903,79 +983,26 @@ impl Db {
         Ok(conn.execute("DELETE FROM shopping WHERE id = ?1 AND status IN ('open', 'bought')", params![id])? > 0)
     }
 
-    /// Put a bought thing away: add a batch to the item (or create the item),
-    /// then remove the entry. Returns the item.
+    /// Put a bought thing away: add a batch to the item (or create the item)
+    /// and remove the entry, all in one transaction. A double tap or two
+    /// phones add it once, and a failure halfway stores nothing and leaves
+    /// the entry waiting, so trying again cannot add it twice. Returns the
+    /// item, or `None` when the entry is not (or no longer) waiting.
     pub fn put_away(&self, id: &str, input: PutAwayInput, actor: &str) -> Result<Option<Item>> {
-        // Claim the entry first, in one step: a double tap or two phones
-        // putting the same thing away must add it once.
-        let entry: Option<(Option<String>, String, Option<String>)> = {
-            let conn = self.lock();
-            let claimed = conn.execute("UPDATE shopping SET status = 'putting' WHERE id = ?1 AND status = 'bought'", params![id])?;
-            if claimed == 0 {
-                None
-            } else {
-                conn.query_row("SELECT item_id, text, unit FROM shopping WHERE id = ?1", params![id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
-                    .optional()?
-            }
-        };
+        let mut conn = self.lock();
+        let tx = conn.transaction()?;
+        // Claimed and removed in one step; a rollback puts it back.
+        let entry: Option<(Option<String>, String, Option<String>)> = tx
+            .query_row(
+                "DELETE FROM shopping WHERE id = ?1 AND status = 'bought' RETURNING item_id, text, unit",
+                params![id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
         let Some((entry_item, text, entry_unit)) = entry else { return Ok(None) };
-        let result = self.put_away_claimed(id, input, actor, entry_item, text, entry_unit);
-        let conn = self.lock();
-        match &result {
-            Ok(_) => {
-                conn.execute("DELETE FROM shopping WHERE id = ?1", params![id])?;
-            }
-            Err(_) => {
-                // Nothing was stored: give the entry back to the put-away list.
-                conn.execute("UPDATE shopping SET status = 'bought' WHERE id = ?1 AND status = 'putting'", params![id])?;
-            }
-        }
-        result.map(Some)
-    }
-
-    fn put_away_claimed(
-        &self,
-        _id: &str,
-        input: PutAwayInput,
-        actor: &str,
-        entry_item: Option<String>,
-        text: String,
-        entry_unit: Option<String>,
-    ) -> Result<Item> {
-        let quantity = clamp_qty(input.quantity);
-        if quantity <= 0.0 {
-            bail!("quantity must be more than zero");
-        }
-        let expiry = checked_date(input.expiry)?;
-        let target = input.item_id.or(entry_item).filter(|i| self.get_item(i).ok().flatten().is_some());
-        let item = match target {
-            Some(item_id) => {
-                let item = self
-                    .add_batch(&item_id, BatchInput { quantity: Some(quantity), expiry: Some(expiry) }, actor)?
-                    .ok_or_else(|| anyhow::anyhow!("item vanished"))?;
-                let place = clean_max(input.place, 60);
-                if place.is_some() && place != item.place {
-                    self.update_item(&item_id, ItemInput { place: Some(place), ..Default::default() }, actor)?
-                        .ok_or_else(|| anyhow::anyhow!("item vanished"))?
-                } else {
-                    item
-                }
-            }
-            None => self.create_item(
-                ItemInput {
-                    name: Some(input.name.unwrap_or(text)),
-                    quantity: Some(quantity),
-                    unit: input.unit.or(entry_unit),
-                    category: input.category.or(Some("food".into())),
-                    place: Some(input.place),
-                    expiry: Some(expiry),
-                    barcode: Some(input.barcode),
-                    ..Default::default()
-                },
-                actor,
-            )?,
-        };
-        Ok(item)
+        let item = put_away_tx(&tx, input, actor, entry_item, text, entry_unit)?;
+        tx.commit()?;
+        Ok(Some(item))
     }
 
     // ---- history --------------------------------------------------------
@@ -1336,6 +1363,91 @@ mod review_fixes {
         assert!(db.mark_bought(&low, "t").unwrap());
         assert!(!db.mark_bought(&low, "t").unwrap(), "a repeat does not add a second entry");
         assert_eq!(db.to_put_away().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_put_away_that_fails_halfway_stores_nothing() {
+        let db = Db::open_in_memory().unwrap();
+        let flour = db.create_item(ItemInput { name: Some("Flour".into()), quantity: Some(1.0), ..Default::default() }, "t").unwrap();
+        let e = db.add_shopping("Flour", Some(2.0), None, Some(flour.id.clone()), "t").unwrap();
+        db.mark_bought(&e.id, "t").unwrap();
+        // The place change, after the new batch, fails.
+        db.lock()
+            .execute_batch("CREATE TRIGGER no_place BEFORE UPDATE OF place ON items BEGIN SELECT RAISE(ABORT, 'disk gone'); END;")
+            .unwrap();
+        let mut input = pa(2.0);
+        input.place = Some("garage".into());
+        assert!(db.put_away(&e.id, input.clone(), "t").is_err());
+        assert_eq!(db.get_item(&flour.id).unwrap().unwrap().quantity, 1.0, "the batch was not kept");
+        assert_eq!(db.to_put_away().unwrap().len(), 1, "still waiting to be put away");
+
+        // Trying again once it works adds it once.
+        db.lock().execute_batch("DROP TRIGGER no_place;").unwrap();
+        let item = db.put_away(&e.id, input, "t").unwrap().unwrap();
+        assert_eq!((item.quantity, item.place.as_deref()), (3.0, Some("garage")));
+        assert!(db.to_put_away().unwrap().is_empty());
+        assert!(db.put_away(&e.id, pa(2.0), "t").unwrap().is_none());
+        assert_eq!(db.get_item(&flour.id).unwrap().unwrap().quantity, 3.0);
+    }
+
+    #[test]
+    fn an_entry_left_halfway_by_an_older_version_comes_back() {
+        let dir = std::env::temp_dir().join(format!("zaklon-putting-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("household.db");
+        let db = Db::open(&path).unwrap();
+        let milk = db
+            .create_item(ItemInput { name: Some("Milk".into()), quantity: Some(1.0), min_quantity: Some(Some(3.0)), ..Default::default() }, "t")
+            .unwrap();
+        assert!(db.mark_bought(&format!("low:{}", milk.id), "t").unwrap());
+        db.lock().execute("UPDATE shopping SET status = 'putting'", []).unwrap();
+        assert!(db.to_put_away().unwrap().is_empty(), "hidden, as an older version left it");
+        drop(db);
+
+        let db = Db::open(&path).unwrap();
+        let away = db.to_put_away().unwrap();
+        assert_eq!(away.len(), 1, "back with the things to put away");
+        assert_eq!(db.put_away(&away[0].id, pa(2.0), "t").unwrap().unwrap().quantity, 3.0);
+        drop(db);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn places_are_read_by_name() {
+        let db = Db::open_in_memory().unwrap();
+        let cottage = db.add_place("Vikendica").unwrap();
+        for (name, place) in [("Lamp", Some(cottage.id.as_str())), ("Aspirin", Some("medicine_cabinet")), ("Rope", Some("the shed")), ("Salt", None)] {
+            db.create_item(ItemInput { name: Some(name.into()), place: Some(place.map(str::to_string)), ..Default::default() }, "t").unwrap();
+        }
+        let place_of = |items: &[Item], name: &str| items.iter().find(|i| i.name == name).unwrap().place.clone();
+        let sr = db.list_items_for_reading("sr").unwrap();
+        assert_eq!(place_of(&sr, "Lamp").as_deref(), Some("Vikendica"));
+        assert_eq!(place_of(&sr, "Aspirin").as_deref(), Some("Kućna apoteka"));
+        assert_eq!(place_of(&sr, "Rope").as_deref(), Some("the shed"));
+        assert_eq!(place_of(&sr, "Salt"), None);
+        let en = db.list_items_for_reading("en").unwrap();
+        assert_eq!(place_of(&en, "Aspirin").as_deref(), Some("Medicine cabinet"));
+        // The app itself still gets the ids it stores.
+        assert_eq!(place_of(&db.list_items().unwrap(), "Lamp"), Some(cottage.id.clone()));
+
+        // A removed place leaves no item pointing at it.
+        assert!(db.delete_place(&cottage.id, "t").unwrap());
+        assert!(!db.delete_place(&cottage.id, "t").unwrap());
+        assert!(!db.delete_place("pantry", "t").unwrap(), "built-in places stay");
+        assert_eq!(place_of(&db.list_items().unwrap(), "Lamp"), None);
+        let h = db.history(1).unwrap();
+        assert_eq!((h[0].action.as_str(), h[0].actor.as_deref()), ("update", Some("t")));
+    }
+
+    #[test]
+    fn every_built_in_place_has_names() {
+        let db = Db::open_in_memory().unwrap();
+        let presets: Vec<Place> = db.list_places().unwrap().into_iter().filter(|p| p.preset).collect();
+        assert_eq!(presets.len(), PRESET_PLACES.len());
+        for p in &presets {
+            assert_ne!(place_name(&presets, &p.id, "sr"), p.id);
+            assert_ne!(place_name(&presets, &p.id, "en"), p.id);
+        }
     }
 
     #[test]

@@ -189,7 +189,10 @@ impl Exporter {
         });
         let me = self.clone();
         std::thread::spawn(move || {
-            let result = me.run(&jobs);
+            // A panic must still end the copy, or every later one would hear
+            // "a copy is already running".
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| me.run(&jobs)))
+                .unwrap_or_else(|_| Err("the copy stopped unexpectedly".into()));
             me.set(|s| {
                 s.running = false;
                 s.current = None;

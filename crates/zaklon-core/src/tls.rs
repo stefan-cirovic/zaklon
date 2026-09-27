@@ -13,7 +13,6 @@ use sha2::{Digest, Sha256};
 pub struct Identity {
     pub cert_pem: String,
     pub key_pem: String,
-    pub cert_der: Vec<u8>,
     /// Lower-case hex SHA-256 of the DER certificate.
     pub fingerprint: String,
 }
@@ -37,9 +36,14 @@ pub fn load_or_generate(dir: &Path, hub_name: &str) -> Result<Identity> {
     if cert_path.exists() && key_path.exists() {
         let cert_pem = std::fs::read_to_string(&cert_path).context("reading hub-cert.pem")?;
         let key_pem = std::fs::read_to_string(&key_path).context("reading hub-key.pem")?;
-        let cert_der = pem_to_der(&cert_pem)?;
-        let fingerprint = hex(&Sha256::digest(&cert_der));
-        return Ok(Identity { cert_pem, key_pem, cert_der, fingerprint });
+        let fingerprint = hex(&Sha256::digest(pem_to_der(&cert_pem)?));
+        return Ok(Identity { cert_pem, key_pem, fingerprint });
+    }
+    // The key is written first, so a key alone is a first start that was cut
+    // short: no phone has seen that certificate yet. A certificate alone
+    // (damaged by hand) cannot serve without its key, so phones pair again.
+    if cert_path.exists() {
+        tracing::warn!("hub-key.pem is missing; making a new identity, so phones must pair again");
     }
 
     let mut params = CertificateParams::new(vec!["localhost".to_string(), "zaklon.local".to_string()])
@@ -57,13 +61,14 @@ pub fn load_or_generate(dir: &Path, hub_name: &str) -> Result<Identity> {
     let cert = params.self_signed(&key_pair).context("self-signing certificate")?;
     let cert_pem = cert.pem();
     let key_pem = key_pair.serialize_pem();
-    let cert_der = cert.der().to_vec();
-    let fingerprint = hex(&Sha256::digest(&cert_der));
+    let fingerprint = hex(&Sha256::digest(cert.der()));
 
+    // Each file whole or not at all, the key before the certificate: a
+    // certificate on disk always has its key next to it.
     std::fs::create_dir_all(dir)?;
-    std::fs::write(&cert_path, &cert_pem).context("writing hub-cert.pem")?;
-    std::fs::write(&key_path, &key_pem).context("writing hub-key.pem")?;
-    Ok(Identity { cert_pem, key_pem, cert_der, fingerprint })
+    crate::config::write_atomic(&key_path, key_pem.as_bytes()).context("writing hub-key.pem")?;
+    crate::config::write_atomic(&cert_path, cert_pem.as_bytes()).context("writing hub-cert.pem")?;
+    Ok(Identity { cert_pem, key_pem, fingerprint })
 }
 
 fn pem_to_der(pem: &str) -> Result<Vec<u8>> {
@@ -80,4 +85,31 @@ fn pem_to_der(pem: &str) -> Result<Vec<u8>> {
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_identity_is_made_once_and_kept() {
+        let dir = std::env::temp_dir().join(format!("zaklon-tls-{}", uuid::Uuid::new_v4()));
+        let first = load_or_generate(&dir, "Zaklon test").unwrap();
+        let again = load_or_generate(&dir, "Another name").unwrap();
+        assert_eq!(again.fingerprint, first.fingerprint, "phones stay paired across restarts");
+        assert_eq!(again.key_pem, first.key_pem);
+        // The fingerprint is the SHA-256 of the certificate phones receive.
+        let der = pem_to_der(&std::fs::read_to_string(dir.join("hub-cert.pem")).unwrap()).unwrap();
+        assert_eq!(first.fingerprint, hex(&Sha256::digest(&der)));
+        assert_eq!(first.fingerprint.len(), 64);
+        assert_eq!(first.fingerprint_display().len(), 32 * 3 - 1);
+        assert!(!dir.join("hub-key.tmp").exists() && !dir.join("hub-cert.tmp").exists());
+
+        // A key without its certificate (a first start cut short) is replaced.
+        std::fs::remove_file(dir.join("hub-cert.pem")).unwrap();
+        let fresh = load_or_generate(&dir, "Zaklon test").unwrap();
+        assert_ne!(fresh.fingerprint, first.fingerprint);
+        assert_eq!(load_or_generate(&dir, "Zaklon test").unwrap().fingerprint, fresh.fingerprint);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

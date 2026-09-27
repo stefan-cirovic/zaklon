@@ -17,7 +17,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tower_http::trace::TraceLayer;
-use zaklon_core::db::{now_rfc3339, Device};
+use zaklon_core::dates::now_rfc3339;
+use zaklon_core::db::Device;
 use zaklon_core::pairing;
 
 use crate::{HubState, PairingFailure, PairingSession, VERSION};
@@ -117,9 +118,10 @@ impl IntoResponse for ApiError {
     }
 }
 
-/// Stable codes for the app to translate, found from the message. One table,
-/// next to where the messages come from; `every_known_message_has_a_code`
-/// keeps it complete.
+/// Stable codes for the app to translate, found from the message; the first
+/// entry the message contains wins. One table, next to where the messages
+/// come from. The tests below keep it honest: every message gets its code,
+/// every entry still matches a message, and the app translates every code.
 const ERROR_CODES: &[(&str, &str)] = &[
     ("wrong household password", "wrong_password"),
     ("pairing code is invalid or expired", "code_expired"),
@@ -133,7 +135,6 @@ const ERROR_CODES: &[(&str, &str)] = &[
     ("not enough free disk space", "no_disk_space"),
     ("not enough space", "drive_full"),
     ("formatted as FAT32", "fat32"),
-    ("battery below", "battery_low"),
     ("checksum mismatch", "checksum"),
     ("expiry must be a date", "bad_date"),
     ("must be a date", "bad_date"),
@@ -208,6 +209,13 @@ fn unauthorized() -> ApiError {
 }
 fn not_found(msg: &str) -> ApiError {
     ApiError(StatusCode::NOT_FOUND, msg.into())
+}
+
+/// Runs slow work that blocks (disk, Argon2, PowerShell, copying the
+/// database) on a thread made for it, so the async workers keep answering
+/// phones and the laptop window meanwhile.
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, ApiError> {
+    tokio::task::spawn_blocking(f).await.map_err(|e| ApiError::from(anyhow::anyhow!("background task failed: {e}")))
 }
 
 // ---- caller -----------------------------------------------------------------
@@ -415,9 +423,8 @@ async fn setup(
     if body.password.chars().count() < pairing::MIN_PASSWORD_LEN {
         return Err(bad("password must be at least 8 characters"));
     }
-    state
-        .db
-        .set_setting("household_password_hash", &pairing::hash_password(&body.password)?)?;
+    let hash = blocking(move || pairing::hash_password(&body.password)).await??;
+    state.db.set_setting("household_password_hash", &hash)?;
     let mut cfg = state.config.lock().unwrap_or_else(|p| p.into_inner());
     let mut changed = false;
     if let Some(n) = body.hub_name.filter(|n| !n.trim().is_empty()) {
@@ -447,9 +454,8 @@ async fn change_password(
     if body.new_password.chars().count() < pairing::MIN_PASSWORD_LEN {
         return Err(bad("password must be at least 8 characters"));
     }
-    state
-        .db
-        .set_setting("household_password_hash", &pairing::hash_password(&body.new_password)?)?;
+    let hash = blocking(move || pairing::hash_password(&body.new_password)).await??;
+    state.db.set_setting("household_password_hash", &hash)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -555,9 +561,7 @@ async fn pair_check(
     }
     let hash = state.db.get_setting("household_password_hash")?.unwrap_or_default();
     let password = password.to_string();
-    let ok = tokio::task::spawn_blocking(move || pairing::verify_password(&password, &hash))
-        .await
-        .map_err(|e| anyhow::anyhow!("password check failed: {e}"))?;
+    let ok = blocking(move || pairing::verify_password(&password, &hash)).await?;
 
     let mut sessions = state.pairing.lock().unwrap_or_else(|p| p.into_inner());
     sessions.retain(|_, s| s.expires_at > Instant::now());
@@ -773,10 +777,7 @@ async fn pack_remove(State(state): State<Arc<HubState>>, caller: Caller, Path(id
     // stop it so Windows lets us delete them. It restarts by itself.
     state.library.stop_for(Duration::from_secs(10)).await;
     let d = state.downloads.clone();
-    tokio::task::spawn_blocking(move || d.remove(&id))
-        .await
-        .map_err(|e| anyhow::anyhow!(e))?
-        .map_err(|e| bad(&e))?;
+    blocking(move || d.remove(&id)).await?.map_err(|e| bad(&e))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -791,10 +792,7 @@ async fn packs_import(State(state): State<Arc<HubState>>, _: Local, Json(body): 
         return Err(bad("that folder does not exist"));
     }
     let d = state.downloads.clone();
-    let imported = tokio::task::spawn_blocking(move || d.import_from_dir(&dir))
-        .await
-        .map_err(|e| anyhow::anyhow!(e))?
-        .map_err(|e| bad(&e))?;
+    let imported = blocking(move || d.import_from_dir(&dir)).await?.map_err(|e| bad(&e))?;
     Ok(Json(serde_json::json!({ "imported": imported })))
 }
 
@@ -813,10 +811,7 @@ struct ExportBody {
 async fn export_start(State(state): State<Arc<HubState>>, _: Local, Json(body): Json<ExportBody>) -> Result<StatusCode, ApiError> {
     let dir = std::path::PathBuf::from(body.dir.trim());
     let (ex, d) = (state.export.clone(), state.downloads.clone());
-    tokio::task::spawn_blocking(move || ex.start(&d, &body.ids, &dir, body.with_apps))
-        .await
-        .map_err(|e| anyhow::anyhow!(e))?
-        .map_err(|e| bad(&e))?;
+    blocking(move || ex.start(&d, &body.ids, &dir, body.with_apps)).await?.map_err(|e| bad(&e))?;
     tracing::info!(files = state.export.state().files_total, "copy to drive started");
     Ok(StatusCode::ACCEPTED)
 }
@@ -844,11 +839,11 @@ async fn export_cancel(State(state): State<Arc<HubState>>, _: Local) -> StatusCo
 
 /// Drives of the laptop, for copying packs to and from USB.
 async fn drives(_: Local) -> Result<Json<Vec<crate::machine::Drive>>, ApiError> {
-    Ok(Json(tokio::task::spawn_blocking(crate::machine::drives).await.map_err(|e| anyhow::anyhow!(e))?))
+    Ok(Json(blocking(crate::machine::drives).await?))
 }
 
 async fn hardware(_caller: Caller) -> Result<Json<crate::machine::Hardware>, ApiError> {
-    Ok(Json(tokio::task::spawn_blocking(crate::machine::hardware).await.map_err(|e| anyhow::anyhow!(e))?))
+    Ok(Json(blocking(crate::machine::hardware).await?))
 }
 
 // ---- library ----------------------------------------------------------------
@@ -1049,8 +1044,8 @@ async fn places_add(State(state): State<Arc<HubState>>, _caller: Caller, Json(bo
     Ok(Json(state.db.add_place(&body.name).map_err(invalid)?))
 }
 
-async fn places_delete(State(state): State<Arc<HubState>>, _caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
-    if state.db.delete_place(&id)? {
+async fn places_delete(State(state): State<Arc<HubState>>, caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
+    if state.db.delete_place(&id, &caller.actor())? {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(not_found("no such place"))
@@ -1390,7 +1385,7 @@ async fn maps_country_remove(State(state): State<Arc<HubState>>, caller: Caller,
             }
         }
         let d = state.downloads.clone();
-        tokio::task::spawn_blocking(move || d.remove(&id)).await.map_err(|e| anyhow::anyhow!(e))?.map_err(|e| bad(&e))?;
+        blocking(move || d.remove(&id)).await?.map_err(|e| bad(&e))?;
     }
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1399,7 +1394,7 @@ async fn maps_country_remove(State(state): State<Arc<HubState>>, caller: Caller,
 
 async fn assistant_overview(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<crate::assistant::Overview>, ApiError> {
     let a = state.assistant.clone();
-    Ok(Json(tokio::task::spawn_blocking(move || a.overview()).await.map_err(|e| anyhow::anyhow!(e))?))
+    Ok(Json(blocking(move || a.overview()).await?))
 }
 
 #[derive(Deserialize)]
@@ -1427,8 +1422,13 @@ struct AskBody {
 
 async fn assistant_ask(State(state): State<Arc<HubState>>, caller: Caller, Json(body): Json<AskBody>) -> Result<Json<serde_json::Value>, ApiError> {
     // The assistant can answer about the supplies and propose changes to them.
-    let items = state.db.list_items().unwrap_or_default();
-    let notes = state.db.list_notes().unwrap_or_default();
+    // It reads places by name, and a database failure fails the question:
+    // an empty list would be answered as "nothing in the supplies", and the
+    // household's notes (allergies) would be left out.
+    // Place names in the language the answer will be in (as `Assistant::ask` picks it).
+    let answer_language = zaklon_core::lang::question_language(&body.question).unwrap_or(if body.language == "sr" { "sr" } else { "en" });
+    let items = state.db.list_items_for_reading(answer_language)?;
+    let notes = state.db.list_notes()?;
     let ctx = crate::assistant::AskContext { history: body.history, items, notes, online: body.online };
     let id = state.assistant.ask(&body.question, &body.language, ctx).map_err(|e| bad(&e))?;
     tracing::info!(by = %caller.actor(), online = body.online, "assistant asked");
@@ -1469,7 +1469,7 @@ struct BackupsReply {
 async fn backups_list(State(state): State<Arc<HubState>>, _: Local) -> Result<Json<BackupsReply>, ApiError> {
     let cfg = state.config();
     let root = cfg.root.clone();
-    let backups = tokio::task::spawn_blocking(move || crate::backup::list(&cfg)).await.map_err(|e| anyhow::anyhow!(e))?;
+    let backups = blocking(move || crate::backup::list(&cfg)).await?;
     Ok(Json(BackupsReply { backups, restore_pending: crate::backup::restore_pending(&root), folder: state.config().backups_dir().display().to_string() }))
 }
 
@@ -1487,10 +1487,7 @@ async fn backups_create(State(state): State<Arc<HubState>>, _: Local, Json(body)
         return Err(bad("that folder does not exist"));
     }
     let st = state.clone();
-    let path = tokio::task::spawn_blocking(move || crate::backup::create(&cfg, &st.db, &dir, false))
-        .await
-        .map_err(|e| anyhow::anyhow!(e))?
-        .map_err(|e| bad(&e))?;
+    let path = blocking(move || crate::backup::create(&cfg, &st.db, &dir, false)).await?.map_err(|e| bad(&e))?;
     Ok(Json(serde_json::json!({ "path": path.display().to_string() })))
 }
 
@@ -1509,14 +1506,8 @@ async fn backups_restore(State(state): State<Arc<HubState>>, _: Local, Json(body
     // Keep today's data too, whatever happens next.
     let st = state.clone();
     let cfg2 = cfg.clone();
-    tokio::task::spawn_blocking(move || crate::backup::create(&cfg2, &st.db, &cfg2.backups_dir(), false))
-        .await
-        .map_err(|e| anyhow::anyhow!(e))?
-        .map_err(|e| bad(&e))?;
-    let manifest = tokio::task::spawn_blocking(move || crate::backup::stage_restore(&cfg, &path))
-        .await
-        .map_err(|e| anyhow::anyhow!(e))?
-        .map_err(|e| bad(&e))?;
+    blocking(move || crate::backup::create(&cfg2, &st.db, &cfg2.backups_dir(), false)).await?.map_err(|e| bad(&e))?;
+    let manifest = blocking(move || crate::backup::stage_restore(&cfg, &path)).await?.map_err(|e| bad(&e))?;
     Ok(Json(manifest))
 }
 
@@ -1593,7 +1584,7 @@ fn hotspot_reply(mut state: crate::hotspot::HotspotState) -> HotspotReply {
 }
 
 async fn hotspot_status(_: Local) -> Result<Json<HotspotReply>, ApiError> {
-    let s = tokio::task::spawn_blocking(crate::hotspot::status).await.map_err(|e| anyhow::anyhow!(e))?;
+    let s = blocking(crate::hotspot::status).await?;
     Ok(Json(hotspot_reply(s)))
 }
 
@@ -1608,7 +1599,7 @@ async fn hotspot_start(State(state): State<Arc<HubState>>, _: Local) -> Result<J
         }
     };
     tracing::info!("starting the Wi-Fi network");
-    let s = tokio::task::spawn_blocking(move || crate::hotspot::start(&pass)).await.map_err(|e| anyhow::anyhow!(e))?;
+    let s = blocking(move || crate::hotspot::start(&pass)).await?;
     if let Some(previous) = &s.previous {
         // The person's own hotspot name and password; they come back when ours is turned off.
         state.db.set_setting(crate::hotspot::SETTING_PREVIOUS, &serde_json::to_string(previous).map_err(|e| anyhow::anyhow!(e))?)?;
@@ -1623,7 +1614,7 @@ async fn hotspot_stop(State(state): State<Arc<HubState>>, _: Local) -> Result<Js
         .get_setting(crate::hotspot::SETTING_PREVIOUS)?
         .and_then(|t| serde_json::from_str::<crate::hotspot::AccessPoint>(&t).ok());
     let restore = previous.clone();
-    let s = tokio::task::spawn_blocking(move || crate::hotspot::stop(restore.as_ref())).await.map_err(|e| anyhow::anyhow!(e))?;
+    let s = blocking(move || crate::hotspot::stop(restore.as_ref())).await?;
     if previous.is_some() && s.error.is_none() && s.ssid != crate::hotspot::SSID {
         state.db.set_setting(crate::hotspot::SETTING_PREVIOUS, "")?;
     }
@@ -1640,7 +1631,7 @@ struct FirewallReply {
 }
 
 async fn firewall_status(_: Local) -> Result<Json<FirewallReply>, ApiError> {
-    let state = tokio::task::spawn_blocking(crate::firewall::status).await.map_err(|e| anyhow::anyhow!(e))?;
+    let state = blocking(crate::firewall::status).await?;
     Ok(Json(FirewallReply { ok: state.ok(), state }))
 }
 
@@ -1648,7 +1639,7 @@ async fn firewall_status(_: Local) -> Result<Json<FirewallReply>, ApiError> {
 async fn firewall_allow(State(state): State<Arc<HubState>>, _: Local) -> Result<Json<FirewallReply>, ApiError> {
     tracing::info!("asking Windows to let phones in through the firewall");
     let ports = crate::firewall::Ports::of(&state.config());
-    let state = tokio::task::spawn_blocking(move || crate::firewall::allow(&ports)).await.map_err(|e| anyhow::anyhow!(e))?;
+    let state = blocking(move || crate::firewall::allow(&ports)).await?;
     Ok(Json(FirewallReply { ok: state.ok(), state }))
 }
 
@@ -1656,46 +1647,136 @@ async fn firewall_allow(State(state): State<Arc<HubState>>, _: Local) -> Result<
 mod error_code_tests {
     use super::*;
 
-    #[test]
-    fn every_known_message_has_a_code() {
-        // Messages the hub sends (from this file and the modules it calls).
-        let messages = [
-            (StatusCode::BAD_REQUEST, "password must be at least 8 characters"),
-            (StatusCode::BAD_REQUEST, "that folder does not exist"),
-            (StatusCode::BAD_REQUEST, "that file does not exist"),
-            (StatusCode::BAD_REQUEST, "this is not a Zaklon backup"),
-            (StatusCode::BAD_REQUEST, "not enough space: 5 bytes needed, 1 free"),
-            (StatusCode::BAD_REQUEST, "this drive is formatted as FAT32, which cannot hold files of 4 GB or more; format it as exFAT or NTFS"),
-            (StatusCode::BAD_REQUEST, "the assistant is busy with other questions; try again in a moment"),
-            (StatusCode::BAD_REQUEST, "name is required"),
-            (StatusCode::BAD_REQUEST, "expiry must be a date (YYYY-MM-DD)"),
-            (StatusCode::BAD_REQUEST, "this item has several batches; change the date of a batch instead"),
-            (StatusCode::BAD_REQUEST, "delta must be a non-zero number"),
-            (StatusCode::FORBIDDEN, "only the laptop can do this"),
-            (StatusCode::NOT_FOUND, "no such item"),
-            (StatusCode::UNAUTHORIZED, "unauthorized"),
-            (StatusCode::INTERNAL_SERVER_ERROR, "internal error"),
-        ];
-        for (status, msg) in messages {
-            assert_ne!(error_code(status, msg), "other", "{msg}");
+    const BAD: StatusCode = StatusCode::BAD_REQUEST;
+    const FORBIDDEN: StatusCode = StatusCode::FORBIDDEN;
+    const NOT_FOUND: StatusCode = StatusCode::NOT_FOUND;
+
+    /// The source of the hub and its core, without the code table and these
+    /// tests, so a message counts as sent only if the code really sends it.
+    fn hub_sources() -> String {
+        let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut all = String::new();
+        for dir in ["zaklon-core/src", "zaklon-hub/src"] {
+            for e in std::fs::read_dir(crates.join(dir)).unwrap().flatten() {
+                let text = std::fs::read_to_string(e.path()).unwrap();
+                match (text.find("const ERROR_CODES"), text.find("mod error_code_tests")) {
+                    (Some(table), Some(tests)) => {
+                        let after_table = table + text[table..].find("];").unwrap();
+                        all.push_str(&text[..table]);
+                        all.push_str(&text[after_table..tests]);
+                    }
+                    _ => all.push_str(&text),
+                }
+            }
         }
-        // Specific messages must not be caught by a more general entry.
-        let exact = [
-            (StatusCode::BAD_REQUEST, "not enough space: 1 bytes", "drive_full"),
-            (StatusCode::BAD_REQUEST, "not enough free disk space for this pack", "no_disk_space"),
+        all
+    }
+
+    /// Every code the hub can send: the table's, and those that come from
+    /// the status alone. "other" is not one: the app then shows the message.
+    fn hub_codes() -> Vec<&'static str> {
+        let by_status = [NOT_FOUND, StatusCode::UNAUTHORIZED, FORBIDDEN, StatusCode::TOO_MANY_REQUESTS, StatusCode::INTERNAL_SERVER_ERROR]
+            .map(|s| error_code(s, ""));
+        let mut codes: Vec<&str> = ERROR_CODES.iter().map(|(_, c)| *c).chain(by_status).collect();
+        codes.sort_unstable();
+        codes.dedup();
+        codes
+    }
+
+    #[test]
+    fn every_message_gets_its_code() {
+        // Messages the hub sends, as written where they are made (the fixed
+        // part of a message built with format!), and the code each must get.
+        let messages = [
+            (BAD, "password must be at least 8 characters", "password_too_short"),
+            (BAD, "already set up; use /api/password to change the password", "already_set_up"),
+            (BAD, "set a household password first", "not_set_up"),
+            (FORBIDDEN, "pairing code is invalid or expired", "code_expired"),
+            (FORBIDDEN, "too many attempts; start pairing again on the laptop", "too_many_attempts"),
+            (FORBIDDEN, "wrong household password", "wrong_password"),
             (StatusCode::TOO_MANY_REQUESTS, "too many wrong attempts from this device; try again in a few minutes", "device_blocked"),
-            (StatusCode::FORBIDDEN, "request from another website", "cross_site"),
-            (StatusCode::BAD_REQUEST, "text is required", "text_required"),
-            (StatusCode::NOT_FOUND, "model is not installed on the hub", "model_not_on_hub"),
-            (StatusCode::BAD_REQUEST, "AI engine is not installed", "no_ai_engine"),
-            (StatusCode::FORBIDDEN, "only the laptop can do this", "laptop_only"),
-            (StatusCode::BAD_REQUEST, "that name is reserved", "name_reserved"),
+            (FORBIDDEN, "only the laptop can do this", "laptop_only"),
+            (FORBIDDEN, "request from another website", "cross_site"),
+            (StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized"),
+            (StatusCode::INTERNAL_SERVER_ERROR, "internal error", "internal"),
+            (BAD, "name is required", "name_required"),
+            (BAD, "that name is reserved", "name_reserved"),
+            (BAD, "that folder does not exist", "no_folder"),
+            (BAD, "that file does not exist", "no_file"),
+            (BAD, "bad barcode", "bad_barcode"),
+            (BAD, "delta must be a non-zero number", "bad_quantity"),
+            (BAD, "delta must be a number", "bad_quantity"),
+            (BAD, "quantity must be more than zero", "bad_quantity"),
+            (BAD, "unknown category", "bad_category"),
+            (BAD, "expiry must be a date like 2027-03-31", "bad_date"),
+            (BAD, "this item has several batches; change the date of a batch instead", "several_batches"),
+            (BAD, "text is required", "text_required"),
+            (BAD, "the note is too long", "note_too_long"),
+            (BAD, "the assistant remembers too much already; delete some notes first", "notes_full"),
+            (NOT_FOUND, "no such item", "not_found"),
+            (NOT_FOUND, "no such model", "not_found"),
+            (NOT_FOUND, "no file", "not_found"),
+            (NOT_FOUND, "model is not installed on the hub", "model_not_on_hub"),
+            (BAD, "this is not a Zaklon backup", "not_a_backup"),
+            (BAD, "the backup is incomplete", "not_a_backup"),
+            (BAD, "the backup's database is damaged", "not_a_backup"),
+            (BAD, "the backup's settings are damaged", "not_a_backup"),
+            (BAD, "this backup was made by a newer Zaklon; update first", "newer_backup"),
+            (BAD, "a copy is already running", "copy_running"),
+            (BAD, "nothing selected", "nothing_selected"),
+            (BAD, "choose a folder outside the library", "outside_library"),
+            (BAD, "} is not installed", "not_installed"),
+            (BAD, "} cannot be copied", "cannot_copy"),
+            (BAD, "not enough space: ", "drive_full"),
+            (BAD, "this drive is formatted as FAT32, which cannot hold files of 4 GB or more; format it as exFAT or NTFS", "fat32"),
+            (BAD, "writing to the drive: ", "drive_write"),
+            (BAD, "pause the download first", "pause_first"),
+            (BAD, "could not delete ", "delete_failed"),
+            (BAD, "not enough free disk space", "no_disk_space"),
+            (BAD, "checksum mismatch", "checksum"),
+            (BAD, "no AI model is installed", "no_model"),
+            (BAD, "the AI engine is not installed", "no_ai_engine"),
+            (BAD, "the AI engine stopped while loading the model", "ai_memory"),
+            (BAD, "the AI engine was stopped", "ai_stopped"),
+            (BAD, "the assistant is busy with other questions; try again in a moment", "ai_busy"),
+            (BAD, "the question is too long", "question_too_long"),
+            (BAD, "ask something first", "question_empty"),
         ];
-        for (status, msg, code) in exact {
+        let sources = hub_sources();
+        for (status, msg, code) in messages {
+            assert!(sources.contains(msg), "the hub no longer sends {msg:?}; update this list");
             assert_eq!(error_code(status, msg), code, "{msg}");
         }
-        assert_eq!(error_code(StatusCode::NOT_FOUND, "no such note"), "not_found");
-        assert_eq!(error_code(StatusCode::BAD_REQUEST, "something new"), "other");
+        assert_eq!(error_code(NOT_FOUND, "no such note"), "not_found");
+        assert_eq!(error_code(BAD, "something new"), "other");
+    }
+
+    /// An entry whose message the hub no longer sends is dead weight, and a
+    /// trap: it can catch some future message by accident.
+    #[test]
+    fn every_table_entry_matches_a_message_the_hub_sends() {
+        let sources = hub_sources();
+        let dead: Vec<&str> = ERROR_CODES.iter().map(|(needle, _)| *needle).filter(|n| !sources.contains(n)).collect();
+        assert!(dead.is_empty(), "no message contains {dead:?}");
+    }
+
+    /// The app translates every code the hub can send (`CODES` in
+    /// ui/src/errors.ts); a missing one would show the English message.
+    #[test]
+    fn the_app_translates_every_code() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/src/errors.ts");
+        let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("reading {}: {e}", path.display()));
+        let table = &text[text.find("const CODES").expect("errors.ts has a CODES table")..];
+        let table = &table[table.find('{').unwrap() + 1..table.find("};").unwrap()];
+        let ui: Vec<&str> = table
+            .lines()
+            .map(|l| l.split("//").next().unwrap_or_default())
+            .flat_map(|l| l.split(','))
+            .filter_map(|entry| entry.split_once(':'))
+            .map(|(key, _)| key.trim().trim_matches(|c| c == '"' || c == '\''))
+            .collect();
+        let missing: Vec<&str> = hub_codes().into_iter().filter(|c| !ui.contains(c)).collect();
+        assert!(missing.is_empty(), "add these codes to CODES in ui/src/errors.ts: {missing:?}");
     }
 
     #[test]
