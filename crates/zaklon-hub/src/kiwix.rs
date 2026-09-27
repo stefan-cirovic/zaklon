@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use futures_util::StreamExt;
 use serde::Serialize;
 use tokio::process::{Child, Command};
 use tracing::{info, warn};
@@ -347,16 +348,20 @@ impl Library {
                 text_queries.insert(0, cands[0].clone());
                 title_queries = cands.into_iter().chain(std::iter::once(query.to_string())).collect();
             }
-            let mut t = Vec::new();
-            for q in &title_queries {
-                t.extend(self.suggest(book, q, limit.min(8)).await);
-            }
+            // A few lookups at a time: fast, without flooding kiwix-serve.
+            let lookups: Vec<_> = title_queries.iter().map(|q| self.suggest(book, q, limit.min(8))).collect();
+            let mut t: Vec<SearchResult> = futures_util::stream::iter(lookups).buffered(4).collect::<Vec<_>>().await.into_iter().flatten().collect();
             // Exact title matches ("шећер" for "secer") first, keeping the rest in order.
             t.sort_by_key(|r| !wanted.contains(&translit::fold(&r.title)));
-            let mut x = Vec::new();
-            for q in &text_queries {
-                x.extend(self.fulltext(book, q, limit).await);
+            // A title spelled like the query without diacritics ("Осигурач"
+            // for "osigurac") is the better full-text query too.
+            if serbian {
+                let loose = translit::fold_loose(query);
+                if let Some(r) = t.iter().find(|r| translit::fold_loose(&r.title) == loose) {
+                    text_queries[0] = r.title.clone();
+                }
             }
+            let x: Vec<SearchResult> = futures_util::future::join_all(text_queries.iter().map(|q| self.fulltext(book, q, limit))).await.into_iter().flatten().collect();
             titles.push(t);
             texts.push(x);
         }

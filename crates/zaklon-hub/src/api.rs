@@ -90,6 +90,7 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/assistant/model", post(assistant_select))
         .route("/api/assistant/ask", post(assistant_ask))
         .route("/api/assistant/answers/{id}", get(assistant_answer))
+        .route("/api/assistant/answers/{id}/cancel", post(assistant_cancel))
         .route("/api/assistant/stop", post(assistant_stop))
         .route("/api/assistant/warm", post(assistant_warm))
         .route("/api/memory", get(memory_list).post(memory_add))
@@ -1453,6 +1454,15 @@ async fn assistant_ask(State(state): State<Arc<HubState>>, caller: Caller, Json(
 
 async fn assistant_answer(State(state): State<Arc<HubState>>, _caller: Caller, Path(id): Path<String>) -> Result<Json<crate::assistant::Answer>, ApiError> {
     state.assistant.answer(&id).map(Json).ok_or_else(|| not_found("no such answer"))
+}
+
+/// Stop an answer that waits or is being written; what was written so far stays.
+async fn assistant_cancel(State(state): State<Arc<HubState>>, _caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
+    if state.assistant.cancel(&id) {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(not_found("no such answer"))
+    }
 }
 
 #[derive(Deserialize, Default)]

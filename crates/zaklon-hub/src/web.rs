@@ -41,9 +41,14 @@ pub fn is_private_ip(ip: IpAddr) -> bool {
                 return is_private_v4(v4);
             }
             let seg = v.segments();
-            if seg[0] == 0x64 && seg[1] == 0xff9b && seg[2..6].iter().all(|x| *x == 0) {
-                let o = v.octets();
+            let o = v.octets();
+            // The NAT64 prefix and the old IPv4-compatible form (::a.b.c.d).
+            if (seg[0] == 0x64 && seg[1] == 0xff9b && seg[2..6].iter().all(|x| *x == 0)) || seg[..6].iter().all(|x| *x == 0) {
                 return is_private_v4(std::net::Ipv4Addr::new(o[12], o[13], o[14], o[15]));
+            }
+            // 6to4 (2002:a.b.c.d::/48) carries an IPv4 address too.
+            if seg[0] == 0x2002 && is_private_v4(std::net::Ipv4Addr::new(o[2], o[3], o[4], o[5])) {
+                return true;
             }
             v.is_loopback() || v.is_unspecified() || v.is_multicast() || (seg[0] & 0xfe00) == 0xfc00 || (seg[0] & 0xffc0) == 0xfe80
         }
@@ -89,6 +94,8 @@ pub fn client() -> reqwest::Client {
         .timeout(Duration::from_secs(12))
         .connect_timeout(Duration::from_secs(6))
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Zaklon")
+        // A proxy from the environment would look names up itself, past `PublicOnly`.
+        .no_proxy()
         .dns_resolver(std::sync::Arc::new(PublicOnly))
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
             if attempt.previous().len() > 4 || !is_public_url(attempt.url()) {
@@ -215,6 +222,10 @@ mod tests {
         assert!(!ok("http://0.0.0.1/"));
         assert!(!ok("http://3232235777/"), "192.168.1.1 written as one number");
         assert!(ok("http://[2a00:1450:4001::200e]/"), "public IPv6");
+        assert!(!ok("http://[::c0a8:101]/"), "IPv4-compatible form of 192.168.1.1");
+        assert!(!ok("http://[2002:c0a8:101::1]/"), "6to4 around 192.168.1.1");
+        assert!(ok("http://[2002:5db8:d822::1]/"), "6to4 around a public address");
+        assert!(!ok("http://[::]/"));
     }
 
     #[tokio::test]

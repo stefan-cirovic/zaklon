@@ -241,6 +241,37 @@ pub fn fold(input: &str) -> String {
     latin_to_cyrillic(&no_marks.to_lowercase())
 }
 
+/// `fold`, with the letters people leave out when typing without diacritics
+/// merged into their plain forms: ч and ћ become ц, ш becomes с, ж becomes з,
+/// ђ becomes д and џ becomes дз. So "osigurac" and "Осигурач" compare equal.
+/// It also merges different words ("piće" and "pica"), so use it only for
+/// words typed without diacritics, or where an occasional merge does no harm.
+pub fn fold_loose(input: &str) -> String {
+    loosen(&fold(input))
+}
+
+/// The `fold_loose` letter merge, for text that is already folded.
+pub fn loosen(folded: &str) -> String {
+    let mut out = String::with_capacity(folded.len());
+    for c in folded.chars() {
+        match c {
+            'ч' | 'ћ' => out.push('ц'),
+            'ш' => out.push('с'),
+            'ж' => out.push('з'),
+            'ђ' => out.push('д'),
+            'џ' => out.push_str("дз"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// True when the text has a letter with a diacritic (č, ć, š, ž, đ) or its
+/// Cyrillic counterpart: then it was typed carefully and should match exactly.
+pub fn has_diacritics(input: &str) -> bool {
+    input.chars().flat_map(char::to_lowercase).any(|c| matches!(c, 'č' | 'ć' | 'š' | 'ž' | 'đ' | 'ч' | 'ћ' | 'ш' | 'ж' | 'ђ' | 'џ'))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -341,6 +372,23 @@ mod tests {
     fn folding() {
         assert_eq!(fold("Во̀да"), "вода");
         assert_eq!(fold("Voda"), "вода");
+    }
+
+    #[test]
+    fn loose_folding_forgives_missing_diacritics() {
+        assert_ne!(fold("osigurac"), fold("Осигурач"));
+        assert_eq!(fold_loose("osigurac"), fold_loose("Осигурач"));
+        assert_eq!(fold_loose("masaza srca"), fold_loose("Масажа срца"));
+        assert_eq!(fold_loose("cesma"), fold_loose("česma"));
+        assert_eq!(fold_loose("pecurke"), fold_loose("Печурке"));
+        assert_eq!(fold_loose("frizider"), fold_loose("frižider"));
+        assert_eq!(fold_loose("djubrivo"), fold_loose("đubrivo"));
+        assert_eq!(fold_loose("dzem"), fold_loose("џем"));
+        assert_eq!(loosen(&fold("шећер")), fold_loose("secer"));
+        assert!(has_diacritics("piće"));
+        assert!(has_diacritics("Осигурач"));
+        assert!(!has_diacritics("pice"));
+        assert!(!has_diacritics("вода"));
     }
 
     #[test]

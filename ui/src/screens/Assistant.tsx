@@ -44,6 +44,8 @@ type Answer = {
   searched?: string[];
   cited?: boolean;
   grounded: boolean;
+  /** A fixed reply from the hub (a health question with no checked source), not from the model. */
+  fixed?: boolean;
   language: string;
   tokens_per_second: number;
   error: string | null;
@@ -232,6 +234,11 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
     }
   };
 
+  // Stop the answer being written; the hub keeps what was written so far.
+  const stop = (id: string) => {
+    api(`/api/assistant/answers/${id}/cancel`, { method: "POST" }).catch(() => {});
+  };
+
   const clear = () => {
     setOnline(false);
     setChat([]);
@@ -320,7 +327,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
     searching: "aiSearching",
     starting: "aiStarting",
     thinking: "aiWriting",
-    done: "aiWriting",
+    done: "aiNoAnswer",
     failed: "aiWriting",
   };
   // Screen readers hear only the latest answer: its status while it works, then the final text once.
@@ -431,7 +438,9 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
                       {a.status === "done" && a.from_supplies && !a.proposal && (
                         <div className="muted" style={{ fontSize: 13, marginTop: 8 }}>{t("aiFromSupplies")} · <a href="#supplies">{t("supplies")}</a></div>
                       )}
-                      {a.status === "done" && !a.grounded && <p className="warn" style={{ margin: "8px 0 0", fontSize: 13 }}>{t("aiNotGrounded")}</p>}
+                      {a.status === "done" && !a.grounded && !a.fixed && (
+                        <p className="warn" style={{ margin: "8px 0 0", fontSize: 13 }}>{t(a.sources.length > 0 ? "aiUncited" : "aiNotGrounded")}</p>
+                      )}
                       {a.status === "done" && a.grounded && !a.from_supplies && !a.proposal && a.sources.length > 0 && a.cited === false && (
                         <p className="muted" style={{ margin: "8px 0 0", fontSize: 13 }}>{t("aiNotCited")}</p>
                       )}
@@ -479,7 +488,10 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
               <span>{t("aiOnline")}</span>
             </label>
             <div className="row between wrap">
-              <button className="btn" disabled={busy || !question.trim()}>{busy ? t("aiThinking") : t("ask")}</button>
+              <div className="row wrap">
+                <button className="btn" disabled={busy || !question.trim()}>{busy ? t("aiThinking") : t("ask")}</button>
+                {current && <button type="button" className="btn secondary" onClick={() => stop(current.id)}>{t("aiStop")}</button>}
+              </div>
               {chat.length > 0 && !busy && <button type="button" className="btn secondary small" onClick={clear}>{t("aiNewChat")}</button>}
             </div>
           </form>
