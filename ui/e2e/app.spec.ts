@@ -405,13 +405,13 @@ test("assistant: an answer shows its sources, which open the article", async ({ 
   await page.goto("/#assistant");
   await page.getByRole("textbox", { name: "Ask something" }).fill("How long do beans keep?");
   await page.getByRole("button", { name: "Ask the assistant" }).click();
-  await expect(page.getByText("Dry beans keep for")).toBeVisible();
+  await expect(page.locator(".chat").getByText("Dry beans keep for")).toBeVisible();
   await expect(page.locator(".answer-text strong")).toHaveText("years");
   await expect(page.getByText("Sources", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: /Bean · Wikipedia/ }).click();
   await expect(page.locator(".reader-title")).toHaveText("Bean");
   await page.getByRole("button", { name: /Back/ }).click();
-  await expect(page.getByText("Dry beans keep for")).toBeVisible();
+  await expect(page.locator(".chat").getByText("Dry beans keep for")).toBeVisible();
   await noHorizontalScroll(page);
 });
 
@@ -439,7 +439,7 @@ test("assistant: a proposed supplies change happens only after confirming", asyn
   await page.goto("/#assistant");
   await page.getByRole("textbox", { name: "Ask something" }).fill("Add 2 liters of milk");
   await page.getByRole("button", { name: "Ask the assistant" }).click();
-  await expect(page.getByText(`Add a new item "${name}", 2 l?`)).toBeVisible();
+  await expect(page.locator(".chat").getByText(`Add a new item "${name}", 2 l?`)).toBeVisible();
   // Nothing is in the supplies yet.
   const before = await page.request.get("/api/items");
   expect((await before.json()).some((i: { name: string }) => i.name === name)).toBe(false);
@@ -538,7 +538,7 @@ test("assistant: online research is off until switched on, and only for this con
   const box = page.getByRole("textbox", { name: "Ask something" });
   await box.fill("How do I make water safe?");
   await page.getByRole("button", { name: "Ask the assistant" }).click();
-  await expect(page.getByText("Boil it for a minute")).toBeVisible();
+  await expect(page.locator(".chat").getByText("Boil it for a minute")).toBeVisible();
   expect(bodies[0].online).toBe(false);
   await page.getByLabel(/Also search the internet/).check();
   await box.fill("And without a pot?");
