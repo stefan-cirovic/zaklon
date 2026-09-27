@@ -119,8 +119,8 @@
       "recommended_for": [
         "sr"
       ],
-      "license": "CC BY-NC-SA 3.0",
-      "attribution": "iFixit",
+      "license": "CC BY-SA 4.0",
+      "attribution": "Wiktionary contributors",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -267,6 +267,215 @@
           ],
           "sha256": "441a56d9e05b2d98f8ae9acb7986a513ed47904d73852c92dc6b7d50baa122e5",
           "size": 52690706555
+        }
+      ]
+    },
+    {
+      "id": "zimgit-water-en",
+      "title": {
+        "en": "Safe water guides (English)",
+        "sr": "Vodič za bezbednu vodu (engleski)"
+      },
+      "description": {
+        "en": "Practical guides on finding, filtering and disinfecting drinking water.",
+        "sr": "Praktični vodiči kako da nađeš, filtriraš i dezinfikuješ vodu za piće."
+      },
+      "category": "knowledge",
+      "version": "2024-08",
+      "size": 20924451,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [
+        "sr",
+        "en"
+      ],
+      "license": "Various (redistributed as published)",
+      "attribution": "Various authors, collected by Kiwix",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/zimgit-water_en_2024-08.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/other/zimgit-water_en_2024-08.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/other/zimgit-water_en_2024-08.zim"
+          ],
+          "sha256": "392c7bc970a44fddd61dd17f6eabf1f4e21936f2d5c27c83093e1dc475cb56b6",
+          "size": 20924451
+        }
+      ]
+    },
+    {
+      "id": "zimgit-medicine-en",
+      "title": {
+        "en": "First aid and medicine guides (English)",
+        "sr": "Vodiči za prvu pomoć i medicinu (engleski)"
+      },
+      "description": {
+        "en": "Field manuals on first aid and medical care when no doctor is available.",
+        "sr": "Priručnici za prvu pomoć i lečenje kad lekar nije dostupan."
+      },
+      "category": "knowledge",
+      "version": "2024-08",
+      "size": 70179585,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [
+        "sr",
+        "en"
+      ],
+      "license": "Various (redistributed as published)",
+      "attribution": "Various authors, collected by Kiwix",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/zimgit-medicine_en_2024-08.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/other/zimgit-medicine_en_2024-08.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/other/zimgit-medicine_en_2024-08.zim"
+          ],
+          "sha256": "a86c31b93e9800aae2cd812ef18cbf9c087a7537784c62fbc259db7f9f9d18c0",
+          "size": 70179585
+        }
+      ]
+    },
+    {
+      "id": "zimgit-food-preparation-en",
+      "title": {
+        "en": "Food preparation and preserving guides (English)",
+        "sr": "Vodiči za pripremu i čuvanje hrane (engleski)"
+      },
+      "description": {
+        "en": "Guides on cooking, canning, drying and storing food safely.",
+        "sr": "Vodiči za kuvanje, zimnicu, sušenje i bezbedno čuvanje hrane."
+      },
+      "category": "knowledge",
+      "version": "2025-04",
+      "size": 97822565,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [
+        "sr",
+        "en"
+      ],
+      "license": "Various (redistributed as published)",
+      "attribution": "Various authors, collected by Kiwix",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/zimgit-food-preparation_en_2025-04.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/other/zimgit-food-preparation_en_2025-04.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/other/zimgit-food-preparation_en_2025-04.zim"
+          ],
+          "sha256": "db92c6c9dac14ff30f1cbc15aa834a7c012c6e87d4ff0519f33a0902ab6e732b",
+          "size": 97822565
+        }
+      ]
+    },
+    {
+      "id": "wikimed-en-mini",
+      "title": {
+        "en": "Medical Wikipedia (English, summaries)",
+        "sr": "Medicinska Vikipedija (engleski, sažeci)"
+      },
+      "description": {
+        "en": "Introductions of all medical articles from English Wikipedia. Small and fast.",
+        "sr": "Uvodi svih medicinskih članaka engleske Vikipedije. Malo i brzo."
+      },
+      "category": "knowledge",
+      "version": "2026-04",
+      "size": 162855323,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [
+        "sr",
+        "en"
+      ],
+      "license": "CC BY-SA 4.0",
+      "attribution": "Wikipedia contributors",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/wikipedia_en_medicine_mini_2026-04.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_en_medicine_mini_2026-04.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_en_medicine_mini_2026-04.zim"
+          ],
+          "sha256": "55153075b0773ea9c04a3db295ec5898129434ab5cae087dcb7822f37a81f358",
+          "size": 162855323
+        }
+      ]
+    },
+    {
+      "id": "nhs-medicines-en",
+      "title": {
+        "en": "Medicines A-Z from the NHS (English)",
+        "sr": "Lekovi od A do Š, NHS (engleski)"
+      },
+      "description": {
+        "en": "What common medicines are for, how to take them and their side effects, from the UK health service.",
+        "sr": "Čemu služe uobičajeni lekovi, kako se piju i koja su neželjena dejstva, od britanske zdravstvene službe."
+      },
+      "category": "knowledge",
+      "version": "2026-09",
+      "size": 15322705,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [
+        "sr",
+        "en"
+      ],
+      "license": "Open Government Licence v3.0",
+      "attribution": "NHS (nhs.uk)",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/nhs.uk_en_medicines_2026-09b.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/zimit/nhs.uk_en_medicines_2026-09b.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/zimit/nhs.uk_en_medicines_2026-09b.zim"
+          ],
+          "sha256": "349f7bc833aa1cfedd1cdd10fbb9ae575aac63b22e17639bfaee6568b6668b62",
+          "size": 15322705
+        }
+      ]
+    },
+    {
+      "id": "wikibooks-sr",
+      "title": {
+        "en": "Wikibooks in Serbian (text only)",
+        "sr": "Vikiknjige na srpskom (samo tekst)"
+      },
+      "description": {
+        "en": "Free Serbian textbooks and manuals from Wikibooks, without images.",
+        "sr": "Besplatni udžbenici i priručnici na srpskom sa Vikiknjiga, bez slika."
+      },
+      "category": "knowledge",
+      "version": "2026-07",
+      "size": 7578861,
+      "languages": [
+        "srp"
+      ],
+      "recommended_for": [
+        "sr"
+      ],
+      "license": "CC BY-SA 4.0",
+      "attribution": "Wikibooks contributors",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/wikibooks_sr_all_nopic_2026-07.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/wikibooks/wikibooks_sr_all_nopic_2026-07.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/wikibooks/wikibooks_sr_all_nopic_2026-07.zim"
+          ],
+          "sha256": "9b8c31f50bc4ac64f5b8cfe90bca0cf8196037d018a54d2baaaacbf76ed6881b",
+          "size": 7578861
         }
       ]
     },

@@ -10,8 +10,8 @@ type MapCountry = { id: string; name: string; name_sr: string; size: number; reg
 
 /** The packs a household starts with, by language ("Srbija osnovni" / "English essentials"). */
 const KNOWLEDGE: Record<Lang, string[]> = {
-  sr: ["wikipedia-sr-maxi", "wiktionary-sr", "wikimed-en", "ifixit-en"],
-  en: ["wikipedia-en-mini", "wikimed-en", "ifixit-en"],
+  sr: ["wikipedia-sr-maxi", "wiktionary-sr", "wikimed-en", "ifixit-en", "zimgit-water-en", "zimgit-medicine-en"],
+  en: ["wikipedia-en-mini", "wikimed-en", "ifixit-en", "zimgit-water-en", "zimgit-medicine-en"],
 };
 const MAP: Record<Lang, string | null> = { sr: "Serbia", en: null };
 
