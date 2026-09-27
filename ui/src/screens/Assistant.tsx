@@ -371,6 +371,12 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
           <span className="muted" style={{ fontSize: 13 }}>
             {ov.engine === "ready" ? t("aiReady") : ov.engine === "starting" ? t("aiStarting") : ov.engine === "failed" ? t("aiFailed") : t("aiSleeping")}
             {ov.books === 0 && ` · ${t("aiNoLibrary")}`}
+            {isHub && ov.engine === "ready" && !busy && (
+              <>
+                {" · "}
+                <button className="link-btn" onClick={() => api("/api/assistant/stop", { method: "POST" }).then(load).catch(() => {})}>{t("aiFreeMemory")}</button>
+              </>
+            )}
           </span>
         </div>
       )}

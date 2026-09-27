@@ -294,3 +294,4 @@ body::before {
 .online-switch { font-size: 14px; color: var(--muted); }
 .source.web { color: var(--text); }
 .code-inline { font-size: 20px; letter-spacing: 0.08em; font-weight: 600; }
+.link-btn { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
