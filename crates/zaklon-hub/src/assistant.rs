@@ -739,12 +739,13 @@ terms: 2 to 4 terms to search the encyclopedia or the supplies, nouns in their b
 change (only for supplies_change): action is \"add\", \"use\" or \"shopping\"; name is the thing in its basic form; \
 quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; category is food, drink, medicine, hygiene, equipment, fuel or other."
         };
-        let examples: [(&str, &str); 7] = if sr {
+        let examples: [(&str, &str); 8] = if sr {
             [
                 ("Koliko dugo traje hleb?", r#"{"kind":"library","terms":["hleb","rok trajanja"]}"#),
                 ("Kako da izlečim prehladu kod deteta?", r#"{"kind":"library","terms":["prehlada","lečenje","dete"]}"#),
                 ("Koliko imam brašna?", r#"{"kind":"supplies_question","terms":["brašno"]}"#),
                 ("Šta imam u zalihama?", r#"{"kind":"supplies_question","terms":[]}"#),
+                ("Šta treba da kupim?", r#"{"kind":"supplies_question","terms":[]}"#),
                 ("Dodaj 2 litra mleka", r#"{"kind":"supplies_change","terms":["mleko"],"change":{"action":"add","name":"mleko","quantity":2,"unit":"l","category":"drink"}}"#),
                 ("Potrošili smo 3 konzerve pasulja", r#"{"kind":"supplies_change","terms":["pasulj"],"change":{"action":"use","name":"pasulj","quantity":3,"unit":"pcs","category":"food"}}"#),
                 ("Zapamti da je Marko alergičan na orahe", r#"{"kind":"remember","terms":[],"note":"Marko je alergičan na orahe."}"#),
@@ -755,6 +756,7 @@ quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; categor
                 ("How do I treat a cold in a child?", r#"{"kind":"library","terms":["common cold","treatment","child"]}"#),
                 ("How much flour do we have?", r#"{"kind":"supplies_question","terms":["flour"]}"#),
                 ("What do we have in the supplies?", r#"{"kind":"supplies_question","terms":[]}"#),
+                ("What do we need to buy?", r#"{"kind":"supplies_question","terms":[]}"#),
                 ("Add 2 liters of milk", r#"{"kind":"supplies_change","terms":["milk"],"change":{"action":"add","name":"milk","quantity":2,"unit":"l","category":"drink"}}"#),
                 ("We used 3 cans of beans", r#"{"kind":"supplies_change","terms":["beans"],"change":{"action":"use","name":"beans","quantity":3,"unit":"pcs","category":"food"}}"#),
                 ("Remember that Mark is allergic to walnuts", r#"{"kind":"remember","terms":[],"note":"Mark is allergic to walnuts."}"#),
