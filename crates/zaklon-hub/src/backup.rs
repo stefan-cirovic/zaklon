@@ -212,7 +212,7 @@ pub fn stage_restore(cfg: &Config, zip_path: &Path) -> Result<Manifest, String> 
             let name = entry.name().to_string();
             // Only the files a backup is made of; nothing else is written anywhere.
             let allowed = matches!(name.as_str(), "manifest.json" | "household.db" | "hub.json")
-                || name.strip_prefix("tls/").is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)));
+                || name.strip_prefix("tls/").is_some_and(|n| !n.is_empty() && n != "." && n != ".." && n.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)));
             if !allowed || entry.size() > MAX_ENTRY {
                 continue;
             }
@@ -261,12 +261,14 @@ pub fn finish_pending_restore(root: &Path) -> Result<bool, String> {
     let fresh = root.join("household.new");
     let _ = std::fs::remove_dir_all(&fresh);
     std::fs::create_dir_all(fresh.join("tls")).map_err(|e| e.to_string())?;
+    // Copied, not moved: if the swap fails, the staged restore is still
+    // whole and the next start tries again.
     for name in ["household.db", "hub.json"] {
-        std::fs::rename(pending.join(name), fresh.join(name)).map_err(|e| format!("restoring {name}: {e}"))?;
+        std::fs::copy(pending.join(name), fresh.join(name)).map_err(|e| format!("restoring {name}: {e}"))?;
     }
     if let Ok(rd) = std::fs::read_dir(pending.join("tls")) {
         for e in rd.flatten() {
-            std::fs::rename(e.path(), fresh.join("tls").join(e.file_name())).map_err(|e| format!("restoring the identity: {e}"))?;
+            std::fs::copy(e.path(), fresh.join("tls").join(e.file_name())).map_err(|e| format!("restoring the identity: {e}"))?;
         }
     }
     std::fs::create_dir_all(root.join("backups")).map_err(|e| e.to_string())?;
@@ -373,7 +375,7 @@ mod tests {
         // renamed into place.
         let fresh = root.join("household.new");
         std::fs::create_dir_all(fresh.join("tls")).unwrap();
-        let lock = std::fs::OpenOptions::new().write(true).create(true).share_mode(0).open(fresh.join("tls").join("lock")).unwrap();
+        let lock = std::fs::OpenOptions::new().write(true).create(true).truncate(true).share_mode(0).open(fresh.join("tls").join("lock")).unwrap();
 
         let result = finish_pending_restore(&root);
         drop(lock);
@@ -387,16 +389,14 @@ mod tests {
         assert!(cfg.config_path().is_file());
         // Nothing is left under the "before restore" name: it went back.
         assert!(!std::fs::read_dir(cfg.backups_dir()).unwrap().flatten().any(|e| e.file_name().to_string_lossy().starts_with("household-before-restore-")));
-        // The failure is reported (Err above). The restore still shows as
-        // pending, but its database and settings were already moved into
-        // "household.new", so the next start discards it as incomplete: the
-        // household must stage the backup again.
+        // The failure is reported (Err above) and the staged restore is still
+        // whole, so the next start (the lock is gone) finishes it.
         assert!(restore_pending(&root));
-        assert!(!root.join(PENDING).join("household.db").exists());
-        assert!(finish_pending_restore(&root).is_err(), "the next start discards the emptied restore");
+        assert!(root.join(PENDING).join("household.db").exists());
+        assert!(finish_pending_restore(&root).unwrap(), "the next start finishes the restore");
         assert!(!restore_pending(&root));
         let db = Db::open(&cfg.db_path()).unwrap();
-        assert_eq!(db.get_setting("marker").unwrap().as_deref(), Some("current"));
+        assert_eq!(db.get_setting("marker").unwrap().as_deref(), Some("before"));
         drop(db);
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -456,14 +456,12 @@ mod tests {
         let tls: Vec<String> = std::fs::read_dir(root.join(PENDING).join("tls")).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
         assert!(tls.iter().all(|n| n != "x" && !n.contains("..")), "{tls:?}");
 
-        // "tls/.." names the pending folder itself: the file cannot be
-        // created, so the restore fails, but nothing is written anywhere and
-        // the earlier staged restore is kept.
-        let evil = build(&["tls/.."]);
-        assert!(stage_restore(&cfg, &evil).is_err());
+        // "tls/.." and "tls/." name folders, not files: skipped like the rest.
+        let evil = build(&["tls/..", "tls/."]);
+        assert!(stage_restore(&cfg, &evil).is_ok());
         assert_eq!(outside(&root), Vec::<PathBuf>::new());
-        assert!(!root.join(format!("{PENDING}.tmp")).exists(), "the half-unpacked folder is removed");
-        assert!(restore_pending(&root), "the earlier staged restore still waits");
+        assert!(!root.join(format!("{PENDING}.tmp")).exists(), "no half-unpacked folder is left");
+        assert!(restore_pending(&root), "the restore waits");
         let _ = std::fs::remove_dir_all(&base);
     }
 
