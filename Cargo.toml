@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/zaklon-core", "crates/zaklon-pake", "crates/zaklon-hub", "apps/zaklon/src-tauri"]
+members = ["crates/zaklon-core", "crates/zaklon-pake", "crates/zaklon-hub", "apps/zaklon/src-tauri", "apps/zaklon/src-tauri/plugins/scanner"]
 
 [workspace.package]
 version = "0.1.0"

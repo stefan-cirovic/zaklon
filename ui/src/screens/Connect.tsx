@@ -21,7 +21,7 @@ export default function Connect({ t, lang, setLang, onLinked, notice }: Props) {
 
   const doScan = async () => {
     setErr(null);
-    const r = await scanCode("qr");
+    const r = await scanCode("qr", t);
     if (!r.ok) {
       if (r.reason === "denied") setErr(t("cameraDenied"));
       return;

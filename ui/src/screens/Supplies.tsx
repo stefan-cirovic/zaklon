@@ -111,7 +111,7 @@ export default function Supplies({ t }: { t: T }) {
   };
 
   const scanAndOpen = async () => {
-    const code = await scan("product");
+    const code = await scan("product", t);
     if (!code) return;
     try {
       const r = await api<BarcodeReply>(`/api/barcodes/${encodeURIComponent(code)}`);
@@ -318,7 +318,7 @@ function ItemForm({
   };
 
   const scanCode = async () => {
-    const code = await scan("product");
+    const code = await scan("product", t);
     if (code) setF((prev) => ({ ...prev, barcode: code }));
   };
 

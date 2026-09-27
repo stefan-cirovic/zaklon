@@ -12,7 +12,6 @@ Zaklon goes online only for the connections below. All of them are started by th
 | Map download (user starts it on the Maps screen) | `mapgen-fi-1.comaps.app` | Map files, verified with the SHA-1 CoMaps publishes |
 | First map download | `codeberg.org` | The CoMaps app for phones, verified with SHA-256 |
 | Online research (switched on per conversation in the Assistant) | `html.duckduckgo.com`, then the first public result pages (never addresses inside the home network) | Web search for the assistant; the pages are listed as sources |
-| Phone: barcode scanning, the first time | Google Play services (Google servers) | Barcode scanning on Android uses Google ML Kit through Google Play services. The scanner model is downloaded by Google Play services the first time the scanner is used, and ML Kit sends performance and usage metrics to Google. See [THIRD_PARTY.md](../THIRD_PARTY.md). |
 | Planned, not used yet | `packs.zaklon.com` | Zaklon's own content packs and a signed catalog |
 
 The add-on catalog itself is built into the app; Zaklon does not download it. The `library.kiwix.org` links shown with some packs are only links to where the pack is described.
@@ -33,6 +32,6 @@ For tests and development, `ZAKLON_LOOPBACK_ONLY=1` makes the hub listen on 127.
 
 ## Telemetry
 
-Zaklon itself has no telemetry, no crash reporting, no analytics and no account system. The one exception today is Google ML Kit, used for barcode scanning on Android phones (see the table above).
+Zaklon itself has no telemetry, no crash reporting, no analytics and no account system. Barcode scanning on phones is done on the phone itself (zxing-cpp, see [THIRD_PARTY.md](../THIRD_PARTY.md)) and does not use the network or Google Play services.
 
 The system web view that draws Zaklon's window (Microsoft Edge WebView2 on Windows, Android System WebView on phones) is part of the operating system. It may contact Microsoft or Google on its own, for example to update itself or for their safe-browsing checks; Zaklon does not control that.

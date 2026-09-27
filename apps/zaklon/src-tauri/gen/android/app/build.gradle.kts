@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
@@ -46,9 +47,6 @@ android {
             )
         }
     }
-    kotlinOptions {
-        jvmTarget = "1.8"
-    }
     // The on-device AI engine (llama.cpp server and libraries, fetched by
     // scripts/fetch-android-llama.sh). Libraries must be extracted to disk so
     // the server can be started as a separate process.
@@ -60,6 +58,12 @@ android {
     }
     buildFeatures {
         buildConfig = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_1_8)
     }
 }
 

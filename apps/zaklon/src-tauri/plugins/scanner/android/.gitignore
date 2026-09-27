@@ -1,0 +1,3 @@
+/build
+# A copy of Tauri's Android library, put here by the build.
+/.tauri

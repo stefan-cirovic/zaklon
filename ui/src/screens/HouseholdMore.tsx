@@ -141,6 +141,7 @@ const THIRD_PARTY: { name: string; role: Key; license: string }[] = [
   { name: "Kiwix (kiwix-serve)", role: "tpKiwix", license: "GPL-3.0-or-later" },
   { name: "llama.cpp", role: "tpLlama", license: "MIT" },
   { name: "CoMaps", role: "tpComaps", license: "Apache-2.0" },
+  { name: "zxing-cpp", role: "tpZxing", license: "Apache-2.0" },
   { name: "OpenStreetMap", role: "tpOsm", license: "ODbL 1.0" },
   { name: "Wikipedia, Wiktionary", role: "tpWikipedia", license: "CC BY-SA 4.0" },
   { name: "Qwen, Gemma", role: "tpModels", license: "Apache-2.0" },

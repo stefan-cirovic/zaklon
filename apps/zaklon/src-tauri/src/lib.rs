@@ -193,7 +193,7 @@ pub fn run() {
 
     let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
     #[cfg(any(target_os = "android", target_os = "ios"))]
-    let builder = builder.plugin(tauri_plugin_barcode_scanner::init());
+    let builder = builder.plugin(tauri_plugin_scanner::init());
     // Desktop: one copy only (a second start just shows the window), and the
     // page the window shows until the hub answers.
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

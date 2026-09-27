@@ -22,6 +22,6 @@ Third-party programs that Zaklon runs as separate processes (kiwix-serve, llama.
 
 ## What we promise
 
-- No accounts, no cloud services and no telemetry of our own. The one exception today is Google ML Kit, used for barcode scanning on Android, which sends usage metrics to Google. See `docs/network.md` for every host the app can contact and why.
+- No accounts, no cloud services and no telemetry. Barcode scanning on phones runs on the phone itself (zxing-cpp), without Google Play services and without internet. See `docs/network.md` for every host the app can contact and why.
 - Releases are built by GitHub Actions and published with SHA-256 checksums (`SHA256SUMS.txt`).
 - Not in place yet (planned before 1.0): a signed Windows installer, a release-signed Android app and a signed add-on catalog. Until then, check downloads against the published checksums.

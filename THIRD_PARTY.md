@@ -10,11 +10,9 @@ Zaklon runs several independent programs as separate processes, includes some th
 | llama.cpp (llama-server) | AI engine | MIT | Downloaded by the hub with the first AI model; bundled in the Android app | https://github.com/ggml-org/llama.cpp |
 | CoMaps | Offline maps app for phones | Apache-2.0 | Downloaded by the hub with the first map, then offered to phones | https://codeberg.org/comaps/comaps |
 | Microsoft Edge WebView2 Runtime | Draws the desktop window | Microsoft Software License Terms (proprietary) | Bundled in the Windows installer, which installs it only if Windows does not have it yet | https://developer.microsoft.com/microsoft-edge/webview2/ |
-| Google ML Kit Barcode Scanning (through Google Play services) | Barcode scanning on phones | Proprietary (ML Kit Terms and Google APIs Terms of Service) | Linked into the Android app by the Tauri barcode scanner plugin; the scanner model is downloaded by Google Play services the first time it is used | https://developers.google.com/ml-kit |
-| AndroidX, CameraX, Material Components for Android | Android app libraries | Apache-2.0 | Bundled in the Android app | https://developer.android.com/jetpack/androidx |
+| zxing-cpp (its Android library, `io.github.zxing-cpp:android`) | Reads barcodes and QR codes on phones, on the phone itself | Apache-2.0 | Bundled in the Android app | https://github.com/zxing-cpp/zxing-cpp |
+| AndroidX (among them CameraX, the camera view of the barcode scanner), Material Components for Android, and the libraries these use (among them Kotlin, Guava and Dagger) | Android app libraries | Apache-2.0 | Bundled in the Android app | https://developer.android.com/jetpack/androidx |
 | NSIS | Windows installer | zlib/libpng | The Windows installer is built with it | https://nsis.sourceforge.io |
-
-About Google ML Kit: it is proprietary Google software, not open source. It works only on phones with Google Play services, it needs internet the first time to download its model, and it sends performance and usage metrics to Google.
 
 ## Fonts
 

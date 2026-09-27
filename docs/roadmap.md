@@ -8,7 +8,7 @@ Validate the riskiest pieces before building modules:
 
 - [x] Android app (Tauri 2) connects to the Rust hub over pinned TLS on the local network with no internet (tested on a real phone, 2026-09-26). Laptop-created Wi-Fi still to test.
 - [x] On-device AI on Android (Qwen3.5 2B) with the model copied from the hub (tested on a Samsung A56, about 12 tokens per second).
-- [x] Barcode scanning from the Android app (through Google ML Kit, which needs Google Play services).
+- [x] Barcode scanning from the Android app (zxing-cpp on the phone itself, without Google Play services or internet).
 - [x] Large pack downloads with resume, verification and USB import; kiwix-serve and llama-server supervised as sidecars on Windows.
 
 ## 1.0

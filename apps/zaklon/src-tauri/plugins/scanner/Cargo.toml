@@ -1,0 +1,18 @@
+[package]
+name = "tauri-plugin-scanner"
+description = "Barcode and QR code scanner for the Zaklon phone app (CameraX and zxing-cpp, on the phone only)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+# Tauri plugins must set `links` to their own name: it is how the app's build
+# finds the plugin's permissions and its Android project.
+links = "tauri-plugin-scanner"
+
+[dependencies]
+tauri = { version = "2", default-features = false }
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

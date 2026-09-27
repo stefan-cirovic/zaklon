@@ -10,14 +10,14 @@
 
 - **Library.** Offline Wikipedia, medical reference, repair guides and more, searchable from every phone in the house.
 - **Maps.** The whole world in pieces (countries and regions), downloaded once by the hub and served to phones running [CoMaps](https://comaps.app), without internet.
-- **Supplies.** What you have, where it is, when it expires and what is running low, with batches that each keep their own expiry date, a shopping list and a "put away" step. Barcode scanning from the phone (it uses Google Play services and needs internet the first time; see [docs/network.md](docs/network.md)). A phone away from home keeps its last copy, and its shopping list keeps working.
+- **Supplies.** What you have, where it is, when it expires and what is running low, with batches that each keep their own expiry date, a shopping list and a "put away" step. Barcode scanning with the phone camera, done on the phone itself (no Google Play services, no internet). A phone away from home keeps its last copy, and its shopping list keeps working.
 - **Assistant.** A local AI model on the hub that answers from your library and names its sources, answers about your supplies and proposes changes to them (nothing changes until you confirm), remembers what you ask it to remember, and, only when you switch it on for a conversation, researches online. Phones use it at home and fall back to a smaller model of their own.
 - **Household.** Pairing phones with a code, daily backups and backups to USB, copying packs to USB for another household, and a laptop that becomes the Wi-Fi network when there is no router. Profiles for each person are planned.
 
 ## Principles
 
 1. **Offline by default.** Internet is optional.
-2. **Local only.** No accounts, no telemetry, no cloud. Your data lives in one folder you can copy to a USB stick. One exception: barcode scanning on Android uses Google ML Kit, which sends usage metrics to Google (see [docs/network.md](docs/network.md)).
+2. **Local only.** No accounts, no telemetry, no cloud. Your data lives in one folder you can copy to a USB stick.
 3. **Free forever.** Licensed under GPL-3.0-or-later. Donations are welcome and never unlock features.
 4. **Transparent.** Public repository from the first commit. Zaklon goes online only when you start something (a download, online research) and, unless you switch it off, once a day to check for a new version. Every host it can contact is listed in [docs/network.md](docs/network.md).
 5. **Light.** Small installer, low idle memory, no animations.
