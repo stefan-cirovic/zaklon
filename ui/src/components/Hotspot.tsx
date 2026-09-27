@@ -37,7 +37,11 @@ export default function Hotspot({ t }: { t: T }) {
       <h2>{t("hotspotTitle")}</h2>
       <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("hotspotIntro")}</p>
       {err && <p className="error" role="alert">{err}</p>}
-      {st.error && <p className="warn" style={{ margin: 0, fontSize: 14 }}>{t("hotspotFailed")} ({st.error})</p>}
+      {st.error === "no Wi-Fi adapter" ? (
+        <p className="muted" style={{ margin: 0 }}>{t("hotspotNoWifi")}</p>
+      ) : (
+        st.error && <p className="warn" style={{ margin: 0, fontSize: 14 }}>{t("hotspotFailed")} ({st.error})</p>
+      )}
       {ours ? (
         <>
           <div className="qr-line">
@@ -53,7 +57,7 @@ export default function Hotspot({ t }: { t: T }) {
             <button className="btn secondary" onClick={() => act("stop")} disabled={busy}>{t("hotspotStop")}</button>
           </div>
         </>
-      ) : (
+      ) : st.error === "no Wi-Fi adapter" ? null : (
         <div>
           <button className="btn" onClick={() => act("start")} disabled={busy || !st.supported}>{busy ? t("hotspotStarting") : t("hotspotStart")}</button>
         </div>

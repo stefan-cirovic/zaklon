@@ -44,6 +44,8 @@ $asTaskOp = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object
 $asTaskAction = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncAction' })[0]
 function AwaitOp($op, $type) { $t = $asTaskOp.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(-1) | Out-Null; $t.Result }
 function AwaitAction($a) { $t = $asTaskAction.Invoke($null, @($a)); $t.Wait(-1) | Out-Null }
+# No Wi-Fi adapter, no hotspot (802.11 adapters report physical medium 9).
+if (-not (Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object { $_.NdisPhysicalMedium -eq 9 })) { throw 'no Wi-Fi adapter' }
 # The hotspot hangs off a network connection; with no internet, any known connection will do.
 $profile = [Windows.Networking.Connectivity.NetworkInformation]::GetInternetConnectionProfile()
 if ($null -eq $profile) { $profile = [Windows.Networking.Connectivity.NetworkInformation]::GetConnectionProfiles() | Select-Object -First 1 }
