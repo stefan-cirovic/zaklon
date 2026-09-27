@@ -119,48 +119,96 @@ export function queue(method: string, path: string, body: string | null): string
   return answer;
 }
 
+let flushing: Promise<void> | null = null;
+
 /**
- * Send what waited, in order. `send` performs one request and returns the
- * hub's status and body; a network failure throws and stops the flush.
+ * Send what waited, in order, one flush at a time. `send` performs one
+ * request and returns the hub's status and body; a network failure throws and
+ * stops the flush (the rest waits for the next one).
  */
-export async function flush(send: (method: string, path: string, body: string | null) => Promise<{ status: number; body: string }>) {
-  let q = outbox();
-  if (q.length === 0) return;
-  const ids = new Map<string, string>(); // offline id -> the hub's id
-  while (q.length > 0) {
+export function flush(send: (method: string, path: string, body: string | null) => Promise<{ status: number; body: string }>): Promise<void> {
+  if (!flushing) {
+    flushing = flushOnce(send).finally(() => {
+      flushing = null;
+    });
+  }
+  return flushing;
+}
+
+/** Remove the first waiting change, re-reading the outbox (a new change may have been added meanwhile). */
+function dropFirst(sent: Queued) {
+  const q = outbox();
+  if (q.length > 0 && q[0].at === sent.at && q[0].path === sent.path) {
+    write(OUTBOX, q.slice(1));
+  }
+}
+
+/** After an add reached the hub, later changes to its temporary id use the hub's id. */
+function renameInOutbox(offlineId: string, realId: string) {
+  const q = outbox().map((item) =>
+    item.path.includes(encodeURIComponent(offlineId)) || item.path.includes(offlineId)
+      ? { ...item, path: item.path.replace(encodeURIComponent(offlineId), encodeURIComponent(realId)).replace(offlineId, realId) }
+      : item,
+  );
+  write(OUTBOX, q);
+}
+
+async function flushOnce(send: (method: string, path: string, body: string | null) => Promise<{ status: number; body: string }>) {
+  for (;;) {
+    const q = outbox();
+    if (q.length === 0) break;
     const item = q[0];
-    let path = item.path;
     let body = item.body;
     let offlineId: string | null = null;
-    if (path === "/api/shopping" && body) {
+    if (item.path === "/api/shopping" && body) {
       const b = JSON.parse(body) as Record<string, unknown>;
       offlineId = typeof b.offline_id === "string" ? b.offline_id : null;
+      // The hub recognises a repeated add by this id, so a reply lost on the
+      // way back never makes a second entry.
+      if (offlineId) b.client_id = offlineId;
       delete b.offline_id;
       body = JSON.stringify(b);
     } else {
-      const id = decodeURIComponent(path.split("/")[3] ?? "");
+      const id = decodeURIComponent(item.path.split("/")[3] ?? "");
       if (id.startsWith("offline-")) {
-        const real = ids.get(id);
-        if (!real) {
-          // Its add never reached the hub; nothing to do.
-          q = q.slice(1);
-          write(OUTBOX, q);
+        // Its add is no longer waiting and never got a hub id: nothing to change.
+        const stillWaiting = q.some((x) => x.path === "/api/shopping" && (x.body ?? "").includes(id));
+        if (!stillWaiting) {
+          dropFirst(item);
           continue;
         }
-        path = path.replace(encodeURIComponent(id), encodeURIComponent(real)).replace(id, real);
       }
     }
-    const res = await send(item.method, path, body); // throws when the hub is still out of reach
+    const res = await send(item.method, item.path, body); // throws when the hub is still out of reach
+    if (res.status >= 500 || res.status === 408 || res.status === 429) {
+      // The hub is busy or had a problem: keep the change and try again later.
+      throw new Error(`hub replied ${res.status}`);
+    }
     if (res.status < 300 && offlineId) {
       try {
-        ids.set(offlineId, (JSON.parse(res.body) as { id: string }).id);
+        renameInOutbox(offlineId, (JSON.parse(res.body) as { id: string }).id);
       } catch {
         /* no id in the answer */
       }
     }
-    // Sent, or refused for good (e.g. already bought on another phone): either way it is done.
-    q = q.slice(1);
-    write(OUTBOX, q);
+    // Sent, or refused for good (e.g. already bought on another phone).
+    dropFirst(item);
   }
+  window.dispatchEvent(new CustomEvent(OFFLINE_EVENT));
+}
+
+/** Forget everything kept for this hub (the phone was unlinked). */
+export function clearOffline() {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith(CACHE) || k === OUTBOX)) keys.push(k);
+    }
+    keys.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    /* nothing kept */
+  }
+  offlineSince = null;
   window.dispatchEvent(new CustomEvent(OFFLINE_EVENT));
 }

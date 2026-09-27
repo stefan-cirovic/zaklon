@@ -62,6 +62,8 @@ pub struct HubState {
     pub export: Arc<export::Exporter>,
     pub assistant: Arc<assistant::Assistant>,
     pub updates: Arc<updates::Updates>,
+    /// Shopping list adds sent from phones' outboxes, by the phone's id for them.
+    pub recent_adds: Mutex<HashMap<String, (Instant, zaklon_core::supplies::ShoppingEntry)>>,
 }
 
 impl HubState {
@@ -100,7 +102,8 @@ impl Hub {
         match backup::finish_pending_restore(root) {
             Ok(true) => info!("restored the household data from a backup"),
             Ok(false) => {}
-            Err(e) => tracing::error!("could not finish the restore: {e}"),
+            // The swap either happened or was rolled back; the household keeps its data.
+            Err(e) => tracing::error!("could not finish the restore, keeping the current data: {e}"),
         }
         let config = Config::load_or_init(root).context("loading hub configuration")?;
         config.ensure_layout()?;
@@ -130,6 +133,7 @@ impl Hub {
                 export: export::Exporter::new(),
                 assistant,
                 updates,
+                recent_adds: Mutex::new(HashMap::new()),
                 downloads,
             }),
         })

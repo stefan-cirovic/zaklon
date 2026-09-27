@@ -919,10 +919,27 @@ struct ShoppingBody {
     unit: Option<String>,
     #[serde(default)]
     item_id: Option<String>,
+    /// Set by a phone sending changes made away from home: the same add
+    /// sent twice (a reply lost on the way) makes one entry.
+    #[serde(default)]
+    client_id: Option<String>,
 }
 
 async fn shopping_add(State(state): State<Arc<HubState>>, caller: Caller, Json(b): Json<ShoppingBody>) -> Result<(StatusCode, Json<zaklon_core::supplies::ShoppingEntry>), ApiError> {
+    if let Some(cid) = b.client_id.as_deref().filter(|c| !c.is_empty() && c.len() <= 80) {
+        let mut seen = state.recent_adds.lock().unwrap_or_else(|p| p.into_inner());
+        seen.retain(|_, (at, _)| at.elapsed() < Duration::from_secs(7 * 24 * 3600));
+        if let Some((_, e)) = seen.get(cid) {
+            return Ok((StatusCode::CREATED, Json(e.clone())));
+        }
+    }
     let e = state.db.add_shopping(&b.text, b.quantity, b.unit, b.item_id, &caller.actor()).map_err(invalid)?;
+    if let Some(cid) = b.client_id.filter(|c| !c.is_empty() && c.len() <= 80) {
+        let mut seen = state.recent_adds.lock().unwrap_or_else(|p| p.into_inner());
+        if seen.len() < 10_000 {
+            seen.insert(cid, (std::time::Instant::now(), e.clone()));
+        }
+    }
     Ok((StatusCode::CREATED, Json(e)))
 }
 
@@ -1347,6 +1364,10 @@ async fn updates_state(State(state): State<Arc<HubState>>, _caller: Caller) -> J
 }
 
 async fn updates_check(State(state): State<Arc<HubState>>, _caller: Caller) -> Json<crate::updates::UpdateState> {
+    // At most one question to GitHub every ten minutes, whoever asks.
+    if state.updates.checked_recently(Duration::from_secs(600)) {
+        return Json(state.updates.state());
+    }
     Json(state.updates.check().await)
 }
 
@@ -1416,7 +1437,7 @@ async fn hotspot_status(_: Local) -> Result<Json<HotspotReply>, ApiError> {
 /// Laptop only: it changes this computer's network.
 async fn hotspot_start(State(state): State<Arc<HubState>>, _: Local) -> Result<Json<HotspotReply>, ApiError> {
     let pass = match state.db.get_setting(crate::hotspot::SETTING_PASSPHRASE)? {
-        Some(p) if p.len() >= 8 => p,
+        Some(p) if crate::hotspot::is_safe_passphrase(&p) => p,
         _ => {
             let p = crate::hotspot::new_passphrase();
             state.db.set_setting(crate::hotspot::SETTING_PASSPHRASE, &p)?;

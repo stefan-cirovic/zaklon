@@ -420,6 +420,15 @@ async fn full_hub_flow() {
     let (_, hw) = hub.get("/api/hardware").await;
     assert!(hw["ram_total"].as_u64().unwrap() > 0);
 
+    // A phone's outbox may send the same shopping list add twice; it counts once.
+    let (st, a1) = hub.post("/api/shopping", json!({ "text": "Candles", "client_id": "offline-1-123" })).await;
+    assert_eq!(st, 201);
+    let (st, a2) = hub.post("/api/shopping", json!({ "text": "Candles", "client_id": "offline-1-123" })).await;
+    assert_eq!(st, 201);
+    assert_eq!(a1["id"], a2["id"]);
+    let (_, list) = hub.get("/api/shopping").await;
+    assert_eq!(list.as_array().unwrap().iter().filter(|e| e["text"] == "Candles").count(), 1);
+
     // The assistant: without the AI engine it says so, and a question
     // finishes with a clear error instead of hanging.
     let (st, ai) = hub.get("/api/assistant").await;

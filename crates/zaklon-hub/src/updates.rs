@@ -55,6 +55,7 @@ pub fn is_newer(latest: &str, current: &str) -> bool {
 
 pub struct Updates {
     state: Mutex<UpdateState>,
+    last_check: Mutex<Option<std::time::Instant>>,
     http: reqwest::Client,
 }
 
@@ -62,6 +63,7 @@ impl Updates {
     pub fn new(enabled: bool) -> Arc<Self> {
         Arc::new(Self {
             state: Mutex::new(UpdateState { enabled, current: env!("CARGO_PKG_VERSION").into(), ..Default::default() }),
+            last_check: Mutex::new(None),
             http: reqwest::Client::builder()
                 .timeout(Duration::from_secs(20))
                 .user_agent(concat!("Zaklon/", env!("CARGO_PKG_VERSION")))
@@ -78,8 +80,13 @@ impl Updates {
         self.state.lock().unwrap_or_else(|p| p.into_inner()).enabled = on;
     }
 
+    pub fn checked_recently(&self, within: Duration) -> bool {
+        self.last_check.lock().unwrap_or_else(|p| p.into_inner()).is_some_and(|t| t.elapsed() < within)
+    }
+
     /// Ask GitHub now.
     pub async fn check(&self) -> UpdateState {
+        *self.last_check.lock().unwrap_or_else(|p| p.into_inner()) = Some(std::time::Instant::now());
         let res = self.http.get(RELEASES_API).header("accept", "application/vnd.github+json").send().await;
         let outcome: Result<Option<Release>, String> = match res {
             Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => Ok(None), // no release published yet

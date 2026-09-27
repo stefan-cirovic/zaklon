@@ -951,7 +951,10 @@ pub fn remember_request(question: &str) -> Option<String> {
     const STARTS: &[&str] = &["zapamti da ", "zapamti: ", "zapamti ", "upamti da ", "upamti ", "remember that ", "remember: ", "remember "];
     for s in STARTS {
         if lower.starts_with(s) {
-            let rest = q[s.len()..].trim().trim_end_matches(['.', '!']);
+            // The prefixes are plain ASCII, so the same number of bytes of the
+            // original text is the prefix too; `get` stays safe if not.
+            let rest = q.get(s.len()..)?;
+            let rest = rest.trim().trim_end_matches(['.', '!']);
             if rest.chars().count() < 3 {
                 return None;
             }

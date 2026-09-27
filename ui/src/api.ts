@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { flush, fromCache, isCacheable, isQueueable, markOnline, queue, remember } from "./offline";
+import { clearOffline, flush, fromCache, isCacheable, isQueueable, markOnline, queue, remember } from "./offline";
 
 export type AppMode = {
   mode: "hub" | "client";
@@ -144,6 +144,8 @@ export function clientPair(payload: PairPayload, password: string, deviceName: s
 }
 
 export function clientForget(): Promise<void> {
+  // A phone that leaves its hub keeps nothing of it.
+  clearOffline();
   return invoke("client_forget");
 }
 

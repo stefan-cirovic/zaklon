@@ -18,10 +18,53 @@ pub struct WebPage {
     pub html: String,
 }
 
-fn is_private_ip(ip: IpAddr) -> bool {
+fn is_private_v4(v: std::net::Ipv4Addr) -> bool {
+    let o = v.octets();
+    v.is_private()
+        || v.is_loopback()
+        || v.is_link_local()
+        || v.is_unspecified()
+        || v.is_broadcast()
+        || o[0] == 0 // "this network"
+        || o[0] == 100 && (o[1] & 0xC0) == 64 // carrier-grade NAT, VPNs
+        || o[0] == 198 && (o[1] & 0xFE) == 18 // benchmarking
+        || o[0] >= 224 // multicast and reserved
+}
+
+/// Addresses inside the home network (or not addresses of the internet at all).
+pub fn is_private_ip(ip: IpAddr) -> bool {
     match ip {
-        IpAddr::V4(v) => v.is_private() || v.is_loopback() || v.is_link_local() || v.is_unspecified() || v.is_broadcast() || v.octets()[0] == 100 && (v.octets()[1] & 0xC0) == 64,
-        IpAddr::V6(v) => v.is_loopback() || v.is_unspecified() || (v.segments()[0] & 0xfe00) == 0xfc00 || (v.segments()[0] & 0xffc0) == 0xfe80,
+        IpAddr::V4(v) => is_private_v4(v),
+        IpAddr::V6(v) => {
+            // IPv4 wrapped in IPv6 (::ffff:a.b.c.d and the NAT64 prefix 64:ff9b::/96).
+            if let Some(v4) = v.to_ipv4_mapped() {
+                return is_private_v4(v4);
+            }
+            let seg = v.segments();
+            if seg[0] == 0x64 && seg[1] == 0xff9b && seg[2..6].iter().all(|x| *x == 0) {
+                let o = v.octets();
+                return is_private_v4(std::net::Ipv4Addr::new(o[12], o[13], o[14], o[15]));
+            }
+            v.is_loopback() || v.is_unspecified() || v.is_multicast() || (seg[0] & 0xfe00) == 0xfc00 || (seg[0] & 0xffc0) == 0xfe80
+        }
+    }
+}
+
+/// Resolves names like the system does, but never to an address inside the
+/// home network. Used for every connection, so redirects and a name that
+/// answers differently the second time are covered too.
+struct PublicOnly;
+
+impl reqwest::dns::Resolve for PublicOnly {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        let host = name.as_str().to_string();
+        Box::pin(async move {
+            let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host.as_str(), 0)).await?.filter(|a| !is_private_ip(a.ip())).collect();
+            if addrs.is_empty() {
+                return Err("that address is inside the home network or unknown".into());
+            }
+            Ok(Box::new(addrs.into_iter()) as reqwest::dns::Addrs)
+        })
     }
 }
 
@@ -32,7 +75,7 @@ pub fn is_public_url(url: &reqwest::Url) -> bool {
     }
     match url.host() {
         Some(url::Host::Domain(d)) => {
-            let d = d.to_ascii_lowercase();
+            let d = d.trim_end_matches('.').to_ascii_lowercase();
             !(d == "localhost" || d.ends_with(".localhost") || d.ends_with(".local") || d.ends_with(".lan") || d.ends_with(".home") || d.ends_with(".internal") || !d.contains('.'))
         }
         Some(url::Host::Ipv4(ip)) => !is_private_ip(IpAddr::V4(ip)),
@@ -46,6 +89,7 @@ pub fn client() -> reqwest::Client {
         .timeout(Duration::from_secs(12))
         .connect_timeout(Duration::from_secs(6))
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Zaklon")
+        .dns_resolver(std::sync::Arc::new(PublicOnly))
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
             if attempt.previous().len() > 4 || !is_public_url(attempt.url()) {
                 attempt.stop()
@@ -121,19 +165,7 @@ pub async fn look_up(http: &reqwest::Client, query: &str, pages: usize) -> Vec<W
             break;
         }
         let Ok(parsed) = reqwest::Url::parse(&url) else { continue };
-        // The name must not lead into the home network either.
         let host = parsed.host_str().unwrap_or_default().to_string();
-        let port = parsed.port_or_known_default().unwrap_or(443);
-        let resolves_public = match tokio::net::lookup_host((host.as_str(), port)).await {
-            Ok(addrs) => {
-                let addrs: Vec<_> = addrs.collect();
-                !addrs.is_empty() && addrs.iter().all(|a| !is_private_ip(a.ip()))
-            }
-            Err(_) => false,
-        };
-        if !resolves_public {
-            continue;
-        }
         info!(host = %host, "online research: reading a page");
         let Ok(res) = http.get(parsed.clone()).send().await else { continue };
         let html_type = res
@@ -144,8 +176,17 @@ pub async fn look_up(http: &reqwest::Client, query: &str, pages: usize) -> Vec<W
         if !res.status().is_success() || !html_type {
             continue;
         }
-        let Ok(bytes) = res.bytes().await else { continue };
-        let html = String::from_utf8_lossy(&bytes[..bytes.len().min(MAX_PAGE)]).into_owned();
+        // Read at most MAX_PAGE, however big the page is.
+        let mut res = res;
+        let mut bytes: Vec<u8> = Vec::new();
+        while bytes.len() < MAX_PAGE {
+            match res.chunk().await {
+                Ok(Some(c)) => bytes.extend_from_slice(&c),
+                _ => break,
+            }
+        }
+        bytes.truncate(MAX_PAGE);
+        let html = String::from_utf8_lossy(&bytes).into_owned();
         out.push(WebPage { title: if title.is_empty() { host.clone() } else { title }, url, host, html });
     }
     out
@@ -168,6 +209,19 @@ mod tests {
         assert!(!ok("http://intranet/"));
         assert!(!ok("file:///C:/Windows/win.ini"));
         assert!(!ok("http://100.100.1.1/"), "carrier-grade NAT / VPN");
+        assert!(!ok("http://[::ffff:192.168.1.1]/"), "IPv4 inside IPv6");
+        assert!(!ok("http://[64:ff9b::c0a8:101]/"), "NAT64 form of 192.168.1.1");
+        assert!(!ok("http://printer.local./"), "trailing dot");
+        assert!(!ok("http://0.0.0.1/"));
+        assert!(!ok("http://3232235777/"), "192.168.1.1 written as one number");
+        assert!(ok("http://[2a00:1450:4001::200e]/"), "public IPv6");
+    }
+
+    #[tokio::test]
+    async fn names_that_point_home_are_refused() {
+        use reqwest::dns::Resolve;
+        let r = PublicOnly.resolve("localhost".parse().unwrap()).await;
+        assert!(r.is_err(), "localhost resolves only to loopback");
     }
 
     #[test]

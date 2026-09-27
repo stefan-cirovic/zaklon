@@ -28,6 +28,13 @@ pub fn new_passphrase() -> String {
     (0..10).map(|_| CHARS[rng.gen_range(0..CHARS.len())] as char).collect()
 }
 
+/// Passphrases we make: lower-case letters and digits, 8 to 63 long. Anything
+/// else (for example from a backup someone else made) is replaced, so no
+/// text but ours ever reaches the PowerShell script.
+pub fn is_safe_passphrase(p: &str) -> bool {
+    (8..=63).contains(&p.len()) && p.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+}
+
 /// What a phone camera understands as "join this Wi-Fi".
 pub fn wifi_qr(ssid: &str, passphrase: &str) -> String {
     let esc = |s: &str| s.replace('\\', "\\\\").replace(';', "\\;").replace(',', "\\,").replace(':', "\\:").replace('"', "\\\"");
@@ -93,7 +100,10 @@ pub fn status() -> HotspotState {
 /// Name the network "Zaklon" with our password, then switch it on.
 #[cfg(windows)]
 pub fn start(passphrase: &str) -> HotspotState {
-    let pass = passphrase.replace('\'', "");
+    if !is_safe_passphrase(passphrase) {
+        return HotspotState { error: Some("unsafe passphrase".into()), ..Default::default() };
+    }
+    let pass = passphrase;
     run(&format!(
         r#"
 $cfg = $tm.GetCurrentAccessPointConfiguration()
@@ -147,6 +157,15 @@ mod tests {
         assert_eq!(p.len(), 10, "WPA2 needs at least 8");
         assert!(p.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()));
         assert!(!p.contains(['0', 'o', '1', 'l']));
+    }
+
+    #[test]
+    fn only_our_kind_of_passphrase_is_used() {
+        assert!(is_safe_passphrase("abcd2345ef"));
+        assert!(!is_safe_passphrase("short"));
+        assert!(!is_safe_passphrase("aaaaaaaa\u{2019}; calc; \u{2019}"));
+        assert!(!is_safe_passphrase("aaaaaaaa'; calc; '"));
+        assert!(!is_safe_passphrase("ABCDEFGH"));
     }
 
     #[test]

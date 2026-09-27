@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { api, inTauri } from "../api";
 import type { Key } from "../i18n";
@@ -19,6 +19,7 @@ export default function Backups({ t }: { t: T }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const running = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -32,7 +33,8 @@ export default function Backups({ t }: { t: T }) {
   }, [load]);
 
   const run = async (f: () => Promise<void>) => {
-    if (busy) return;
+    if (running.current) return;
+    running.current = true;
     setBusy(true);
     setErr(null);
     setNote(null);
@@ -42,6 +44,7 @@ export default function Backups({ t }: { t: T }) {
     } catch (e) {
       setErr(errText(t, e));
     } finally {
+      running.current = false;
       setBusy(false);
     }
   };

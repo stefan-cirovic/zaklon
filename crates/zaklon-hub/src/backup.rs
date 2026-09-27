@@ -140,7 +140,9 @@ pub fn list(cfg: &Config) -> Vec<BackupFile> {
                 .collect()
         })
         .unwrap_or_default();
-    out.sort_by(|a, b| b.name.cmp(&a.name));
+    // Newest first by the time inside each backup (names differ between
+    // daily and hand-made ones, so they cannot be compared).
+    out.sort_by(|a, b| b.created.cmp(&a.created).then_with(|| b.name.cmp(&a.name)));
     out
 }
 
@@ -151,7 +153,10 @@ pub fn auto_backup_if_due(cfg: &Config, db: &Db) {
         .ok()
         .into_iter()
         .flat_map(|rd| rd.flatten())
-        .filter(|e| e.file_name().to_string_lossy().starts_with(AUTO_PREFIX))
+        .filter(|e| {
+            let n = e.file_name().to_string_lossy().to_string();
+            n.starts_with(AUTO_PREFIX) && n.ends_with(".zip")
+        })
         .filter_map(|e| e.metadata().ok()?.modified().ok())
         .max();
     let due = newest.is_none_or(|t| t.elapsed().unwrap_or_default() >= Duration::from_secs(24 * 3600));
@@ -192,7 +197,10 @@ pub fn stage_restore(cfg: &Config, zip_path: &Path) -> Result<Manifest, String> 
     if manifest.format > FORMAT {
         return Err("this backup was made by a newer Zaklon; update first".into());
     }
-    let pending = cfg.root.join(PENDING);
+    // Unpack next to the real pending folder and swap it in only when
+    // everything is written and checked: a power cut halfway leaves nothing
+    // half-done, and a failed second attempt keeps the first one waiting.
+    let pending = cfg.root.join(format!("{PENDING}.tmp"));
     let _ = std::fs::remove_dir_all(&pending);
     std::fs::create_dir_all(pending.join("tls")).map_err(|e| e.to_string())?;
     let result = (|| -> Result<(), String> {
@@ -225,6 +233,9 @@ pub fn stage_restore(cfg: &Config, zip_path: &Path) -> Result<Manifest, String> 
         let _ = std::fs::remove_dir_all(&pending);
         return Err(e);
     }
+    let ready = cfg.root.join(PENDING);
+    let _ = std::fs::remove_dir_all(&ready);
+    std::fs::rename(&pending, &ready).map_err(|e| format!("preparing the restore: {e}"))?;
     info!(from = %zip_path.display(), "restore staged; it completes on the next start");
     Ok(manifest)
 }
@@ -234,32 +245,41 @@ pub fn restore_pending(root: &Path) -> bool {
 }
 
 /// On start, before the database is opened: swap in a staged restore,
-/// keeping the replaced household folder under `backups/`.
+/// keeping the replaced household folder under `backups/`. The new folder is
+/// complete before anything is moved, and a failed swap is rolled back, so
+/// the household always has either its old data or the restored data.
 pub fn finish_pending_restore(root: &Path) -> Result<bool, String> {
     let pending = root.join(PENDING);
     if !restore_pending(root) {
         return Ok(false);
     }
+    if !pending.join("household.db").is_file() || !pending.join("hub.json").is_file() {
+        let _ = std::fs::remove_dir_all(&pending);
+        return Err("the prepared restore was incomplete and was discarded".into());
+    }
     let household = root.join("household");
-    let keep = root.join("backups").join(format!("household-before-restore-{}", stamp()));
+    let fresh = root.join("household.new");
+    let _ = std::fs::remove_dir_all(&fresh);
+    std::fs::create_dir_all(fresh.join("tls")).map_err(|e| e.to_string())?;
+    for name in ["household.db", "hub.json"] {
+        std::fs::rename(pending.join(name), fresh.join(name)).map_err(|e| format!("restoring {name}: {e}"))?;
+    }
+    if let Ok(rd) = std::fs::read_dir(pending.join("tls")) {
+        for e in rd.flatten() {
+            std::fs::rename(e.path(), fresh.join("tls").join(e.file_name())).map_err(|e| format!("restoring the identity: {e}"))?;
+        }
+    }
     std::fs::create_dir_all(root.join("backups")).map_err(|e| e.to_string())?;
+    let keep = root.join("backups").join(format!("household-before-restore-{}", stamp()));
     if household.exists() {
         std::fs::rename(&household, &keep).map_err(|e| format!("setting the old data aside: {e}"))?;
     }
-    std::fs::create_dir_all(household.join("tls")).map_err(|e| e.to_string())?;
-    let mv = |name: &str| -> Result<(), String> {
-        let from = pending.join(name);
-        if from.exists() {
-            std::fs::rename(&from, household.join(name)).map_err(|e| format!("restoring {name}: {e}"))?;
+    if let Err(e) = std::fs::rename(&fresh, &household) {
+        // Put the old data back rather than start with nothing.
+        if keep.exists() {
+            let _ = std::fs::rename(&keep, &household);
         }
-        Ok(())
-    };
-    mv("household.db")?;
-    mv("hub.json")?;
-    if let Ok(rd) = std::fs::read_dir(pending.join("tls")) {
-        for e in rd.flatten() {
-            let _ = std::fs::rename(e.path(), household.join("tls").join(e.file_name()));
-        }
+        return Err(format!("swapping in the restored data: {e}"));
     }
     // Downloads and the library stay as they are on this computer.
     let _ = std::fs::remove_dir_all(&pending);
@@ -295,6 +315,26 @@ mod tests {
         assert_eq!(std::fs::read(cfg.tls_dir().join("cert.pem")).unwrap(), b"CERT");
         // The replaced data was kept.
         assert!(std::fs::read_dir(cfg.backups_dir()).unwrap().flatten().any(|e| e.file_name().to_string_lossy().starts_with("household-before-restore-")));
+        drop(db);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_incomplete_restore_leaves_the_data_alone() {
+        let root = std::env::temp_dir().join(format!("zaklon-backup-test-{}", uuid::Uuid::new_v4()));
+        let cfg = Config::load_or_init(&root).unwrap();
+        let db = Db::open(&cfg.db_path()).unwrap();
+        db.set_setting("marker", "current").unwrap();
+        drop(db);
+        // A pending restore that lost its settings file (e.g. a power cut).
+        let pending = root.join(PENDING);
+        std::fs::create_dir_all(&pending).unwrap();
+        std::fs::write(pending.join("manifest.json"), b"{}").unwrap();
+        std::fs::write(pending.join("household.db"), b"half").unwrap();
+        assert!(finish_pending_restore(&root).is_err());
+        assert!(!restore_pending(&root), "discarded");
+        let db = Db::open(&cfg.db_path()).unwrap();
+        assert_eq!(db.get_setting("marker").unwrap().as_deref(), Some("current"));
         drop(db);
         let _ = std::fs::remove_dir_all(&root);
     }
