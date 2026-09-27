@@ -95,8 +95,8 @@ export default function Home({ status, statusAt, error, t, go, phone }: Props) {
         {error && !away && <p className="error" role="alert">{error}</p>}
       </div>
       <UpdateBanner t={t} />
-      {/* Dimmed, but the labels stay readable (4.5:1). */}
-      <div className="grid" style={stale ? { opacity: 0.8 } : undefined} aria-describedby={stale ? "status-as-of" : undefined}>
+      {/* Dimmed, but the labels stay readable (4.6:1). */}
+      <div className="grid fit" style={stale ? { opacity: 0.88 } : undefined} aria-describedby={stale ? "status-as-of" : undefined}>
         <div className="panel">
           <div className="label">{t("devices")}</div>
           <div className="value">{status?.devices ?? "–"}</div>
@@ -126,7 +126,7 @@ export default function Home({ status, statusAt, error, t, go, phone }: Props) {
           {statusAt !== null ? `${t("asOf")} ${fmtDateTime(new Date(statusAt).toISOString())}` : t("showingLastKnown")}
         </p>
       )}
-      <div className="grid">
+      <div className="grid fit">
         <div className="panel panel-list">
           <div className="label">{t("expiringSoon")}</div>
           {unavailable ? (

@@ -182,7 +182,7 @@ export default function Supplies({ t }: { t: T }) {
           ) : shown.length === 0 ? (
             <p className="muted" style={{ textAlign: "center" }}>{items.length === 0 ? t("noItemsYet") : t("noResults")}</p>
           ) : (
-            <div className="list">
+            <div className="list cols">
               {shown.map((i) => {
                 const low = i.min_quantity !== null && i.quantity < i.min_quantity;
                 const batches = i.batches?.length ?? 0;

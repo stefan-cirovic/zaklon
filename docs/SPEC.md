@@ -186,12 +186,13 @@ English is the default UI language; Serbian (Latin script) is selectable per pro
 
 ## 10. Design: "instrument panel"
 
-- Dark theme only in 1.0: near-black background (pure black optional for OLED), white text, one user-selected accent color (green, white, purple, blue, amber) used sparingly for the active tab, primary button and status. Red is reserved for warnings (expiry, running low, low battery).
-- The system sans-serif typeface everywhere, and Sora Light for the "ZAKLON" wordmark only; no monospace.
-- Thin dividers, no shadows, no gradients, no animations; state changes are instant.
-- Phone: bottom tabs (Home, Library, Maps, Supplies, Assistant, More). Laptop: left sidebar with all seven sections.
+- Dark theme only in 1.0, in the colors of VS Code's "Dark Modern" (background #1F1F1F, bars #181818, panels #252526, borders #2B2B2B, text #CCCCCC; pure black optional for OLED), with one user-selected accent color (amber, the logo's light, by default; green, white, purple, blue) used sparingly for the active item, primary button and status. Red is reserved for warnings (expiry, running low, low battery). All text meets WCAG AA contrast.
+- The system UI typeface as VS Code uses it (Segoe UI on Windows, the system font elsewhere), and Sora Light for the "ZAKLON" wordmark only; no monospace.
+- Thin dividers, no shadows, no gradients. The only animation: the logo in the bar brings in the wordmark when pointed at (none when the system asks for reduced motion).
+- Screens use the whole width of the window (grids and columns on a laptop), not a narrow centered column.
+- One bar along the bottom, on the phone and the laptop: Home, Assistant, Tools, Household, and at most one tool the household pinned (five items at most). The pinned tool is chosen on the laptop and kept on the hub, the same on every device; nothing is pinned by default. The Tools screen lists every tool (Supplies, Library, Maps, Add-ons) with a one-line description. The logo sits at the left end of the bar and opens zaklon.com.
 - Large tap targets and readable default text size; no separate "large text" mode.
-- Section names in Serbian are plain: Početna, Biblioteka, Mape, Zalihe, Asistent, Dodaci, Domaćinstvo.
+- Section names in Serbian are plain: Početna, Asistent, Alati, Domaćinstvo, Biblioteka, Mape, Zalihe, Dodaci.
 - Logo: done (see `logo/README.md`); it works as a 16 px icon.
 
 ## 11. Trust, licensing and distribution

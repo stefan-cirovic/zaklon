@@ -2,7 +2,15 @@ export type Lang = "en" | "sr";
 
 const en = {
   home: "Home", library: "Library", maps: "Maps", supplies: "Supplies", assistant: "Assistant",
-  addons: "Add-ons", household: "Household", more: "More",
+  addons: "Add-ons", household: "Household", tools: "Tools", mainNav: "Main", zaklonWebsite: "Zaklon website",
+  toolsIntro: "Everything Zaklon can do, in one place. Open a tool, or pin the one you use most to the bar at the bottom.",
+  pinToBar: "Pin to the bar", unpin: "Unpin", pinned: "Pinned",
+  pinForHousehold: "One tool can be pinned. It shows in the bar on every device in the household.",
+  pinOnLaptop: "The pinned tool is chosen on the laptop and is the same for the whole household.",
+  toolSuppliesDesc: "Food, water, medicine and other supplies at home, with expiry dates and a shopping list.",
+  toolLibraryDesc: "Search and read the knowledge packs, such as Wikipedia, without internet.",
+  toolMapsDesc: "Offline maps of the world, downloaded once for the laptop and every phone.",
+  toolAddonsDesc: "Download knowledge packs, AI models and programs, or copy them to a USB drive.",
   hubStatus: "Hub", online: "Running", offline: "Not reachable", devices: "Devices", uptime: "Uptime",
   version: "Version", addresses: "Addresses", dataFolder: "Data folder",
   expiringSoon: "Expired or expiring soon", runningLow: "Running low", nothingYet: "Nothing yet",
@@ -190,7 +198,15 @@ const en = {
 
 const sr: typeof en = {
   home: "Početna", library: "Biblioteka", maps: "Mape", supplies: "Zalihe", assistant: "Asistent",
-  addons: "Dodaci", household: "Domaćinstvo", more: "Više",
+  addons: "Dodaci", household: "Domaćinstvo", tools: "Alati", mainNav: "Glavna", zaklonWebsite: "Sajt Zaklona",
+  toolsIntro: "Sve što Zaklon ume, na jednom mestu. Otvori alat, ili onaj koji najčešće koristiš prikači na traku na dnu.",
+  pinToBar: "Prikači na traku", unpin: "Otkači", pinned: "Prikačeno",
+  pinForHousehold: "Može da se prikači jedan alat. Pojavljuje se u traci na svim uređajima u domaćinstvu.",
+  pinOnLaptop: "Prikačeni alat se bira na laptopu i isti je za celo domaćinstvo.",
+  toolSuppliesDesc: "Hrana, voda, lekovi i ostale zalihe u kući, sa rokovima trajanja i spiskom za kupovinu.",
+  toolLibraryDesc: "Pretraga i čitanje paketa znanja, poput Vikipedije, bez interneta.",
+  toolMapsDesc: "Mape sveta bez interneta, preuzete jednom za laptop i sve telefone.",
+  toolAddonsDesc: "Preuzimanje paketa znanja, AI modela i programa, ili kopiranje na USB.",
   hubStatus: "Hub", online: "Radi", offline: "Nije dostupan", devices: "Uređaji", uptime: "Radi već",
   version: "Verzija", addresses: "Adrese", dataFolder: "Folder sa podacima",
   expiringSoon: "Isteklo ili ističe uskoro", runningLow: "Ponestaje", nothingYet: "Još ništa",

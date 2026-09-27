@@ -105,15 +105,15 @@ async fn page(axum::extract::State(state): axum::extract::State<Arc<HubState>>) 
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title}</title>
 <style>
-body{{margin:0;background:#0b0d12;color:#ece7dd;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5}}
+body{{margin:0;background:#1f1f1f;color:#cccccc;font-family:-apple-system,BlinkMacSystemFont,"Segoe WPC","Segoe UI",system-ui,Ubuntu,"Droid Sans",sans-serif;line-height:1.5}}
 main{{max-width:520px;margin:0 auto;padding:48px 20px}}
 header{{text-align:center;margin-bottom:32px}} header svg{{display:block;margin:0 auto 14px}}
-.wordmark{{margin:0 -0.32em 0 0;line-height:1;font-size:20px;font-weight:300;letter-spacing:.32em;text-transform:uppercase}}
-h2{{font-size:18px;font-weight:600;margin:32px 0 4px}} .muted{{color:#a7adb8}}
+.wordmark{{margin:0 -0.32em 0 0;line-height:1;font-size:20px;font-weight:300;letter-spacing:.32em;text-transform:uppercase;color:#ece7dd}}
+h2{{font-size:18px;font-weight:600;margin:32px 0 4px}} .muted{{color:#9d9d9d}}
 header .muted{{margin:10px 0 0}}
-.btn{{display:block;text-align:center;margin:12px 0;padding:14px 18px;background:#151923;border:1px solid #2a303c;border-radius:12px;color:#ece7dd;text-decoration:none;font-weight:600}}
+.btn{{display:block;text-align:center;margin:12px 0;padding:14px 18px;background:#252526;border:1px solid #3c3c3c;border-radius:6px;color:#cccccc;text-decoration:none;font-weight:600}}
 .btn:hover,.btn:focus-visible{{border-color:#f2b366}} .btn:focus-visible{{outline:2px solid #f2b366;outline-offset:2px}}
-.btn.primary{{background:#f2b366;border-color:#f2b366;color:#0b0d12}}
+.btn.primary{{background:#f2b366;border-color:#f2b366;color:#1f1f1f}}
 ol{{padding-left:20px}} li{{margin:8px 0}}
 </style></head><body><main>
 <header>{mark}<h1 class="wordmark">Zaklon</h1><p class="muted">{name}</p></header>

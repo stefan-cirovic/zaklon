@@ -23,22 +23,41 @@ type Props = {
   /** This phone's own device id (phones only). */
   ownDeviceId: string | null;
   look: Look;
+  /** Shown first, even while the hub does not answer (a phone's link to its hub). */
+  top?: React.ReactNode;
 };
 
-export default function Household({ status, t, lang, setLang, refresh, isHub, ownDeviceId, look }: Props) {
-  if (!status) return <p className="muted">{t("loadingOrUnavailable")}</p>;
-  if (!status.set_up) {
+export default function Household({ status, t, lang, setLang, refresh, isHub, ownDeviceId, look, top }: Props) {
+  if (status?.set_up === false) {
     return isHub ? <Setup t={t} lang={lang} setLang={setLang} onDone={refresh} defaultName={status.hub_name} /> : <p className="muted">{t("hubNotSetUp")}</p>;
   }
   return (
     <div className="stack">
-      <Devices t={t} status={status} lang={lang} setLang={setLang} isHub={isHub} ownDeviceId={ownDeviceId} alert={isHub && <Firewall t={t} />} />
-      <Appearance t={t} look={look} />
-      {isHub && <ChangePassword t={t} />}
-      {isHub && <Backups t={t} />}
-      {isHub && <Hotspot t={t} />}
-      <ThisHub t={t} status={status} isHub={isHub} />
-      <About t={t} status={status} isHub={isHub} />
+      <div className="row between wrap household-head">
+        <h1>{t("household")}</h1>
+        <select value={lang} onChange={(e) => setLang(e.target.value as Lang)} style={{ width: "auto" }} aria-label={t("language")}>
+          <option value="en">{t("english")}</option>
+          <option value="sr">{t("serbian")}</option>
+        </select>
+      </div>
+      {status && isHub && <Firewall t={t} />}
+      {/* Two columns on a wide screen: the household's people and look, then this computer. */}
+      <div className="settings">
+        <div className="stack">
+          {top}
+          {status ? <Devices t={t} status={status} lang={lang} isHub={isHub} ownDeviceId={ownDeviceId} /> : <p className="muted">{t("loadingOrUnavailable")}</p>}
+          <Appearance t={t} look={look} />
+          {status && isHub && <ChangePassword t={t} />}
+        </div>
+        {status && (
+          <div className="stack">
+            {isHub && <Backups t={t} />}
+            {isHub && <Hotspot t={t} />}
+            <ThisHub t={t} status={status} isHub={isHub} />
+            <About t={t} status={status} isHub={isHub} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -94,7 +113,7 @@ function Setup({ t, lang, setLang, onDone, defaultName }: SetupProps) {
   // The restore panel stays in the same place, so it keeps its state when
   // the form steps aside.
   return (
-    <div className="stack form">
+    <div className="stack form setup">
       {restoring ? (
         head
       ) : (
@@ -147,14 +166,11 @@ type DevicesProps = {
   t: T;
   status: Status;
   lang: Lang;
-  setLang: (l: Lang) => void;
   isHub: boolean;
   ownDeviceId: string | null;
-  /** A warning shown right under the page title. */
-  alert?: React.ReactNode;
 };
 
-function Devices({ t, status, lang, setLang, isHub, ownDeviceId, alert }: DevicesProps) {
+function Devices({ t, status, lang, isHub, ownDeviceId }: DevicesProps) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [pair, setPair] = useState<PairStart | null>(null);
   const [expiresAt, setExpiresAt] = useState(0);
@@ -235,20 +251,7 @@ function Devices({ t, status, lang, setLang, isHub, ownDeviceId, alert }: Device
 
   return (
     <div className="stack">
-      <div className="row between wrap household-head">
-        <h1>{t("household")}</h1>
-        <select value={lang} onChange={(e) => setLang(e.target.value as Lang)} style={{ width: "auto" }} aria-label={t("language")}>
-          <option value="en">{t("english")}</option>
-          <option value="sr">{t("serbian")}</option>
-        </select>
-      </div>
-      {alert}
       {err && <p className="error" role="alert">{err}</p>}
-
-      <label className="check-line panel left">
-        <input type="checkbox" checked={latin} onChange={(e) => toggleLatin(e.target.checked)} />
-        <span>{t("latinArticles")}</span>
-      </label>
 
       {isHub &&
         (pair ? (
@@ -313,6 +316,11 @@ function Devices({ t, status, lang, setLang, isHub, ownDeviceId, alert }: Device
           </div>
         )}
       </div>
+
+      <label className="check-line panel left">
+        <input type="checkbox" checked={latin} onChange={(e) => toggleLatin(e.target.checked)} />
+        <span>{t("latinArticles")}</span>
+      </label>
     </div>
   );
 }

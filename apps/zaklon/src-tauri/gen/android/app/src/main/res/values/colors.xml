@@ -8,5 +8,5 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     <!-- The app's background (the bg color in ui/src/styles.css). -->
-    <color name="zaklon_background">#FF0B0D12</color>
+    <color name="zaklon_background">#FF1F1F1F</color>
 </resources>

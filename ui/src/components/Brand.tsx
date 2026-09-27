@@ -1,3 +1,9 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { inTauri } from "../api";
+
+/** The project's website, opened from the logo in the bar. */
+export const SITE = "https://zaklon.com";
+
 /**
  * The Zaklon mark (a dome over the horizon with a warm light inside) and the
  * wordmark. Drawn from logo/zaklon-mark.svg; below 32 px the heavier-lined
@@ -29,5 +35,24 @@ export function Brand({ size, layout = "row", className = "" }: { size: number; 
       <Mark size={size} />
       <span className="wordmark">Zaklon</span>
     </div>
+  );
+}
+
+/**
+ * The logo in the bar: the mark alone at rest; pointing at it (or focusing it)
+ * brings the wordmark in below it. It opens the website in the system browser
+ * (the desktop and phone apps) or a new tab (a browser).
+ */
+export function BrandLink({ label }: { label: string }) {
+  const open = (e: React.MouseEvent) => {
+    if (!inTauri()) return;
+    e.preventDefault();
+    openUrl(SITE).catch(() => window.open(SITE, "_blank", "noopener"));
+  };
+  return (
+    <a className="nav-brand" href={SITE} target="_blank" rel="noopener" aria-label={label} title={label} onClick={open}>
+      <Mark size={34} />
+      <span className="wordmark" aria-hidden="true">Zaklon</span>
+    </a>
   );
 }

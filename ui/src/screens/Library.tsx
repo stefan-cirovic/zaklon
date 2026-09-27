@@ -122,7 +122,7 @@ export default function Library({ t, lang, go }: Props) {
           {results === null ? (
             <div>
               <h2>{t("books")}</h2>
-              <div className="list">
+              <div className="list cols">
                 {lib!.books.map((b) => (
                   <button
                     key={b.name}
@@ -136,7 +136,7 @@ export default function Library({ t, lang, go }: Props) {
               </div>
             </div>
           ) : (
-            <div className="list">
+            <div className="list cols">
               {searching && results.length === 0 && <p className="muted">{t("aiLoading")}</p>}
               {!searching && results.length === 0 && <p className="muted">{t("noResults")}</p>}
               {results.map((r) => (

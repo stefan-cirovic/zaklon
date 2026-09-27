@@ -5,6 +5,12 @@ import { defineConfig, devices } from "@playwright/test";
 // machine, so no browser download is needed.
 //
 //   cargo build -p zaklon-hub && pnpm build && pnpm e2e
+//
+// ZAKLON_E2E_PORT_BASE moves the hub's test ports (see e2e/start-hub.mjs),
+// e.g. 38480 for a second run on the same machine.
+const PORT_BASE = Number(process.env.ZAKLON_E2E_PORT_BASE || 28480);
+const LOCAL = `http://127.0.0.1:${PORT_BASE + 1}`;
+
 export default defineConfig({
   testDir: "e2e",
   fullyParallel: false,
@@ -13,7 +19,7 @@ export default defineConfig({
   timeout: 30_000,
   reporter: [["list"]],
   use: {
-    baseURL: "http://127.0.0.1:28481",
+    baseURL: LOCAL,
     channel: process.env.PW_CHANNEL ?? (process.platform === "win32" ? "msedge" : "chrome"),
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
@@ -24,7 +30,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "node e2e/start-hub.mjs",
-    url: "http://127.0.0.1:28481/api/status",
+    url: `${LOCAL}/api/status`,
     reuseExistingServer: false,
     timeout: 30_000,
   },

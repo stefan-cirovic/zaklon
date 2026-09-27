@@ -5,6 +5,8 @@ import { expect, test, type Page } from "@playwright/test";
 // the same hub, so every test must work whether or not setup already happened.
 
 const PASSWORD = "correct horse";
+/** The hub's "install the app" port (see start-hub.mjs). */
+const INSTALL_PORT = Number(process.env.ZAKLON_E2E_PORT_BASE || 28480);
 
 async function ensureSetUp(page: Page) {
   await page.goto("/#household");
@@ -55,7 +57,7 @@ test("pairing shows the download QR, the pairing QR and a 6-digit code", async (
   await expect(page.getByRole("heading", { name: "Pair a phone" })).toBeVisible();
   await expect(page.getByRole("img", { name: /QR code/ })).toHaveCount(2);
   await expect(page.locator(".code")).toHaveText(/^\d{6}$/);
-  await expect(page.getByText(/http:\/\/.+:28480\/get/)).toBeVisible();
+  await expect(page.getByText(new RegExp(`http://.+:${INSTALL_PORT}/get`))).toBeVisible();
   await expect(page.locator(".sec-code")).toHaveText(/^[0-9A-F]{4} [0-9A-F]{4}$/);
   await expect(page.getByText(/Valid for [45]:\d\d/)).toBeVisible();
   // A new code replaces the old one.
@@ -173,7 +175,7 @@ test("every screen fits the width of the device", async ({ page }, info) => {
   const name = `Extra virgin olive oil from the cooperative in Istria, 750 ml (${info.project.name})`;
   const res = await page.request.post("/api/items", { data: { name, quantity: 2, unit: "pcs", category: "food", expiry: soon, min_quantity: 3 } });
   expect(res.ok()).toBe(true);
-  for (const tab of ["home", "library", "maps", "supplies", "assistant", "addons", "household"]) {
+  for (const tab of ["home", "tools", "library", "maps", "supplies", "assistant", "addons", "household"]) {
     await page.goto(`/#${tab}`);
     await page.waitForTimeout(300);
     await noHorizontalScroll(page);
@@ -203,17 +205,117 @@ test("every screen fits the width of the device", async ({ page }, info) => {
 
 test("the tab is remembered in the address", async ({ page }) => {
   await ensureSetUp(page);
+  await page.request.post("/api/pinned-tool", { data: { tool: null } });
   await page.goto("/#home");
-  await page.locator("nav").getByRole("button", { name: /Supplies/ }).click();
+  await page.locator("nav").getByRole("button", { name: "Tools" }).click();
+  await expect(page).toHaveURL(/#tools$/);
+  await page.locator(".tool-grid").getByRole("button", { name: /^Supplies/ }).click();
   await expect(page).toHaveURL(/#supplies$/);
   await page.reload();
   await expect(page.getByRole("heading", { name: "Supplies" })).toBeVisible();
+  // A tool that is not pinned is found under Tools, and the bar says so.
+  await expect(page.locator("nav").getByRole("button", { name: "Tools" })).toHaveAttribute("aria-current", "true");
+  // Every screen keeps its own address.
+  for (const [tab, heading] of [["library", "Library"], ["maps", "Maps"], ["addons", "Add-ons"], ["assistant", "Assistant"], ["tools", "Tools"], ["household", "Household"]]) {
+    await page.goto(`/#${tab}`);
+    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+  }
+});
+
+/** The buttons in the bar, by name. */
+async function barItems(page: Page) {
+  return page.locator("nav .nav-items button").allInnerTexts();
+}
+
+test("tools: every tool is listed, and one can be pinned to the bar for the whole household", async ({ page }) => {
+  await ensureSetUp(page);
+  // The pinned tool lives on the hub; start from none whatever ran before.
+  await page.request.post("/api/pinned-tool", { data: { tool: null } });
+  await page.goto("/#tools");
+  await expect(page.getByRole("heading", { name: "Tools", exact: true })).toBeVisible();
+  for (const name of ["Supplies", "Library", "Maps", "Add-ons"]) {
+    await expect(page.locator(".tool-card", { hasText: name }).first()).toBeVisible();
+  }
+  await expect(page.getByText(/expiry dates and a shopping list/)).toBeVisible();
+  expect(await barItems(page)).toEqual(["Home", "Assistant", "Tools", "Household"]);
+
+  // The bar is along the bottom of the window, on the laptop too.
+  const nav = await page.locator("nav").boundingBox();
+  const height = page.viewportSize()!.height;
+  expect(nav!.y + nav!.height).toBeGreaterThan(height - 2);
+  expect(nav!.y + nav!.height).toBeLessThanOrEqual(height + 1);
+
+  await page.getByRole("button", { name: "Pin to the bar: Maps" }).click();
+  await expect(page.locator("nav").getByRole("button", { name: "Maps" })).toBeVisible();
+  expect(await barItems(page)).toEqual(["Home", "Assistant", "Maps", "Tools", "Household"]);
+  await expect(page.locator(".tool-card.pinned")).toHaveCount(1);
+  await expect(page.locator(".tool-card.pinned")).toContainText("Pinned");
+  await noHorizontalScroll(page);
+  // All five fit on the screen.
+  const width = page.viewportSize()!.width;
+  for (const b of await page.locator("nav .nav-items button").all()) {
+    const box = await b.boundingBox();
+    expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1);
+  }
+
+  // It opens its screen and is the current item there.
+  await page.locator("nav").getByRole("button", { name: "Maps" }).click();
+  await expect(page).toHaveURL(/#maps$/);
+  await expect(page.getByRole("heading", { name: "Maps", exact: true })).toBeVisible();
+  await expect(page.locator("nav").getByRole("button", { name: "Maps" })).toHaveAttribute("aria-current", "page");
+
+  // Pinning another replaces it; the hub keeps it for everyone.
+  await page.goto("/#tools");
+  await page.getByRole("button", { name: "Pin to the bar: Library" }).click();
+  await expect(page.locator("nav").getByRole("button", { name: "Library" })).toBeVisible();
+  await expect(page.locator("nav").getByRole("button", { name: "Maps" })).toHaveCount(0);
+  expect((await (await page.request.get("/api/pinned-tool")).json()).tool).toBe("library");
+  await page.reload();
+  expect(await barItems(page)).toEqual(["Home", "Assistant", "Library", "Tools", "Household"]);
+
+  await page.getByRole("button", { name: "Unpin: Library" }).click();
+  await expect(page.locator("nav").getByRole("button", { name: "Library" })).toHaveCount(0);
+  expect(await barItems(page)).toEqual(["Home", "Assistant", "Tools", "Household"]);
+  expect((await (await page.request.get("/api/pinned-tool")).json()).tool).toBe(null);
+});
+
+test("the logo in the bar opens the Zaklon website", async ({ page, context }, info) => {
+  await ensureSetUp(page);
+  // Answered here, without going online.
+  await context.route(/^https:\/\/zaklon\.com\//, (r) => r.fulfill({ contentType: "text/html", body: "<title>Zaklon</title>" }));
+  await page.goto("/#home");
+  const logo = page.getByRole("link", { name: "Zaklon website" });
+  await expect(logo).toHaveAttribute("href", "https://zaklon.com");
+  await expect(logo).toHaveAttribute("rel", "noopener");
+  const wordmark = logo.locator(".wordmark");
+  if (info.project.name === "laptop") {
+    // At rest only the mark; pointing at it brings the name in below it.
+    await expect(wordmark).toHaveCSS("opacity", "0");
+    await logo.hover();
+    await expect(wordmark).toHaveCSS("opacity", "1");
+    const mark = await logo.locator(".mark").boundingBox();
+    const name = await wordmark.boundingBox();
+    expect(name!.y).toBeGreaterThan(mark!.y + mark!.height - 2);
+    expect(Math.abs(name!.x + name!.width / 2 - (mark!.x + mark!.width / 2))).toBeLessThan(3);
+    // Not stuck to the edge of the window.
+    expect(mark!.x).toBeGreaterThan(24);
+  } else {
+    await expect(wordmark).toBeHidden();
+  }
+  // A new tab (no opener: rel=noopener), not this window.
+  const opened = context.waitForEvent("page");
+  await logo.click();
+  const site = await opened;
+  await site.waitForLoadState();
+  expect(site.url()).toMatch(/^https:\/\/zaklon\.com\/?$/);
+  await expect(page).toHaveURL(/#home$/);
+  await site.close();
 });
 
 test("an idle screen does not flood the hub with requests", async ({ page }) => {
   test.setTimeout(90_000);
   await ensureSetUp(page);
-  for (const tab of ["home", "supplies", "household", "library", "addons"]) {
+  for (const tab of ["home", "supplies", "household", "library", "addons", "tools"]) {
     await page.goto(`/#${tab}`);
     await page.waitForTimeout(1500);
     const counts: Record<string, number> = {};

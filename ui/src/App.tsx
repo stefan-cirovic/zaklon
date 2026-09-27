@@ -14,23 +14,27 @@ import Library from "./screens/Library";
 import Supplies from "./screens/Supplies";
 import Maps from "./screens/Maps";
 import Assistant from "./screens/Assistant";
+import Tools from "./screens/Tools";
 import OfflineBanner from "./components/OfflineBanner";
-import { Brand } from "./components/Brand";
+import { BrandLink } from "./components/Brand";
+import { Icon, type IconName } from "./components/Icon";
+import { isToolId, toolOf, TOOLS, type ToolId } from "./tools";
 import { ACCENTS, type Accent, type Look } from "./screens/HouseholdMore";
 
-const TABS: { id: string; key: Key; ico: string }[] = [
-  { id: "home", key: "home", ico: "⌂" },
-  { id: "library", key: "library", ico: "≡" },
-  { id: "maps", key: "maps", ico: "◎" },
-  { id: "supplies", key: "supplies", ico: "▤" },
-  { id: "assistant", key: "assistant", ico: "◇" },
-  { id: "addons", key: "addons", ico: "⊕" },
+/** The bar: these four, and the tool the household pinned (after Assistant). Every tool is on the Tools screen. */
+const NAV: { id: string; key: Key; icon: IconName }[] = [
+  { id: "home", key: "home", icon: "home" },
+  { id: "assistant", key: "assistant", icon: "assistant" },
+  { id: "tools", key: "tools", icon: "tools" },
+  { id: "household", key: "household", icon: "household" },
 ];
-const TAB_IDS = [...TABS.map((x) => x.id), "household"];
+const TAB_IDS = [...NAV.map((x) => x.id), ...TOOLS.map((x) => x.id)];
 
 /** Poll every 2 s until the hub answers, then every 10 s. Never overlapping. */
 const POLL_FAST = 2000;
 const POLL_SLOW = 10000;
+/** How often the pinned tool is asked for again (it changes rarely, on the laptop). */
+const PINNED_EVERY = 60_000;
 /** Phones: the on-device AI engine holds 1-3 GB; it stops when the app has been in the background this long. */
 const AI_STOP_HIDDEN = 2 * 60 * 1000;
 
@@ -39,6 +43,14 @@ function readPref(key: string, fallback: string): string {
     return localStorage.getItem(key) ?? fallback;
   } catch {
     return fallback;
+  }
+}
+
+function writePref(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* private mode: just for this session */
   }
 }
 
@@ -86,6 +98,25 @@ export default function App() {
       }
     },
   };
+  // The household's pinned tool, as last heard from the hub (so the bar does not jump at start).
+  const [pinned, setPinnedState] = useState<ToolId | null>(() => {
+    const p = readPref("zaklon.pinned", "");
+    return isToolId(p) ? p : null;
+  });
+  const pinnedAt = useRef(0);
+  const setPinned = useCallback((tool: unknown) => {
+    const p = isToolId(tool) ? tool : null;
+    setPinnedState(p);
+    writePref("zaklon.pinned", p ?? "");
+  }, []);
+  const loadPinned = useCallback(async () => {
+    pinnedAt.current = Date.now();
+    try {
+      setPinned((await api<{ tool: string | null }>("/api/pinned-tool")).tool);
+    } catch {
+      /* keep the last known one */
+    }
+  }, [setPinned]);
   const [link, setLink] = useState<LinkSummary | null>(null);
   const [notice, setNotice] = useState<Key | null>(null);
   // Shopping list changes set aside when this phone was unlinked.
@@ -130,7 +161,9 @@ export default function App() {
     setStatusAt(null);
     setHubChanged(false);
     setNotice(why);
-  }, []);
+    setPinned(null);
+    pinnedAt.current = 0;
+  }, [setPinned]);
 
   const refresh = useCallback(async () => {
     try {
@@ -143,6 +176,7 @@ export default function App() {
       // Back in reach: send what waited on this phone.
       flushOutbox().catch(() => {});
       if (!readPref("zaklon.lang", "")) setLangState(s.language);
+      if (s.set_up && Date.now() - pinnedAt.current > PINNED_EVERY) loadPinned();
     } catch (e) {
       connected.current = false;
       const m = await getMode();
@@ -156,7 +190,7 @@ export default function App() {
       setHubChanged(m.mode === "client" && /reinstalled or replaced/.test(String(e instanceof Error ? e.message : e)));
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [unlinked]);
+  }, [unlinked, loadPinned]);
 
   useEffect(() => {
     getMode()
@@ -262,9 +296,20 @@ export default function App() {
     setNotice(null);
     setHubChanged(false);
     setParked(n);
+    setPinned(null);
+    pinnedAt.current = 0;
   };
 
   const isHub = mode?.mode !== "client";
+  /** Laptop only: the household's pinned tool (it replaces the one before), or none. */
+  const pin = async (id: ToolId | null) => {
+    const r = await api<{ tool: string | null }>("/api/pinned-tool", { json: { tool: id } });
+    setPinned(r?.tool ?? null);
+    pinnedAt.current = Date.now();
+  };
+  const bar: typeof NAV = pinned ? [NAV[0], NAV[1], { id: pinned, key: toolOf(pinned).title, icon: pinned }, NAV[2], NAV[3]] : NAV;
+  // A tool that is not in the bar belongs under Tools there.
+  const barTab = isToolId(tab) && tab !== pinned ? "tools" : tab;
   // Setup comes first: until then there is nothing to go to.
   const setupOnly = isHub && needsSetup;
   let homeError = error ? errText(t, new Error(error)) : null;
@@ -328,21 +373,31 @@ export default function App() {
           ))}
         {tab === "home" && <Home status={status} statusAt={statusAt} error={homeError} t={t} go={setTab} phone={!isHub} />}
         {tab === "household" && (
-          <div className="stack">
-            {link?.linked && (
-              <div className="panel left row between wrap">
-                <div>
-                  <div className="label">{t("linkedTo")}</div>
+          <Household
+            status={status}
+            t={t}
+            lang={lang}
+            setLang={setLang}
+            refresh={refresh}
+            isHub={isHub}
+            ownDeviceId={link?.device_id ?? null}
+            look={look}
+            top={
+              link?.linked && (
+                <div className="panel left row between wrap">
                   <div>
-                    {link.hub_name} · {link.last_host ?? link.hosts[0]}
+                    <div className="label">{t("linkedTo")}</div>
+                    <div>
+                      {link.hub_name} · {link.last_host ?? link.hosts[0]}
+                    </div>
                   </div>
+                  <ConfirmButton label={t("forgetHub")} confirmLabel={t("yesForget")} cancelLabel={t("cancel")} onConfirm={forget} />
                 </div>
-                <ConfirmButton label={t("forgetHub")} confirmLabel={t("yesForget")} cancelLabel={t("cancel")} onConfirm={forget} />
-              </div>
-            )}
-            <Household status={status} t={t} lang={lang} setLang={setLang} refresh={refresh} isHub={isHub} ownDeviceId={link?.device_id ?? null} look={look} />
-          </div>
+              )
+            }
+          />
         )}
+        {tab === "tools" && <Tools t={t} go={setTab} pinned={pinned} pin={isHub ? pin : null} />}
         {tab === "library" && <Library t={t} lang={lang} go={setTab} />}
         {tab === "maps" && <Maps t={t} lang={lang} isHub={isHub} />}
         {tab === "supplies" && <Supplies t={t} />}
@@ -351,30 +406,22 @@ export default function App() {
         {status?.version && <p className="muted footer-note">Zaklon {status.version}</p>}
       </main>
       {!setupOnly && (
-        <nav className="nav" aria-label="Zaklon">
-          <Brand size={28} className="brand" />
-          {TABS.map((x) => (
-            <button key={x.id} className={tab === x.id ? "active" : ""} aria-current={tab === x.id ? "page" : undefined} onClick={() => setTab(x.id)}>
-              <span className="ico" aria-hidden="true">{x.ico}</span>
-              <span>{t(x.key)}</span>
-            </button>
-          ))}
-          <button
-            className={"wide-only" + (tab === "household" ? " active" : "")}
-            aria-current={tab === "household" ? "page" : undefined}
-            onClick={() => setTab("household")}
-          >
-            <span className="ico" aria-hidden="true">⚙</span>
-            <span>{t("household")}</span>
-          </button>
-          <button
-            className={"more-only" + (tab === "household" ? " active" : "")}
-            aria-current={tab === "household" ? "page" : undefined}
-            onClick={() => setTab("household")}
-          >
-            <span className="ico" aria-hidden="true">⚙</span>
-            <span>{t("more")}</span>
-          </button>
+        <nav className="nav" aria-label={t("mainNav")}>
+          <BrandLink label={t("zaklonWebsite")} />
+          <div className="nav-items">
+            {bar.map((x) => (
+              <button
+                key={x.id}
+                className={barTab === x.id ? "active" : ""}
+                // The tool open under Tools: its section, not the page itself.
+                aria-current={barTab === x.id ? (tab === x.id ? "page" : "true") : undefined}
+                onClick={() => setTab(x.id)}
+              >
+                <Icon name={x.icon} />
+                <span className="nav-label">{t(x.key)}</span>
+              </button>
+            ))}
+          </div>
         </nav>
       )}
     </div>

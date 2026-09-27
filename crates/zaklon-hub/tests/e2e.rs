@@ -227,6 +227,7 @@ async fn full_hub_flow() {
         (reqwest::Method::POST, "/api/backups", json!({ "dir": "" })),
         (reqwest::Method::POST, "/api/backups/restore", json!({ "path": "C:\\nothing.zip" })),
         (reqwest::Method::POST, "/api/updates/settings", json!({ "enabled": false })),
+        (reqwest::Method::POST, "/api/pinned-tool", json!({ "tool": "maps" })),
         (reqwest::Method::GET, "/api/hotspot", Value::Null),
         (reqwest::Method::POST, "/api/hotspot/start", json!({})),
         (reqwest::Method::POST, "/api/hotspot/stop", json!({})),
@@ -245,6 +246,30 @@ async fn full_hub_flow() {
         let r = req.send().await.unwrap();
         assert_eq!(r.status().as_u16(), 403, "a phone must not reach {method} {path}");
     }
+
+    // The tool pinned to the bar is the household's: the laptop pins it,
+    // every phone reads the same one. Nothing is pinned at first.
+    let phone_pinned = || {
+        let req = as_phone(reqwest::Method::GET, "/api/pinned-tool");
+        async move {
+            let r = req.send().await.unwrap();
+            assert_eq!(r.status().as_u16(), 200);
+            r.json::<Value>().await.unwrap()["tool"].clone()
+        }
+    };
+    assert_eq!(phone_pinned().await, Value::Null, "nothing pinned by default (the refused phone changed nothing)");
+    assert_eq!(hub.post("/api/pinned-tool", json!({ "tool": "supplies" })).await, (200, json!({ "tool": "supplies" })));
+    assert_eq!(phone_pinned().await, "supplies");
+    // Pinning another replaces it; a name that is no tool id is refused.
+    assert_eq!(hub.post("/api/pinned-tool", json!({ "tool": "library" })).await.0, 200);
+    assert_eq!(hub.post("/api/pinned-tool", json!({ "tool": "../hub.json" })).await.0, 400);
+    assert_eq!(hub.get("/api/pinned-tool").await, (200, json!({ "tool": "library" })));
+    assert_eq!(phone_pinned().await, "library");
+    // Unpinned: nothing again.
+    assert_eq!(hub.post("/api/pinned-tool", json!({ "tool": null })).await.0, 200);
+    assert_eq!(phone_pinned().await, Value::Null);
+    let stranger = phone.get(format!("{}/api/pinned-tool", hub.tls)).send().await.unwrap();
+    assert_eq!(stranger.status().as_u16(), 401, "only the household reads it");
     // Other websites in the laptop's browser are refused on the local port too:
     // a foreign origin, the opaque "null" origin (sandboxed pages, file://) and
     // a request the browser marks as cross-site.

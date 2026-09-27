@@ -414,92 +414,96 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
             </p>
           )}
           <div className="sr-only" aria-live="polite" aria-atomic="true">{announce}</div>
-          <div className="chat">
-            {chat.length === 0 && <p className="muted">{t("aiEmptyChat")}</p>}
-            {chat.map((a) => (
-              <div key={a.id} className="exchange">
-                <div className="q">{a.question}</div>
-                <div className="a panel left">
-                  {a.status === "failed" ? (
-                    <p className="error" style={{ margin: 0 }}>{errText(t, new Error(a.error ?? ""))}</p>
-                  ) : (
-                    <>
-                      {a.text ? <AnswerText text={a.text} sources={a.sources} open={openSource} /> : <p className="muted" style={{ margin: 0 }}>{t(statusText[a.status])}</p>}
-                      {a.status === "done" && a.proposal && (
-                        <div className="row wrap proposal">
-                          {a.outcome === "done" ? (
-                            <span className="ok">✓ {t("aiDone")}{a.proposal.action !== "remember" && <> · <a href="#supplies">{t("supplies")}</a></>}</span>
-                          ) : a.outcome === "canceled" ? (
-                            <span className="muted">{t("aiCancelled")}</span>
-                          ) : (
-                            <>
-                              <button className="btn" onClick={() => confirm(a)} disabled={confirming === a.id}>{t("aiConfirm")}</button>
-                              <button className="btn secondary" onClick={() => setOutcome(a.id, "canceled")}>{t("cancel")}</button>
-                            </>
+          <div className="assistant-layout">
+            <div className="stack">
+              <div className="chat">
+                {chat.length === 0 && <p className="muted">{t("aiEmptyChat")}</p>}
+                {chat.map((a) => (
+                  <div key={a.id} className="exchange">
+                    <div className="q">{a.question}</div>
+                    <div className="a panel left">
+                      {a.status === "failed" ? (
+                        <p className="error" style={{ margin: 0 }}>{errText(t, new Error(a.error ?? ""))}</p>
+                      ) : (
+                        <>
+                          {a.text ? <AnswerText text={a.text} sources={a.sources} open={openSource} /> : <p className="muted" style={{ margin: 0 }}>{t(statusText[a.status])}</p>}
+                          {a.status === "done" && a.proposal && (
+                            <div className="row wrap proposal">
+                              {a.outcome === "done" ? (
+                                <span className="ok">✓ {t("aiDone")}{a.proposal.action !== "remember" && <> · <a href="#supplies">{t("supplies")}</a></>}</span>
+                              ) : a.outcome === "canceled" ? (
+                                <span className="muted">{t("aiCancelled")}</span>
+                              ) : (
+                                <>
+                                  <button className="btn" onClick={() => confirm(a)} disabled={confirming === a.id}>{t("aiConfirm")}</button>
+                                  <button className="btn secondary" onClick={() => setOutcome(a.id, "canceled")}>{t("cancel")}</button>
+                                </>
+                              )}
+                            </div>
                           )}
-                        </div>
+                          {a.status === "done" && a.from_supplies && !a.proposal && (
+                            <div className="muted" style={{ fontSize: 13, marginTop: 8 }}>{t("aiFromSupplies")} · <a href="#supplies">{t("supplies")}</a></div>
+                          )}
+                          {a.status === "done" && !a.grounded && !a.fixed && (
+                            <p className="warn" style={{ margin: "8px 0 0", fontSize: 13 }}>{t(a.sources.length > 0 ? "aiUncited" : "aiNotGrounded")}</p>
+                          )}
+                          {a.status === "done" && a.grounded && !a.from_supplies && !a.proposal && a.sources.length > 0 && a.cited === false && (
+                            <p className="muted" style={{ margin: "8px 0 0", fontSize: 13 }}>{t("aiNotCited")}</p>
+                          )}
+                          {a.sources.length > 0 && (a.status === "done" || a.text) && (
+                            <div className="sources">
+                              <div className="label">{t("aiSources")}</div>
+                              {a.sources.map((s) => (
+                                <button key={s.n} className={"source" + (s.web ? " web" : "")} onClick={() => openSource(s)}>
+                                  <span className="cite static">{s.n}</span> {s.title} <span className="muted">· {bookTitle(s)}{s.web ? ` (${t("aiInternet")})` : ""}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {a.status === "done" && (a.tokens_per_second > 0 || (a.searched?.length ?? 0) > 0) && (
+                            <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                              {a.searched && a.searched.length > 0 && !a.from_supplies && `${t("aiSearched")}: ${a.searched.join(", ")}`}
+                              {a.searched && a.searched.length > 0 && !a.from_supplies && a.tokens_per_second > 0 && " · "}
+                              {a.tokens_per_second > 0 && `${fmtQty(Math.round(a.tokens_per_second * 10) / 10)} ${t("tokensPerSecond")}`}
+                            </div>
+                          )}
+                        </>
                       )}
-                      {a.status === "done" && a.from_supplies && !a.proposal && (
-                        <div className="muted" style={{ fontSize: 13, marginTop: 8 }}>{t("aiFromSupplies")} · <a href="#supplies">{t("supplies")}</a></div>
-                      )}
-                      {a.status === "done" && !a.grounded && !a.fixed && (
-                        <p className="warn" style={{ margin: "8px 0 0", fontSize: 13 }}>{t(a.sources.length > 0 ? "aiUncited" : "aiNotGrounded")}</p>
-                      )}
-                      {a.status === "done" && a.grounded && !a.from_supplies && !a.proposal && a.sources.length > 0 && a.cited === false && (
-                        <p className="muted" style={{ margin: "8px 0 0", fontSize: 13 }}>{t("aiNotCited")}</p>
-                      )}
-                      {a.sources.length > 0 && (a.status === "done" || a.text) && (
-                        <div className="sources">
-                          <div className="label">{t("aiSources")}</div>
-                          {a.sources.map((s) => (
-                            <button key={s.n} className={"source" + (s.web ? " web" : "")} onClick={() => openSource(s)}>
-                              <span className="cite static">{s.n}</span> {s.title} <span className="muted">· {bookTitle(s)}{s.web ? ` (${t("aiInternet")})` : ""}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {a.status === "done" && (a.tokens_per_second > 0 || (a.searched?.length ?? 0) > 0) && (
-                        <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                          {a.searched && a.searched.length > 0 && !a.from_supplies && `${t("aiSearched")}: ${a.searched.join(", ")}`}
-                          {a.searched && a.searched.length > 0 && !a.from_supplies && a.tokens_per_second > 0 && " · "}
-                          {a.tokens_per_second > 0 && `${fmtQty(Math.round(a.tokens_per_second * 10) / 10)} ${t("tokensPerSecond")}`}
-                        </div>
-                      )}
-                    </>
-                  )}
+                    </div>
+                  </div>
+                ))}
+                <div ref={endRef} />
+              </div>
+              <form className="stack ask-form" onSubmit={ask}>
+                <textarea
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      (e.currentTarget.form as HTMLFormElement).requestSubmit();
+                    }
+                  }}
+                  placeholder={t("askExample")}
+                  aria-label={t("askSomething")}
+                  rows={2}
+                  maxLength={2000}
+                />
+                <label className="check-line online-switch">
+                  <input type="checkbox" checked={online} onChange={(e) => setOnline(e.target.checked)} />
+                  <span>{t("aiOnline")}</span>
+                </label>
+                <div className="row between wrap">
+                  <div className="row wrap">
+                    <button className="btn" disabled={busy || !question.trim()}>{busy ? t("aiThinking") : t("ask")}</button>
+                    {current && <button type="button" className="btn secondary" onClick={() => stop(current.id)}>{t("aiStop")}</button>}
+                  </div>
+                  {chat.length > 0 && !busy && <button type="button" className="btn secondary small" onClick={clear}>{t("aiNewChat")}</button>}
                 </div>
-              </div>
-            ))}
-            <div ref={endRef} />
-          </div>
-          <form className="stack ask-form" onSubmit={ask}>
-            <textarea
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  (e.currentTarget.form as HTMLFormElement).requestSubmit();
-                }
-              }}
-              placeholder={t("askExample")}
-              aria-label={t("askSomething")}
-              rows={2}
-              maxLength={2000}
-            />
-            <label className="check-line online-switch">
-              <input type="checkbox" checked={online} onChange={(e) => setOnline(e.target.checked)} />
-              <span>{t("aiOnline")}</span>
-            </label>
-            <div className="row between wrap">
-              <div className="row wrap">
-                <button className="btn" disabled={busy || !question.trim()}>{busy ? t("aiThinking") : t("ask")}</button>
-                {current && <button type="button" className="btn secondary" onClick={() => stop(current.id)}>{t("aiStop")}</button>}
-              </div>
-              {chat.length > 0 && !busy && <button type="button" className="btn secondary small" onClick={clear}>{t("aiNewChat")}</button>}
+              </form>
             </div>
-          </form>
-          <Memory t={t} version={memoryVersion} />
+            <Memory t={t} version={memoryVersion} />
+          </div>
         </>
       )}
 

@@ -185,7 +185,7 @@ export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: bool
       <input type="search" className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("mapsSearch")} aria-label={t("mapsSearch")} />
       {!q && <p className="muted" style={{ fontSize: 14 }}>{lang === "sr" ? t("mapsSuggestedHint") : t("mapsSearchHint")}</p>}
 
-      <div className="list">
+      <div className="list cols">
         {shown.map((c) => {
           const s = countryState(c);
           const pct = c.size ? Math.round((s.done / c.size) * 100) : 0;

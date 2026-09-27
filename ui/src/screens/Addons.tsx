@@ -142,7 +142,7 @@ export default function Addons({ t, lang, isHub }: Props) {
         return (
           <div key={cat}>
             <h2>{t(CATEGORY_KEY[cat])}</h2>
-            <div className="list">
+            <div className="list cols">
               {packs.map((p) => (
                 <PackRow key={p.id} p={p} t={t} lang={lang} title={title} act={act} isHub={isHub} />
               ))}

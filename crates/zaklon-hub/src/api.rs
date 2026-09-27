@@ -82,6 +82,7 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/updates", get(updates_state))
         .route("/api/updates/check", post(updates_check))
         .route("/api/updates/settings", post(updates_settings))
+        .route("/api/pinned-tool", get(pinned_tool).post(pin_tool))
         .route("/api/backups", get(backups_list).post(backups_create))
         .route("/api/backups/restore", post(backups_restore))
         .route("/api/backups/encryption", post(backups_encryption))
@@ -1860,6 +1861,42 @@ async fn updates_settings(State(state): State<Arc<HubState>>, _: Local, Json(bod
     Ok(StatusCode::NO_CONTENT)
 }
 
+// ---- the tool pinned to the bar --------------------------------------------------
+
+/// The database setting that holds the pinned tool (a backup brings it back
+/// with the rest of the household's data).
+const PINNED_TOOL: &str = "pinned_tool";
+
+/// A tool is named by the id the app uses in its addresses ("supplies",
+/// "maps"): short, lowercase letters, digits and hyphens. The hub keeps no
+/// list of the app's tools; the app ignores an id it does not know.
+fn is_tool_id(id: &str) -> bool {
+    (1..=32).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+#[derive(Serialize, Deserialize)]
+struct PinnedTool {
+    /// None: nothing is pinned.
+    tool: Option<String>,
+}
+
+/// The one tool the household pinned to the navigation bar, next to Home,
+/// Assistant, Tools and Household. Every device shows the same one.
+async fn pinned_tool(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<PinnedTool>, ApiError> {
+    let tool = state.db.get_setting(PINNED_TOOL)?.filter(|t| is_tool_id(t));
+    Ok(Json(PinnedTool { tool }))
+}
+
+/// Laptop only: pin a tool (it replaces the one pinned before), or none.
+async fn pin_tool(State(state): State<Arc<HubState>>, _: Local, Json(body): Json<PinnedTool>) -> Result<Json<PinnedTool>, ApiError> {
+    let tool = body.tool.filter(|t| !t.is_empty());
+    if tool.as_deref().is_some_and(|t| !is_tool_id(t)) {
+        return Err(bad("no such tool"));
+    }
+    state.db.set_setting(PINNED_TOOL, tool.as_deref().unwrap_or(""))?;
+    Ok(Json(PinnedTool { tool }))
+}
+
 // ---- the assistant's memory ------------------------------------------------------
 
 async fn memory_list(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<Vec<zaklon_core::memory::Note>>, ApiError> {
@@ -2036,6 +2073,7 @@ mod error_code_tests {
             (BAD, "the note is too long", "note_too_long"),
             (BAD, "the assistant remembers too much already; delete some notes first", "notes_full"),
             (NOT_FOUND, "no such item", "not_found"),
+            (BAD, "no such tool", "not_found"),
             (NOT_FOUND, "no such model", "not_found"),
             (NOT_FOUND, "no file", "not_found"),
             (NOT_FOUND, "model is not installed on the hub", "model_not_on_hub"),
@@ -2141,5 +2179,22 @@ mod error_code_tests {
         assert_eq!(disk.0, StatusCode::INTERNAL_SERVER_ERROR);
         let db = invalid(anyhow::Error::new(zaklon_core::rusqlite::Error::InvalidQuery));
         assert_eq!(db.0, StatusCode::INTERNAL_SERVER_ERROR);
+    }
+}
+
+#[cfg(test)]
+mod pinned_tool_tests {
+    use super::is_tool_id;
+
+    #[test]
+    fn tool_ids_are_short_lowercase_names() {
+        for ok in ["supplies", "maps", "addons", "first-aid", "tool2"] {
+            assert!(is_tool_id(ok), "{ok}");
+        }
+        let long = "x".repeat(33);
+        for bad in ["", "Supplies", "../evil", "a b", "maps/", long.as_str(), "šuma", "#maps"] {
+            assert!(!is_tool_id(bad), "{bad:?}");
+        }
+        assert!(is_tool_id(&"x".repeat(32)));
     }
 }
