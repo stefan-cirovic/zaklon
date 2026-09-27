@@ -68,7 +68,20 @@ CREATE TABLE IF NOT EXISTS batches (
 );
 CREATE INDEX IF NOT EXISTS batches_item ON batches(item_id);
 CREATE INDEX IF NOT EXISTS items_expiry ON items(expiry);
+CREATE TABLE IF NOT EXISTS client_ops (
+    client_id TEXT PRIMARY KEY,
+    reply TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS client_ops_created ON client_ops(created_at);
 "#;
+
+/// How long the hub remembers a phone's id for a shopping list add. A phone
+/// that sends it again within this time (its reply was lost, or it was
+/// paired again and resends what it had set aside) gets the same entry.
+pub const CLIENT_OP_DAYS: i64 = 30;
+/// Longest client id accepted; phones send 32 hex digits.
+pub const CLIENT_ID_MAX: usize = 80;
 
 /// Bring an existing database up to date. Safe to run on every start.
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {
@@ -257,6 +270,46 @@ fn clamp_qty(q: f64) -> f64 {
         return 0.0;
     }
     (q.clamp(0.0, MAX_QUANTITY) * 1000.0).round() / 1000.0
+}
+
+/// Store a shopping list entry; the caller holds the connection (or a transaction).
+fn insert_shopping_in(
+    conn: &Connection,
+    text: &str,
+    quantity: Option<f64>,
+    unit: Option<String>,
+    item_id: Option<String>,
+    status: &str,
+    actor: &str,
+) -> Result<ShoppingEntry> {
+    let text: String = text.trim().chars().take(120).collect();
+    if text.is_empty() {
+        bail!("text is required");
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = now_rfc3339();
+    let unit = clean_max(unit, 20);
+    let quantity = quantity.filter(|q| q.is_finite()).map(clamp_qty);
+    conn.execute(
+        "INSERT INTO shopping (id, item_id, text, quantity, unit, done, status, created_at, updated_at, updated_by)
+         VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?7, ?8)",
+        params![id, item_id, text, quantity, unit, status, now, actor],
+    )?;
+    Ok(ShoppingEntry { id, item_id, text, quantity, unit, status: status.into(), source: "manual" })
+}
+
+/// The entry remembered for a repeated add (see `add_shopping_once`).
+fn entry_from_json(s: &str) -> Option<ShoppingEntry> {
+    let v: serde_json::Value = serde_json::from_str(s).ok()?;
+    Some(ShoppingEntry {
+        id: v["id"].as_str()?.to_string(),
+        item_id: v["item_id"].as_str().map(String::from),
+        text: v["text"].as_str()?.to_string(),
+        quantity: v["quantity"].as_f64(),
+        unit: v["unit"].as_str().map(String::from),
+        status: v["status"].as_str().unwrap_or("open").to_string(),
+        source: "manual",
+    })
 }
 
 fn checked_date(d: Option<String>) -> Result<Option<String>> {
@@ -906,6 +959,47 @@ impl Db {
         self.insert_shopping(text, quantity, unit, item_id, "open", actor)
     }
 
+    /// Add to the shopping list once per `client_id`: a phone that sends the
+    /// same add again (the reply was lost, or it resends changes it set aside
+    /// while it was paired again) gets the entry made the first time. The ids
+    /// are kept in the database for `CLIENT_OP_DAYS`, so a restart of the hub
+    /// does not forget them. Ids are random and long, so they are not tied to
+    /// the device (a phone paired again gets a new device id).
+    pub fn add_shopping_once(
+        &self,
+        client_id: &str,
+        text: &str,
+        quantity: Option<f64>,
+        unit: Option<String>,
+        item_id: Option<String>,
+        actor: &str,
+    ) -> Result<ShoppingEntry> {
+        if client_id.is_empty() || client_id.len() > CLIENT_ID_MAX {
+            return self.add_shopping(text, quantity, unit, item_id, actor);
+        }
+        let mut conn = self.lock();
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let cutoff = (time::OffsetDateTime::now_utc() - time::Duration::days(CLIENT_OP_DAYS))
+            .replace_nanosecond(0)
+            .unwrap_or_else(|_| time::OffsetDateTime::now_utc())
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_default();
+        tx.execute("DELETE FROM client_ops WHERE created_at < ?1", params![cutoff])?;
+        let seen: Option<String> =
+            tx.query_row("SELECT reply FROM client_ops WHERE client_id = ?1", params![client_id], |r| r.get(0)).optional()?;
+        if let Some(entry) = seen.as_deref().and_then(entry_from_json) {
+            return Ok(entry);
+        }
+        let entry = insert_shopping_in(&tx, text, quantity, unit, item_id, "open", actor)?;
+        let reply = serde_json::to_string(&entry)?;
+        tx.execute(
+            "INSERT OR REPLACE INTO client_ops (client_id, reply, created_at) VALUES (?1, ?2, ?3)",
+            params![client_id, reply, now_rfc3339()],
+        )?;
+        tx.commit()?;
+        Ok(entry)
+    }
+
     fn insert_shopping(
         &self,
         text: &str,
@@ -915,21 +1009,8 @@ impl Db {
         status: &str,
         actor: &str,
     ) -> Result<ShoppingEntry> {
-        let text: String = text.trim().chars().take(120).collect();
-        if text.is_empty() {
-            bail!("text is required");
-        }
-        let id = uuid::Uuid::new_v4().to_string();
-        let now = now_rfc3339();
-        let unit = clean_max(unit, 20);
-        let quantity = quantity.filter(|q| q.is_finite()).map(clamp_qty);
         let conn = self.lock();
-        conn.execute(
-            "INSERT INTO shopping (id, item_id, text, quantity, unit, done, status, created_at, updated_at, updated_by)
-             VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?7, ?8)",
-            params![id, item_id, text, quantity, unit, status, now, actor],
-        )?;
-        Ok(ShoppingEntry { id, item_id, text, quantity, unit, status: status.into(), source: "manual" })
+        insert_shopping_in(&conn, text, quantity, unit, item_id, status, actor)
     }
 
     /// Resolve an id from the list: a stored entry, or a computed "low:<item>" one.
@@ -1285,6 +1366,38 @@ mod tests {
         assert_eq!(pa.id, pb.id);
         assert_eq!(a.list_places().unwrap().iter().filter(|p| p.name.to_lowercase() == "garaža").count(), 1);
         drop((a, b));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_repeated_add_counts_once_even_after_a_restart() {
+        let dir = std::env::temp_dir().join(format!("zaklon-client-ops-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("household.db");
+        let first = {
+            let db = Db::open(&path).unwrap();
+            let a = db.add_shopping_once("c0ffee", "Sveće", Some(2.0), Some("pcs".into()), None, "phone").unwrap();
+            let b = db.add_shopping_once("c0ffee", "Sveće", Some(2.0), Some("pcs".into()), None, "phone").unwrap();
+            assert_eq!(a.id, b.id);
+            a
+        };
+        // The hub restarted; the phone sends the same add again.
+        let db = Db::open(&path).unwrap();
+        let again = db.add_shopping_once("c0ffee", "Sveće", Some(2.0), Some("pcs".into()), None, "phone").unwrap();
+        assert_eq!(again.id, first.id);
+        assert_eq!(again.quantity, Some(2.0));
+        assert_eq!(db.shopping_list().unwrap().iter().filter(|e| e.text == "Sveće").count(), 1);
+        // Another id is another add; an empty id is not remembered.
+        db.add_shopping_once("beef", "Sveće", None, None, None, "phone").unwrap();
+        db.add_shopping_once("", "Sveće", None, None, None, "phone").unwrap();
+        db.add_shopping_once("", "Sveće", None, None, None, "phone").unwrap();
+        assert_eq!(db.shopping_list().unwrap().iter().filter(|e| e.text == "Sveće").count(), 4);
+        // Old ids are forgotten after CLIENT_OP_DAYS.
+        db.lock().execute("UPDATE client_ops SET created_at = '2000-01-01T00:00:00Z'", []).unwrap();
+        let later = db.add_shopping_once("c0ffee", "Sveće", None, None, None, "phone").unwrap();
+        assert_ne!(later.id, first.id);
+        drop(db);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

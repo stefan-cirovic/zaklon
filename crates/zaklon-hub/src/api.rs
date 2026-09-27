@@ -83,6 +83,7 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/put-away/{id}", post(put_away))
         .route("/api/history", get(history))
         .route("/api/maps", get(maps_overview))
+        .route("/api/maps-app", get(maps_app_file))
         .route("/api/maps/{country}/download", post(maps_country_download))
         .route("/api/maps/{country}", axum::routing::delete(maps_country_remove))
         .route("/api/assistant", get(assistant_overview))
@@ -1065,27 +1066,18 @@ struct ShoppingBody {
     unit: Option<String>,
     #[serde(default)]
     item_id: Option<String>,
-    /// Set by a phone sending changes made away from home: the same add
-    /// sent twice (a reply lost on the way) makes one entry.
+    /// Set by phones: the same add sent twice (a reply lost on the way, or
+    /// resent from the phone's outbox) makes one entry, also after a restart.
     #[serde(default)]
     client_id: Option<String>,
 }
 
 async fn shopping_add(State(state): State<Arc<HubState>>, caller: Caller, Json(b): Json<ShoppingBody>) -> Result<(StatusCode, Json<zaklon_core::supplies::ShoppingEntry>), ApiError> {
-    if let Some(cid) = b.client_id.as_deref().filter(|c| !c.is_empty() && c.len() <= 80) {
-        let mut seen = state.recent_adds.lock().unwrap_or_else(|p| p.into_inner());
-        seen.retain(|_, (at, _)| at.elapsed() < Duration::from_secs(7 * 24 * 3600));
-        if let Some((_, e)) = seen.get(cid) {
-            return Ok((StatusCode::CREATED, Json(e.clone())));
-        }
+    let e = match b.client_id.as_deref().filter(|c| !c.is_empty()) {
+        Some(cid) => state.db.add_shopping_once(cid, &b.text, b.quantity, b.unit, b.item_id, &caller.actor()),
+        None => state.db.add_shopping(&b.text, b.quantity, b.unit, b.item_id, &caller.actor()),
     }
-    let e = state.db.add_shopping(&b.text, b.quantity, b.unit, b.item_id, &caller.actor()).map_err(invalid)?;
-    if let Some(cid) = b.client_id.filter(|c| !c.is_empty() && c.len() <= 80) {
-        let mut seen = state.recent_adds.lock().unwrap_or_else(|p| p.into_inner());
-        if seen.len() < 10_000 {
-            seen.insert(cid, (std::time::Instant::now(), e.clone()));
-        }
-    }
+    .map_err(invalid)?;
     Ok((StatusCode::CREATED, Json(e)))
 }
 
@@ -1197,14 +1189,38 @@ async fn model_file(
     Path(id): Path<String>,
     headers: axum::http::HeaderMap,
 ) -> Result<Response, ApiError> {
-    use axum::http::header;
-    use tokio::io::AsyncSeekExt;
-
     let pack = state.downloads.catalog().pack(&id).cloned().ok_or_else(|| not_found("no such model"))?;
     if pack.category != zaklon_core::catalog::Category::Model || !state.downloads.is_installed(&id) {
         return Err(not_found("model is not installed on the hub"));
     }
     let f = pack.files.first().ok_or_else(|| not_found("no file"))?;
+    stream_library_file(&state, f, &headers, "application/octet-stream").await
+}
+
+/// The CoMaps app for a paired phone, over the pinned TLS connection with
+/// its SHA-256, so the phone can check it before offering to install it
+/// (the plain-HTTP install page is only for phones that are not paired).
+async fn maps_app_file(State(state): State<Arc<HubState>>, _caller: Caller, headers: axum::http::HeaderMap) -> Result<Response, ApiError> {
+    let id = zaklon_core::maps::COMAPS_APK_ID;
+    let pack = state.downloads.catalog().pack(id).cloned().ok_or_else(|| not_found("no such app"))?;
+    if !state.downloads.is_installed(id) {
+        return Err(not_found("the map app is not on the hub yet"));
+    }
+    let f = pack.files.first().filter(|f| !f.sha256.is_empty()).ok_or_else(|| not_found("no file"))?;
+    stream_library_file(&state, f, &headers, "application/vnd.android.package-archive").await
+}
+
+/// Stream a verified file from the library with its SHA-256 (from the
+/// catalog) and `Range: bytes=N-` support.
+async fn stream_library_file(
+    state: &HubState,
+    f: &zaklon_core::catalog::PackFile,
+    headers: &axum::http::HeaderMap,
+    content_type: &str,
+) -> Result<Response, ApiError> {
+    use axum::http::header;
+    use tokio::io::AsyncSeekExt;
+
     let path = state.downloads.library_dir().join(&f.path);
     let mut file = tokio::fs::File::open(&path).await.map_err(|e| anyhow::anyhow!(e))?;
     let total = file.metadata().await.map_err(|e| anyhow::anyhow!(e))?.len();
@@ -1225,7 +1241,7 @@ async fn model_file(
             Ok((
                 StatusCode::PARTIAL_CONTENT,
                 [
-                    (header::CONTENT_TYPE, "application/octet-stream".to_string()),
+                    (header::CONTENT_TYPE, content_type.to_string()),
                     (header::CONTENT_LENGTH, (total - from).to_string()),
                     (header::CONTENT_RANGE, format!("bytes {from}-{}/{total}", total - 1)),
                     (header::ACCEPT_RANGES, "bytes".to_string()),
@@ -1241,7 +1257,7 @@ async fn model_file(
             Ok((
                 StatusCode::OK,
                 [
-                    (header::CONTENT_TYPE, "application/octet-stream".to_string()),
+                    (header::CONTENT_TYPE, content_type.to_string()),
                     (header::CONTENT_LENGTH, total.to_string()),
                     (header::ACCEPT_RANGES, "bytes".to_string()),
                     (header::HeaderName::from_static("x-zaklon-file"), name),

@@ -128,8 +128,6 @@ pub struct HubState {
     pub export: Arc<export::Exporter>,
     pub assistant: Arc<assistant::Assistant>,
     pub updates: Arc<updates::Updates>,
-    /// Shopping list adds sent from phones' outboxes, by the phone's id for them.
-    pub recent_adds: Mutex<HashMap<String, (Instant, zaklon_core::supplies::ShoppingEntry)>>,
 }
 
 impl HubState {
@@ -216,7 +214,6 @@ impl Hub {
                 export: export::Exporter::new(),
                 assistant,
                 updates,
-                recent_adds: Mutex::new(HashMap::new()),
                 downloads,
             }),
         })

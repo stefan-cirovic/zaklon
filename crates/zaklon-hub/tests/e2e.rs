@@ -651,6 +651,9 @@ async fn full_hub_flow() {
     assert_eq!(r.status().as_u16(), 404, "no escaping the maps folder");
     let (_, catalog) = hub.get("/api/catalog").await;
     assert!(catalog["packs"].as_array().unwrap().iter().all(|p| p["category"] != "maps"), "maps are not in the add-ons list");
+    // A paired phone gets the map app over TLS (with its checksum) once the hub has it.
+    let r = as_phone(reqwest::Method::GET, "/api/maps-app").send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 404, "not on the hub yet");
 
     // 17. Discovery beacon answers with the same fingerprint.
     let sock = tokio::net::UdpSocket::bind(("127.0.0.1", 0)).await.unwrap();
