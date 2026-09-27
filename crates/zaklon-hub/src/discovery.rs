@@ -39,6 +39,24 @@ struct BeaconReply<'a> {
 const VIRTUAL_HINTS: &[&str] = &["vethernet", "wsl", "hyper-v", "vmware", "virtualbox", "vbox", "docker", "loopback", "tailscale", "zerotier"];
 
 pub fn lan_ipv4_addresses() -> Vec<Ipv4Addr> {
+    let (mut real, virtual_) = split_ipv4_addresses();
+    real.extend(virtual_);
+    real
+}
+
+/// The addresses worth showing people: the real network ones, or the
+/// virtual ones when there is nothing else.
+pub fn shown_ipv4_addresses() -> Vec<Ipv4Addr> {
+    let (real, virtual_) = split_ipv4_addresses();
+    if real.is_empty() {
+        virtual_
+    } else {
+        real
+    }
+}
+
+/// (real network adapters, virtual ones such as WSL or VPNs)
+fn split_ipv4_addresses() -> (Vec<Ipv4Addr>, Vec<Ipv4Addr>) {
     let mut real = Vec::new();
     let mut virtual_ = Vec::new();
     if let Ok(ifaces) = local_ip_address::list_afinet_netifas() {
@@ -60,8 +78,7 @@ pub fn lan_ipv4_addresses() -> Vec<Ipv4Addr> {
     real.dedup();
     virtual_.sort();
     virtual_.dedup();
-    real.extend(virtual_);
-    real
+    (real, virtual_)
 }
 
 pub async fn start(state: Arc<HubState>) -> Result<Discovery> {

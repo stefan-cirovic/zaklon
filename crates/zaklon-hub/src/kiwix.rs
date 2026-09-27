@@ -456,7 +456,7 @@ pub(crate) mod job {
 
     impl Job {
         pub fn new() -> Self {
-            // SAFETY: plain Win32 calls with valid, zero-initialised arguments.
+            // SAFETY: plain Win32 calls with valid, zero-initialized arguments.
             unsafe {
                 let h = CreateJobObjectW(std::ptr::null(), std::ptr::null());
                 if !h.is_null() {

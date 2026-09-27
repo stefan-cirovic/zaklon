@@ -18,7 +18,7 @@ const ACCENT_KEY: Record<Accent, Key> = {
 
 export type Look = { accent: Accent; setAccent: (a: Accent) => void; oled: boolean; setOled: (on: boolean) => void };
 
-/** Accent colour and pure black, remembered on this device. */
+/** Accent color and pure black, remembered on this device. */
 export function Appearance({ t, look }: { t: T; look: Look }) {
   return (
     <div className="panel stack left">
@@ -144,7 +144,7 @@ const THIRD_PARTY: { name: string; role: Key; license: string }[] = [
   { name: "Tauri, React, Rust", role: "tpFrameworks", license: "MIT / Apache-2.0" },
 ];
 
-/** Version, licence, privacy and the other projects Zaklon builds on. */
+/** Version, license, privacy and the other projects Zaklon builds on. */
 export function About({ t, status }: { t: T; status: Status }) {
   return (
     <div className="panel stack left">

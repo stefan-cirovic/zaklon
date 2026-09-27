@@ -202,7 +202,7 @@ test("an idle screen does not flood the hub with requests", async ({ page }) => 
   }
 });
 
-test("litres are written out with the right form", async ({ page }, info) => {
+test("liters are written out with the right form", async ({ page }, info) => {
   await ensureSetUp(page);
   await page.locator("select").first().selectOption("sr");
   await page.goto("/#supplies");
@@ -310,7 +310,7 @@ test("maps: the phone steps show the hub address, and the world is searchable", 
   await expect(page.getByText("Montenegro")).toHaveCount(0);
 });
 
-test("household: accent colour is remembered, password can be changed, hub facts and privacy are shown", async ({ page }) => {
+test("household: accent color is remembered, password can be changed, hub facts and privacy are shown", async ({ page }) => {
   await ensureSetUp(page);
   await page.goto("/#household");
   await page.getByRole("radio", { name: "Blue" }).click();

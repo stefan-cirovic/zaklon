@@ -39,8 +39,15 @@ export default function Household({ status, t, lang, setLang, refresh, isHub, ow
 
 type SetupProps = { t: T; lang: Lang; setLang: (l: Lang) => void; onDone: () => void; defaultName: string };
 
+/** The hub's suggested name, in the chosen language ("Zaklon on PC" / "Zaklon na PC"). */
+function localName(name: string, lang: Lang) {
+  return lang === "sr" ? name.replace(/^Zaklon on /, "Zaklon na ") : name.replace(/^Zaklon na /, "Zaklon on ");
+}
+
 function Setup({ t, lang, setLang, onDone, defaultName }: SetupProps) {
-  const [name, setName] = useState(defaultName);
+  const [typed, setTyped] = useState<string | null>(null);
+  const name = typed ?? localName(defaultName, lang);
+  const setName = (v: string) => setTyped(v);
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -179,7 +186,7 @@ function Devices({ t, status, lang, setLang, isHub, ownDeviceId }: DevicesProps)
 
   return (
     <div className="stack">
-      <div className="row between wrap">
+      <div className="row between wrap household-head">
         <h1>{t("household")}</h1>
         <select value={lang} onChange={(e) => setLang(e.target.value as Lang)} style={{ width: "auto" }} aria-label={t("language")}>
           <option value="en">{t("english")}</option>
@@ -188,7 +195,7 @@ function Devices({ t, status, lang, setLang, isHub, ownDeviceId }: DevicesProps)
       </div>
       {err && <p className="error" role="alert">{err}</p>}
 
-      <label className="check-line panel">
+      <label className="check-line panel left">
         <input type="checkbox" checked={latin} onChange={(e) => toggleLatin(e.target.checked)} />
         <span>{t("latinArticles")}</span>
       </label>
@@ -222,7 +229,7 @@ function Devices({ t, status, lang, setLang, isHub, ownDeviceId }: DevicesProps)
             </div>
           </div>
         ) : (
-          <div className="row">
+          <div className="row actions">
             <button className="btn" onClick={start}>{t("addDevice")}</button>
             {paired && <span className="ok">{t("devicePaired")}</span>}
           </div>

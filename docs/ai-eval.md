@@ -5,14 +5,14 @@ Used to pick the default model for each hardware tier. The same ten prompts are 
 ## Prompts
 
 1. Explain in three sentences what to do first if someone has a deep cut on the forearm.
-2. We have 2 kg of rice, 6 cans of beans and 3 litres of oil for four people. Roughly how many days of lunches is that?
+2. We have 2 kg of rice, 6 cans of beans and 3 liters of oil for four people. Roughly how many days of lunches is that?
 3. List five things to check on a car before a long trip.
 4. Translate to Serbian: "The water is safe to drink after boiling it for one minute."
 5. Napiši kratak spisak za kupovinu za nedelju dana za dvoje, samo osnovne namirnice.
 6. Kako se čuva brašno da ne dobije moljce?
 7. Koja je razlika između izraza "rok upotrebe" i "najbolje upotrebiti do"?
 8. Objasni detetu od osam godina zašto se ne sme piti voda iz bare.
-9. Summarise this text in one sentence: (paste any 200-word Wikipedia paragraph)
+9. Summarize this text in one sentence: (paste any 200-word Wikipedia paragraph)
 10. Odgovori samo "ne znam" ako nisi siguran: koliko stanovnika ima selo Gornji Milanovac?
 
 ## Scoring sheet

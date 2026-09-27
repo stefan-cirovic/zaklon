@@ -108,7 +108,7 @@ export default function Addons({ t, lang, isHub }: Props) {
 
   return (
     <div className="stack">
-      <div>
+      <div className="page-head">
         <h1>{t("addons")}</h1>
         <p className="muted">{t("addonsIntro")}</p>
         <p className="muted" style={{ fontSize: 14 }}>{t("addonsMapsNote")} <a href="#maps">{t("maps")}</a>.</p>

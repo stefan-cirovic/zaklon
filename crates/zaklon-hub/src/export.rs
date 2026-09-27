@@ -75,9 +75,22 @@ impl Exporter {
     /// Checks everything that can be checked up front (folder, packs, space,
     /// file size limit of the drive) and starts copying in the background.
     pub fn start(self: &Arc<Self>, downloads: &Downloads, ids: &[String], dir: &Path) -> Result<(), String> {
-        if self.state().running {
-            return Err("a copy is already running".into());
+        // Claim the exporter first, in one step, so a double click cannot start two copies.
+        {
+            let mut st = self.state.lock().unwrap_or_else(|p| p.into_inner());
+            if st.running {
+                return Err("a copy is already running".into());
+            }
+            *st = ExportState { running: true, ..Default::default() };
         }
+        let result = self.prepare_and_spawn(downloads, ids, dir);
+        if result.is_err() {
+            self.set(|s| s.running = false);
+        }
+        result
+    }
+
+    fn prepare_and_spawn(self: &Arc<Self>, downloads: &Downloads, ids: &[String], dir: &Path) -> Result<(), String> {
         if ids.is_empty() {
             return Err("nothing selected".into());
         }
@@ -179,7 +192,7 @@ impl Exporter {
         let mut buf = vec![0u8; 4 << 20];
         loop {
             if self.cancel.load(Ordering::SeqCst) {
-                return Err("cancelled".into());
+                return Err("canceled".into());
             }
             let n = input.read(&mut buf).map_err(|e| format!("reading {}: {e}", src.display()))?;
             if n == 0 {

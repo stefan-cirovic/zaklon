@@ -128,6 +128,10 @@ label.field { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
   .panel .label { font-size: 12px; }
   .actions { justify-content: center; flex-wrap: wrap; }
   .actions .btn { flex: 1 1 140px; }
+  p.intro { text-align: center; }
+  .household-head { flex-direction: column; justify-content: center; gap: 8px; }
+  .household-head h1 { margin: 0; }
+  .panel:not(.left) > .row { justify-content: center; }
 }
 
 /* Library */

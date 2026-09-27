@@ -231,7 +231,7 @@ export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: bool
             </div>
           );
         })}
-        {data && shown.length === 0 && <p className="muted">{t("noResults")}</p>}
+        {data && q.trim() && shown.length === 0 && <p className="muted">{t("noResults")}</p>}
       </div>
       <p className="muted" style={{ fontSize: 12 }}>{t("mapsAttribution")}</p>
     </div>

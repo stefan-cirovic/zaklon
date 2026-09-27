@@ -348,6 +348,8 @@ function ItemForm({
             {places.map((p) => (
               <option key={p.id} value={p.id}>{placeName(p.id)}</option>
             ))}
+            {/* A place written some other way (e.g. by the assistant) still shows. */}
+            {f.place && !places.some((p) => p.id === f.place) && <option value={f.place}>{placeName(f.place)}</option>}
           </select>
         </label>
       </div>
@@ -591,7 +593,7 @@ function PutAwayView({
 
   return (
     <div className="stack">
-      <p className="muted">{t("putAwayIntro")}</p>
+      <p className="muted intro">{t("putAwayIntro")}</p>
       {err && <p className="error" role="alert">{err}</p>}
       {list && list.length === 0 && <p className="muted" style={{ textAlign: "center" }}>{t("nothingToPutAway")}</p>}
       {list?.map((s) => (

@@ -24,7 +24,7 @@ use crate::{HubState, PairingSession, VERSION};
 
 const PAIRING_TTL: Duration = Duration::from_secs(5 * 60);
 const MAX_PAIRING_ATTEMPTS: u8 = 3;
-/// After this many wrong codes, every open code is cancelled (stops guessing).
+/// After this many wrong codes, every open code is canceled (stops guessing).
 const MAX_PAIRING_FAILURES: u32 = 20;
 /// How long a phone may repeat a pairing request after the reply was lost.
 const PAIR_REPLAY_WINDOW: Duration = Duration::from_secs(120);
@@ -300,7 +300,7 @@ async fn status(State(state): State<Arc<HubState>>, caller: Option<Caller>) -> R
         devices: if trusted { Some(state.db.count_devices()?) } else { None },
         uptime_secs: if trusted { Some(state.uptime_secs()) } else { None },
         addresses: if trusted {
-            Some(state.lan_addresses().iter().map(|a| a.to_string()).collect())
+            Some(crate::discovery::shown_ipv4_addresses().iter().map(|a| a.to_string()).collect())
         } else {
             None
         },
@@ -492,7 +492,7 @@ async fn pair_complete(
         };
         if exhausted {
             state.pairing.lock().unwrap_or_else(|p| p.into_inner()).clear();
-            tracing::warn!("too many wrong pairing attempts; open pairing codes cancelled");
+            tracing::warn!("too many wrong pairing attempts; open pairing codes canceled");
         }
         // Slow down guessing.
         tokio::time::sleep(Duration::from_millis(400)).await;
@@ -1123,7 +1123,8 @@ async fn maps_overview(State(state): State<Arc<HubState>>, _caller: Caller) -> R
     let states: std::collections::HashMap<String, PackState> =
         state.downloads.snapshot().into_iter().map(|v| (v.pack.id, v.state)).collect();
     let cfg = state.config();
-    let hosts: Vec<String> = state.lan_addresses().iter().map(|a| a.to_string()).collect();
+    // Addresses phones can reach; a virtual adapter's address would only confuse.
+    let hosts: Vec<String> = crate::discovery::shown_ipv4_addresses().iter().map(|a| a.to_string()).collect();
     let mut installed_bytes = 0;
     let countries = tree
         .countries
@@ -1199,9 +1200,16 @@ async fn maps_country_remove(State(state): State<Arc<HubState>>, caller: Caller,
     tracing::info!(by = %caller.actor(), country = %country, "maps removed");
     for id in ids {
         let st = state.downloads.state_of(&id).map(|s| s.status);
-        if matches!(st, Some(zaklon_core::catalog::PackStatus::Downloading | zaklon_core::catalog::PackStatus::Verifying)) {
+        let active = |s: Option<zaklon_core::catalog::PackStatus>| {
+            matches!(s, Some(zaklon_core::catalog::PackStatus::Downloading | zaklon_core::catalog::PackStatus::Verifying))
+        };
+        if active(st) {
             let _ = state.downloads.pause(&id);
-            tokio::time::sleep(Duration::from_millis(1500)).await;
+            // Wait until the download has really stopped and let go of its file.
+            let deadline = std::time::Instant::now() + Duration::from_secs(15);
+            while active(state.downloads.state_of(&id).map(|s| s.status)) && std::time::Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
         }
         let d = state.downloads.clone();
         tokio::task::spawn_blocking(move || d.remove(&id)).await.map_err(|e| anyhow::anyhow!(e))?.map_err(|e| bad(&e))?;

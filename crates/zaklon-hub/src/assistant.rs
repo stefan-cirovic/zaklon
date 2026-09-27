@@ -34,6 +34,8 @@ pub const SETTING_MODEL: &str = "assistant_model";
 const SOURCE_CHARS: usize = 1800;
 const MAX_SOURCES: usize = 3;
 const KEEP_ANSWERS: usize = 30;
+/// Questions allowed to wait for their turn (the whole household, not a crowd).
+const MAX_PENDING: usize = 4;
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -154,6 +156,10 @@ pub struct Assistant {
     answers: Mutex<HashMap<String, Answer>>,
     /// One question at a time: a small computer runs one model at a time.
     turn: tokio::sync::Mutex<()>,
+    /// Questions waiting or being answered.
+    pending: std::sync::atomic::AtomicUsize,
+    /// Set by `stop()` to end a model load in progress.
+    cancel_load: std::sync::atomic::AtomicBool,
     #[cfg(windows)]
     job: crate::kiwix::job::Job,
     http: reqwest::Client,
@@ -190,6 +196,8 @@ impl Assistant {
             epoch: Instant::now(),
             answers: Mutex::new(HashMap::new()),
             turn: tokio::sync::Mutex::new(()),
+            pending: std::sync::atomic::AtomicUsize::new(0),
+            cancel_load: std::sync::atomic::AtomicBool::new(false),
             #[cfg(windows)]
             job: crate::kiwix::job::Job::new(),
             http: reqwest::Client::builder().no_proxy().connect_timeout(Duration::from_secs(5)).build().expect("http client"),
@@ -300,6 +308,8 @@ impl Assistant {
     }
 
     pub async fn stop(&self) {
+        // A model that is still loading holds the lock; ask it to give up first.
+        self.cancel_load.store(true, Ordering::SeqCst);
         if let Some(mut r) = self.running.lock().await.take() {
             let _ = r.child.kill().await;
         }
@@ -352,7 +362,15 @@ impl Assistant {
 
         // Loading a model takes from seconds to a minute or two.
         let deadline = Instant::now() + START_TIMEOUT;
+        self.cancel_load.store(false, Ordering::SeqCst);
         loop {
+            if self.cancel_load.load(Ordering::SeqCst) {
+                if let Some(mut r) = running.take() {
+                    let _ = r.child.kill().await;
+                }
+                self.set_state(EngineState::Stopped);
+                return Err("the AI engine was stopped".into());
+            }
             if let Some(r) = running.as_mut() {
                 if !matches!(r.child.try_wait(), Ok(None)) {
                     *running = None;
@@ -402,6 +420,9 @@ impl Assistant {
         if question.chars().count() > 2000 {
             return Err("the question is too long".into());
         }
+        if self.pending.load(Ordering::SeqCst) >= MAX_PENDING {
+            return Err("the assistant is busy with other questions; try again in a moment".into());
+        }
         let language = zaklon_core::lang::question_language(&question).unwrap_or(if app_language == "sr" { "sr" } else { "en" });
         let id = uuid::Uuid::new_v4().to_string();
         {
@@ -433,6 +454,7 @@ impl Assistant {
         self.last_used.store(self.epoch.elapsed().as_secs(), Ordering::Relaxed);
         let me = self.clone();
         let id2 = id.clone();
+        self.pending.fetch_add(1, Ordering::SeqCst);
         tokio::spawn(async move {
             let _turn = me.turn.lock().await;
             if let Err(e) = me.run(&id2, &question, language, &history, &items).await {
@@ -443,6 +465,7 @@ impl Assistant {
                 });
             }
             me.last_used.store(me.epoch.elapsed().as_secs(), Ordering::Relaxed);
+            me.pending.fetch_sub(1, Ordering::SeqCst);
         });
         Ok(id)
     }
@@ -529,7 +552,8 @@ impl Assistant {
             return Err(format!("AI engine replied {}", res.status()));
         }
         let mut stream = res.bytes_stream();
-        let mut buf = String::new();
+        // Bytes, not text: a letter like "č" can be split between two chunks.
+        let mut buf: Vec<u8> = Vec::new();
         let mut tokens = 0u64;
         let mut first: Option<Instant> = None;
         let stall = Duration::from_secs(120);
@@ -537,9 +561,10 @@ impl Assistant {
             let next = tokio::time::timeout(stall, stream.next()).await.map_err(|_| "the AI engine stopped answering".to_string())?;
             let Some(chunk) = next else { break };
             let chunk = chunk.map_err(|e| format!("AI engine: {e}"))?;
-            buf.push_str(&String::from_utf8_lossy(&chunk));
-            while let Some(nl) = buf.find('\n') {
-                let line: String = buf.drain(..=nl).collect();
+            buf.extend_from_slice(&chunk);
+            while let Some(nl) = buf.iter().position(|b| *b == b'\n') {
+                let raw: Vec<u8> = buf.drain(..=nl).collect();
+                let line = String::from_utf8_lossy(&raw);
                 let Some(data) = line.trim().strip_prefix("data:") else { continue };
                 let data = data.trim();
                 if data == "[DONE]" {
@@ -749,7 +774,8 @@ quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; categor
                 continue;
             }
             let Ok(html) = res.text().await else { continue };
-            let text = relevant_text(&html, &passage_stems, SOURCE_CHARS);
+            let st = passage_stems.clone();
+            let text = tokio::task::spawn_blocking(move || relevant_text(&html, &st, SOURCE_CHARS)).await.unwrap_or_default();
             if text.chars().count() < 80 {
                 continue; // a redirect or an almost empty page
             }
@@ -1232,8 +1258,9 @@ fn paragraphs(html: &str) -> Vec<String> {
 pub fn article_text(html: &str, max: usize) -> String {
     let lower = html.to_ascii_lowercase();
     let mut out = String::new();
+    let mut out_chars = 0usize;
     let mut pos = 0;
-    while out.chars().count() < max {
+    while out_chars < max {
         let Some(start) = lower[pos..].find("<p").map(|i| pos + i) else { break };
         // "<p>" or "<p ..." but not "<pre", "<param"...
         let after = lower.as_bytes().get(start + 2).copied();
@@ -1245,11 +1272,14 @@ pub fn article_text(html: &str, max: usize) -> String {
         let Some(close) = lower[open_end..].find("</p>").map(|i| open_end + i) else { break };
         let para = strip_tags(&html[open_end..close]);
         let para = para.split_whitespace().collect::<Vec<_>>().join(" ");
-        if para.chars().count() >= 20 {
+        let n = para.chars().count();
+        if n >= 20 {
             if !out.is_empty() {
                 out.push('\n');
+                out_chars += 1;
             }
             out.push_str(&para);
+            out_chars += n;
         }
         pos = close + 4;
     }

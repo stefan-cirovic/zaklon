@@ -1,4 +1,4 @@
-//! Desktop (Windows) behaviour of the Zaklon app: the hub runs inside this
+//! Desktop (Windows) behavior of the Zaklon app: the hub runs inside this
 //! process, the window can be hidden to the tray while the hub keeps serving
 //! phones, the app starts with Windows (on by default), and only one copy
 //! runs at a time.

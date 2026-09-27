@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { api } from "../api";
+import { api, ApiError } from "../api";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
 import { fmtBytes } from "../format";
@@ -33,7 +33,7 @@ type Answer = {
   from_supplies?: boolean;
   proposal?: Proposal | null;
   /** What happened to the proposal on this device. */
-  outcome?: "done" | "cancelled";
+  outcome?: "done" | "canceled";
   question: string;
   status: "searching" | "starting" | "thinking" | "done" | "failed";
   text: string;
@@ -109,6 +109,8 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
   const [downloads, setDownloads] = useState<PackState[]>([]);
   const [showPhone, setShowPhone] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const asking = useRef(false);
+  const [confirming, setConfirming] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -152,26 +154,42 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
   useEffect(() => {
     if (!current) return;
     let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let failures = 0;
+    let lastStatus = "";
+    // One request at a time, so replies cannot arrive out of order. A phone
+    // that drops Wi-Fi for a moment keeps waiting; only a lost answer (404)
+    // or a long silence ends it.
     const tick = async () => {
       try {
         const a = await api<Answer>(`/api/assistant/answers/${current.id}`);
         if (!alive) return;
+        failures = 0;
         setChat((list) => {
-          const next = list.map((x) => (x.id === a.id ? a : x));
+          const next = list.map((x) => (x.id === a.id ? { ...a, outcome: x.outcome } : x));
           if (a.status === "done" || a.status === "failed") saveChat(next);
           return next;
         });
-        if (a.status === "starting" || a.status === "searching") load();
+        if (a.status !== lastStatus) {
+          lastStatus = a.status;
+          load();
+        }
+        if (a.status === "done" || a.status === "failed") return;
       } catch (e) {
         if (!alive) return;
-        setChat((list) => list.map((x) => (x.id === current.id ? { ...x, status: "failed", error: String(e instanceof Error ? e.message : e) } : x)));
+        failures += 1;
+        const lost = e instanceof ApiError && e.status === 404;
+        if (lost || failures >= 40) {
+          setChat((list) => list.map((x) => (x.id === current.id ? { ...x, status: "failed", error: String(e instanceof Error ? e.message : e) } : x)));
+          return;
+        }
       }
+      timer = setTimeout(tick, failures ? 1500 : 400);
     };
-    const id = setInterval(tick, 400);
     tick();
     return () => {
       alive = false;
-      clearInterval(id);
+      if (timer) clearTimeout(timer);
     };
   }, [current?.id, load]);
 
@@ -182,7 +200,8 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
   const ask = async (e: React.FormEvent) => {
     e.preventDefault();
     const q = question.trim();
-    if (!q || busy) return;
+    if (!q || busy || asking.current) return;
+    asking.current = true;
     setErr(null);
     const history = chat
       .filter((a) => a.status === "done")
@@ -197,6 +216,8 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
       setQuestion("");
     } catch (ex) {
       setErr(errText(t, ex));
+    } finally {
+      asking.current = false;
     }
   };
 
@@ -227,8 +248,9 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
   // Carry out a proposed change through the normal supplies API.
   const confirm = async (a: Answer) => {
     const p = a.proposal;
-    if (!p) return;
+    if (!p || confirming) return;
     setErr(null);
+    setConfirming(a.id);
     try {
       if (p.action === "add" && p.item_id) await api(`/api/items/${p.item_id}/adjust`, { json: { delta: p.quantity } });
       else if (p.action === "add") await api("/api/items", { json: { name: p.name, quantity: p.quantity, unit: p.unit, category: p.category } });
@@ -238,9 +260,11 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
       setOutcome(a.id, "done");
     } catch (ex) {
       setErr(errText(t, ex));
+    } finally {
+      setConfirming(null);
     }
   };
-  const setOutcome = (id: string, outcome: "done" | "cancelled") =>
+  const setOutcome = (id: string, outcome: "done" | "canceled") =>
     setChat((list) => {
       const next = list.map((x) => (x.id === id ? { ...x, outcome } : x));
       saveChat(next);
@@ -288,7 +312,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
       {err && <p className="error" role="alert">{err}</p>}
 
       {ov && !hubReady && rec && (
-        <div className="panel stack left">
+        <div className="panel stack">
           <h2>{t("aiNeedsModel")}</h2>
           <p className="muted" style={{ margin: 0 }}>
             {t("aiRecommendedFor")} {fmtBytes(ov.ram_total)}: <strong>{title(rec)}</strong> ({fmtBytes(rec.size)})
@@ -357,12 +381,12 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
                         <div className="row wrap proposal">
                           {a.outcome === "done" ? (
                             <span className="ok">✓ {t("aiDone")} · <a href="#supplies">{t("supplies")}</a></span>
-                          ) : a.outcome === "cancelled" ? (
+                          ) : a.outcome === "canceled" ? (
                             <span className="muted">{t("aiCancelled")}</span>
                           ) : (
                             <>
-                              <button className="btn" onClick={() => confirm(a)}>{t("aiConfirm")}</button>
-                              <button className="btn secondary" onClick={() => setOutcome(a.id, "cancelled")}>{t("cancel")}</button>
+                              <button className="btn" onClick={() => confirm(a)} disabled={confirming === a.id}>{t("aiConfirm")}</button>
+                              <button className="btn secondary" onClick={() => setOutcome(a.id, "canceled")}>{t("cancel")}</button>
                             </>
                           )}
                         </div>

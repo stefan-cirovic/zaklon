@@ -1,7 +1,7 @@
 import { getMode } from "./api";
 
 export type ScanKind = "qr" | "product";
-export type ScanResult = { ok: true; text: string } | { ok: false; reason: "denied" | "cancelled" | "unavailable" };
+export type ScanResult = { ok: true; text: string } | { ok: false; reason: "denied" | "canceled" | "unavailable" };
 
 /** True where a camera scanner is available (the phone app). */
 export async function canScan(): Promise<boolean> {
@@ -26,9 +26,9 @@ export async function scanCode(kind: ScanKind): Promise<ScanResult> {
         : [Format.EAN13, Format.EAN8, Format.UPC_A, Format.UPC_E, Format.Code128, Format.Code39, Format.ITF, Format.QRCode];
     const result = await scan({ windowed: false, formats });
     const text = result.content?.trim();
-    return text ? { ok: true, text } : { ok: false, reason: "cancelled" };
+    return text ? { ok: true, text } : { ok: false, reason: "canceled" };
   } catch {
-    return { ok: false, reason: "cancelled" };
+    return { ok: false, reason: "canceled" };
   }
 }
 

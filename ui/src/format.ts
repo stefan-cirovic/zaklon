@@ -69,7 +69,7 @@ export function securityCode(fp: string): string {
 
 /**
  * Unit name for a quantity. Most units stay abbreviated (kg, g, ml, pcs);
- * litres are written out with the right grammatical form:
+ * liters are written out with the right grammatical form:
  * Serbian 1 litar, 2 litra, 5 litara, 1,5 litra; English 1 liter, 2 liters.
  */
 export function unitLabel(unit: string, qty: number, short: (u: string) => string): string {

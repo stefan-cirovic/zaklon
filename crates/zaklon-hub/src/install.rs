@@ -39,7 +39,10 @@ async fn map_file(
     let (Some(file), Some(version)) = (parts.last(), parts.len().checked_sub(2).and_then(|i| parts.get(i))) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let safe = file.ends_with(".mwm") && !file.contains("..") && !file.contains('\\') && version.chars().all(|c| c.is_ascii_digit());
+    // Region names are letters, digits, spaces and a little punctuation; no
+    // ':' (a Windows drive), no slashes, no "..".
+    let name_ok = file.chars().all(|c| c.is_alphanumeric() || " _-.,()'&".contains(c));
+    let safe = file.ends_with(".mwm") && name_ok && !file.contains("..") && version.chars().all(|c| c.is_ascii_digit());
     if !safe {
         return StatusCode::NOT_FOUND.into_response();
     }

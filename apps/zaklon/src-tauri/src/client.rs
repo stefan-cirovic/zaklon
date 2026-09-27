@@ -314,13 +314,26 @@ impl ClientState {
             if have > 0 {
                 req = req.header("range", format!("bytes={have}-"));
             }
-            let res = match req.send().await {
+            let mut res = match req.send().await {
                 Ok(r) => r,
                 Err(e) => {
                     last_err = format!("{host}: {}", short_err(&e));
                     continue;
                 }
             };
+            // 416: the part on the phone is already as long as (or longer than)
+            // the file. It cannot be trusted as it is; start over once.
+            if res.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+                let _ = std::fs::remove_file(&part);
+                res = match client.get(&url).header("authorization", format!("Bearer {}", link.device_token)).send().await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        last_err = format!("{host}: {}", short_err(&e));
+                        continue;
+                    }
+                };
+            }
+            let have = if res.status() == reqwest::StatusCode::PARTIAL_CONTENT { have } else { 0 };
             let status = res.status();
             if !status.is_success() {
                 return Err(format!("hub replied {status}"));

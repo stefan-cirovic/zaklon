@@ -63,10 +63,13 @@ export function CopyToUsb({ t, items }: { t: T; lang: Lang; items: CopyItem[] })
   const [drives, setDrives] = useState<Drive[]>([]);
   const [job, setJob] = useState<ExportState | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
 
+  // Drives change when a stick is plugged in; look again when a drive is chosen, not on every key.
+  const driveRoot = /^[A-Za-z]:/.test(dir) ? dir.slice(0, 2).toUpperCase() : "";
   useEffect(() => {
     api<Drive[]>("/api/drives").then(setDrives).catch(() => {});
-  }, [dir]);
+  }, [driveRoot]);
 
   const poll = useCallback(async () => {
     try {
@@ -99,12 +102,16 @@ export function CopyToUsb({ t, items }: { t: T; lang: Lang; items: CopyItem[] })
     });
 
   const start = async () => {
+    if (starting) return;
     setErr(null);
+    setStarting(true);
     try {
       await api("/api/export", { json: { dir, ids: chosen.flatMap((i) => i.ids) } });
-      poll();
+      await poll();
     } catch (e) {
       setErr(errText(t, e));
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -150,7 +157,7 @@ export function CopyToUsb({ t, items }: { t: T; lang: Lang; items: CopyItem[] })
             </div>
           ) : (
             <div>
-              <button className="btn" onClick={start} disabled={!dir.trim() || chosen.length === 0 || !!tooBig || !!fatProblem}>{t("copyBtn")}</button>
+              <button className="btn" onClick={start} disabled={starting || !dir.trim() || chosen.length === 0 || !!tooBig || !!fatProblem}>{t("copyBtn")}</button>
             </div>
           )}
           {job && !job.running && job.finished && job.target && (

@@ -141,15 +141,16 @@ impl LocalAi {
 
     /// Copy a model from the hub in the background; progress via `status()`.
     pub fn start_copy(&self, client: Arc<ClientState>, model_id: String, file: String) -> Result<(), String> {
+        // Check the name before claiming the copy slot, so a bad name cannot block later copies.
+        if !file.ends_with(".gguf") || file.contains('/') || file.contains('\\') || file.contains("..") {
+            return Err("bad model file name".into());
+        }
         {
             let mut c = self.copy.lock().unwrap_or_else(|p| p.into_inner());
             if c.as_ref().is_some_and(|c| !c.finished) {
                 return Err("a copy is already running".into());
             }
             *c = Some(CopyProgress { model: file.clone(), model_id: model_id.clone(), ..Default::default() });
-        }
-        if !file.ends_with(".gguf") || file.contains('/') || file.contains('\\') || file.contains("..") {
-            return Err("bad model file name".into());
         }
         let dest = self.models_dir.join(&file);
         let progress = self.copy.clone();
