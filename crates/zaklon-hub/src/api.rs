@@ -669,7 +669,11 @@ async fn packs_import(State(state): State<Arc<HubState>>, _: Local, Json(body): 
 #[derive(Deserialize)]
 struct ExportBody {
     dir: String,
+    #[serde(default)]
     ids: Vec<String>,
+    /// Also the Windows installer and the phone app, for a friend starting from nothing.
+    #[serde(default)]
+    with_apps: bool,
 }
 
 /// Copy packs to a folder (a USB drive) in the background. Laptop only:
@@ -677,7 +681,7 @@ struct ExportBody {
 async fn export_start(State(state): State<Arc<HubState>>, _: Local, Json(body): Json<ExportBody>) -> Result<StatusCode, ApiError> {
     let dir = std::path::PathBuf::from(body.dir.trim());
     let (ex, d) = (state.export.clone(), state.downloads.clone());
-    tokio::task::spawn_blocking(move || ex.start(&d, &body.ids, &dir))
+    tokio::task::spawn_blocking(move || ex.start(&d, &body.ids, &dir, body.with_apps))
         .await
         .map_err(|e| anyhow::anyhow!(e))?
         .map_err(|e| bad(&e))?;
@@ -685,8 +689,20 @@ async fn export_start(State(state): State<Arc<HubState>>, _: Local, Json(body): 
     Ok(StatusCode::ACCEPTED)
 }
 
-async fn export_status(State(state): State<Arc<HubState>>, _: Local) -> Json<crate::export::ExportState> {
-    Json(state.export.state())
+#[derive(Serialize)]
+struct ExportReply {
+    #[serde(flatten)]
+    state: crate::export::ExportState,
+    /// Installer and phone app available to put on the stick, with sizes.
+    apps: Vec<(String, u64)>,
+}
+
+async fn export_status(State(state): State<Arc<HubState>>, _: Local) -> Json<ExportReply> {
+    let apps = crate::export::app_files(&state.downloads)
+        .into_iter()
+        .map(|(p, n)| (n, std::fs::metadata(p).map(|m| m.len()).unwrap_or(0)))
+        .collect();
+    Json(ExportReply { state: state.export.state(), apps })
 }
 
 async fn export_cancel(State(state): State<Arc<HubState>>, _: Local) -> StatusCode {

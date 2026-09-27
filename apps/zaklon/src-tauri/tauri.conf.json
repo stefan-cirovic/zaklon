@@ -37,7 +37,8 @@
           "English"
         ],
         "displayLanguageSelector": false,
-        "installerIcon": "icons/icon.ico"
+        "installerIcon": "icons/icon.ico",
+        "installerHooks": "./windows/installer-hooks.nsh"
       },
       "webviewInstallMode": {
         "type": "offlineInstaller",

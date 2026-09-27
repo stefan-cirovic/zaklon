@@ -51,8 +51,37 @@ pub struct Exporter {
 
 struct Job {
     src: PathBuf,
+    /// The folder it goes into (the packs folder, or the drive itself for the apps).
+    dir: PathBuf,
     name: String,
     size: u64,
+}
+
+const USB_README: &str = "ZAKLON\r\n\
+\r\n\
+English\r\n\
+1. On a Windows computer, run Zaklon-setup.exe (no internet needed).\r\n\
+2. Open Zaklon > Add-ons > Import from USB, and choose this drive.\r\n\
+3. Phones: copy zaklon.apk to the phone and open it to install, or install\r\n\
+   it from the new hub (Household > Add a phone).\r\n\
+\r\n\
+Srpski\r\n\
+1. Na Windows računaru pokreni Zaklon-setup.exe (internet nije potreban).\r\n\
+2. Otvori Zaklon > Dodaci > Uvoz sa USB-a i izaberi ovaj disk.\r\n\
+3. Telefoni: prebaci zaklon.apk na telefon i otvori ga da se instalira, ili\r\n\
+   ga instaliraj sa novog huba (Domaćinstvo > Dodaj telefon).\r\n\
+\r\n\
+https://zaklon.com\r\n";
+
+/// The apps a friend needs to start from this stick: the Windows installer
+/// (kept by the installer next to the data) and the phone app.
+pub fn app_files(downloads: &Downloads) -> Vec<(PathBuf, String)> {
+    let lib = downloads.library_dir();
+    [(lib.join("installer").join("Zaklon-setup.exe"), "Zaklon-setup.exe"), (lib.join("apk").join("zaklon.apk"), "zaklon.apk")]
+        .into_iter()
+        .filter(|(p, _)| p.is_file())
+        .map(|(p, n)| (p, n.to_string()))
+        .collect()
 }
 
 impl Exporter {
@@ -74,7 +103,7 @@ impl Exporter {
 
     /// Checks everything that can be checked up front (folder, packs, space,
     /// file size limit of the drive) and starts copying in the background.
-    pub fn start(self: &Arc<Self>, downloads: &Downloads, ids: &[String], dir: &Path) -> Result<(), String> {
+    pub fn start(self: &Arc<Self>, downloads: &Downloads, ids: &[String], dir: &Path, with_apps: bool) -> Result<(), String> {
         // Claim the exporter first, in one step, so a double click cannot start two copies.
         {
             let mut st = self.state.lock().unwrap_or_else(|p| p.into_inner());
@@ -83,15 +112,16 @@ impl Exporter {
             }
             *st = ExportState { running: true, ..Default::default() };
         }
-        let result = self.prepare_and_spawn(downloads, ids, dir);
+        let result = self.prepare_and_spawn(downloads, ids, dir, with_apps);
         if result.is_err() {
             self.set(|s| s.running = false);
         }
         result
     }
 
-    fn prepare_and_spawn(self: &Arc<Self>, downloads: &Downloads, ids: &[String], dir: &Path) -> Result<(), String> {
-        if ids.is_empty() {
+    fn prepare_and_spawn(self: &Arc<Self>, downloads: &Downloads, ids: &[String], dir: &Path, with_apps: bool) -> Result<(), String> {
+        let apps = if with_apps { app_files(downloads) } else { Vec::new() };
+        if ids.is_empty() && apps.is_empty() {
             return Err("nothing selected".into());
         }
         if !dir.is_dir() {
@@ -123,11 +153,15 @@ impl Exporter {
                     return Err(format!("{} cannot be copied", pack.title.en));
                 }
                 let name = Path::new(&f.path).file_name().ok_or("bad path")?.to_string_lossy().to_string();
-                jobs.push(Job { src, name, size: f.size });
+                jobs.push(Job { src, dir: target.clone(), name, size: f.size });
             }
         }
+        for (src, name) in &apps {
+            let size = std::fs::metadata(src).map(|m| m.len()).unwrap_or(0);
+            jobs.push(Job { src: src.clone(), dir: dir.to_path_buf(), name: name.clone(), size });
+        }
         // Files already there with the right size are skipped (a repeated copy).
-        let needed: u64 = jobs.iter().filter(|j| !same_size(&target.join(&j.name), j.size)).map(|j| j.size).sum();
+        let needed: u64 = jobs.iter().filter(|j| !same_size(&j.dir.join(&j.name), j.size)).map(|j| j.size).sum();
         let free = fs4::available_space(dir).unwrap_or(u64::MAX);
         if needed > free {
             return Err(format!("not enough space: {needed} bytes needed, {free} free"));
@@ -139,6 +173,9 @@ impl Exporter {
         }
         std::fs::create_dir_all(&target).map_err(|e| e.to_string())?;
         let _ = std::fs::write(target.join("README.txt"), README);
+        if !apps.is_empty() {
+            let _ = std::fs::write(dir.join("ZAKLON-README.txt"), USB_README);
+        }
         self.cancel.store(false, Ordering::SeqCst);
         let total = jobs.iter().map(|j| j.size).sum();
         self.set(|s| {
@@ -152,7 +189,7 @@ impl Exporter {
         });
         let me = self.clone();
         std::thread::spawn(move || {
-            let result = me.run(&jobs, &target);
+            let result = me.run(&jobs);
             me.set(|s| {
                 s.running = false;
                 s.current = None;
@@ -165,9 +202,9 @@ impl Exporter {
         Ok(())
     }
 
-    fn run(&self, jobs: &[Job], target: &Path) -> Result<(), String> {
+    fn run(&self, jobs: &[Job]) -> Result<(), String> {
         for j in jobs {
-            let dest = target.join(&j.name);
+            let dest = j.dir.join(&j.name);
             self.set(|s| s.current = Some(j.name.clone()));
             if same_size(&dest, j.size) {
                 self.set(|s| {
@@ -176,7 +213,7 @@ impl Exporter {
                 });
                 continue;
             }
-            let part = target.join(format!("{}.part", j.name));
+            let part = j.dir.join(format!("{}.part", j.name));
             self.copy(&j.src, &part).inspect_err(|_| {
                 let _ = std::fs::remove_file(&part);
             })?;

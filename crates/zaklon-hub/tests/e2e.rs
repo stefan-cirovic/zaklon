@@ -410,6 +410,25 @@ async fn full_hub_flow() {
     assert!(usb.join("zaklon-packs/tiny_test_2026-01.zim").is_file());
     assert!(usb.join("zaklon-packs/README.txt").is_file());
     assert!(!usb.join("zaklon-packs/tiny_test_2026-01.zim.part").exists());
+    // With the apps: the installer the setup kept and the phone app go to the drive's root.
+    std::fs::create_dir_all(hub.root.join("library/installer")).unwrap();
+    std::fs::write(hub.root.join("library/installer/Zaklon-setup.exe"), b"MZ installer").unwrap();
+    let (_, ex) = hub.get("/api/export").await;
+    assert_eq!(ex["apps"][0][0], "Zaklon-setup.exe");
+    let (st, _) = hub.post("/api/export", json!({ "dir": usb.display().to_string(), "with_apps": true })).await;
+    assert_eq!(st, 202);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let (_, ex) = hub.get("/api/export").await;
+        if ex["running"] == false {
+            assert_eq!(ex["finished"], true, "{ex}");
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(std::fs::read(usb.join("Zaklon-setup.exe")).unwrap(), b"MZ installer");
+    assert!(usb.join("ZAKLON-README.txt").is_file());
     // A phone cannot write to the laptop's drives or list them.
     let r = phone.post(format!("{}/api/export", hub.tls)).bearer_auth(&token).json(&json!({ "dir": usb.display().to_string(), "ids": ["test-pack"] })).send().await.unwrap();
     assert_eq!(r.status().as_u16(), 403);

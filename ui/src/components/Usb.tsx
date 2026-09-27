@@ -17,6 +17,8 @@ type ExportState = {
   bytes_total: number;
   error: string | null;
   finished: boolean;
+  /** Installer and phone app that can go on the stick: [file name, size]. */
+  apps?: [string, number][];
 };
 
 /** A copyable thing: one pack, or all installed pieces of a country's map. */
@@ -64,6 +66,7 @@ export function CopyToUsb({ t, items }: { t: T; lang: Lang; items: CopyItem[] })
   const [job, setJob] = useState<ExportState | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [withApps, setWithApps] = useState(true);
 
   // Drives change when a stick is plugged in; look again when a drive is chosen, not on every key.
   const driveRoot = /^[A-Za-z]:/.test(dir) ? dir.slice(0, 2).toUpperCase() : "";
@@ -87,7 +90,9 @@ export function CopyToUsb({ t, items }: { t: T; lang: Lang; items: CopyItem[] })
   }, [poll, running]);
 
   const chosen = items.filter((i) => picked.has(i.key));
-  const size = chosen.reduce((s, i) => s + i.size, 0);
+  const apps = job?.apps ?? [];
+  const appsOn = withApps && apps.length > 0;
+  const size = chosen.reduce((s, i) => s + i.size, 0) + (appsOn ? apps.reduce((s, [, n]) => s + n, 0) : 0);
   const drive = useMemo(() => drives.filter((d) => dir.toUpperCase().startsWith(d.path.toUpperCase())).sort((a, b) => b.path.length - a.path.length)[0], [drives, dir]);
   const tooBig = drive && size > drive.free;
   const fat = drive && drive.file_system.toUpperCase().startsWith("FAT") && drive.file_system.toUpperCase() !== "EXFAT";
@@ -106,7 +111,7 @@ export function CopyToUsb({ t, items }: { t: T; lang: Lang; items: CopyItem[] })
     setErr(null);
     setStarting(true);
     try {
-      await api("/api/export", { json: { dir, ids: chosen.flatMap((i) => i.ids) } });
+      await api("/api/export", { json: { dir, ids: chosen.flatMap((i) => i.ids), with_apps: appsOn } });
       await poll();
     } catch (e) {
       setErr(errText(t, e));
@@ -121,7 +126,7 @@ export function CopyToUsb({ t, items }: { t: T; lang: Lang; items: CopyItem[] })
     <div className="panel stack left">
       <h2>{t("copyToUsb")}</h2>
       <p className="muted" style={{ margin: 0 }}>{t("copyToUsbIntro")}</p>
-      {items.length === 0 ? (
+      {items.length === 0 && apps.length === 0 ? (
         <p className="muted">{t("nothingInstalled")}</p>
       ) : (
         <>
@@ -135,8 +140,14 @@ export function CopyToUsb({ t, items }: { t: T; lang: Lang; items: CopyItem[] })
               </label>
             ))}
           </div>
+          {apps.length > 0 && (
+            <label className="check-line">
+              <input type="checkbox" checked={withApps} onChange={(e) => setWithApps(e.target.checked)} disabled={running} />
+              <span>{t("usbWithApps")}</span>
+            </label>
+          )}
           <DrivePicker t={t} value={dir} onChange={setDir} label={t("drive")} />
-          {chosen.length > 0 && (
+          {(chosen.length > 0 || appsOn) && (
             <p className="muted" style={{ margin: 0, fontSize: 14 }}>
               {t("selectedSize")}: {fmtBytes(size)}
               {drive && ` · ${fmtBytes(drive.free)} ${t("free")}`}
@@ -157,7 +168,7 @@ export function CopyToUsb({ t, items }: { t: T; lang: Lang; items: CopyItem[] })
             </div>
           ) : (
             <div>
-              <button className="btn" onClick={start} disabled={starting || !dir.trim() || chosen.length === 0 || !!tooBig || !!fatProblem}>{t("copyBtn")}</button>
+              <button className="btn" onClick={start} disabled={starting || !dir.trim() || (chosen.length === 0 && !appsOn) || !!tooBig || !!fatProblem}>{t("copyBtn")}</button>
             </div>
           )}
           {job && !job.running && job.finished && job.target && (
