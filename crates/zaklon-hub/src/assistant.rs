@@ -1246,7 +1246,7 @@ fn chrono_today() -> String {
 
 fn supplies_messages(question: &str, language: &str, context: &str, history: &[Turn]) -> Vec<serde_json::Value> {
     let system = if language == "sr" {
-        "Ti si Zaklon, pomoćnik za domaćinstvo. Odgovaraj na srpskom, latinicom, kratko i jasno. \
+        "Ti si Zaklon, pomoćnik za domaćinstvo. Odgovaraj na srpskom, latinicom, kratko i jasno, i obraćaj se sa „ti“. \
 Koristi samo spisak zaliha ispod; ne izmišljaj stavke ni količine. Ako nečega nema na spisku, reci da toga nema u zalihama."
     } else {
         "You are Zaklon, a household assistant. Answer briefly and clearly. \
@@ -1325,7 +1325,7 @@ fn build_messages(question: &str, language: &str, passages: &[String], history: 
     let sr = language == "sr";
     let system = if passages.is_empty() {
         if sr {
-            "Ti si Zaklon, pomoćnik za domaćinstvo koji radi bez interneta. Odgovaraj na srpskom jeziku, latinicom, kratko i jasno. \
+            "Ti si Zaklon, pomoćnik za domaćinstvo koji radi bez interneta. Odgovaraj na srpskom jeziku, latinicom, kratko i jasno, i obraćaj se sa „ti“. \
 U biblioteci nije pronađen tekst o ovom pitanju, pa odgovaraš iz opšteg znanja: budi oprezan, ne izmišljaj brojeve i imena, \
 i ako nisi siguran reci to. Za zdravlje i bezbednost savetuj proveru kod stručnjaka."
         } else {
@@ -1334,7 +1334,7 @@ Nothing about this was found in the library, so you answer from general knowledg
 and say so when you are not sure. For health and safety, advise checking with a professional."
         }
     } else if sr {
-        "Ti si Zaklon, pomoćnik za domaćinstvo koji radi bez interneta. Odgovaraj na srpskom jeziku, latinicom, kratko i jasno (najviše 6 rečenica). \
+        "Ti si Zaklon, pomoćnik za domaćinstvo koji radi bez interneta. Odgovaraj na srpskom jeziku, latinicom, kratko i jasno (najviše 6 rečenica), i obraćaj se sa „ti“. \
 Koristi samo činjenice iz izvora ispod. Posle rečenice koja koristi izvor napiši njegov broj u uglastim zagradama, npr. [1]. \
 Izvori koji nisu o pitanju se ne koriste. Ako izvori ne odgovaraju na pitanje, reci samo: „U biblioteci nisam našao pouzdan odgovor.“ \
 Ne izmišljaj i ne tvrdi da nešto ne postoji ili ne može samo zato što toga nema u izvorima."
