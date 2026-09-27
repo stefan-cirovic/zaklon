@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { api } from "../api";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
+import { useVisiblePoll } from "../poll";
 import { countWord, fmtBytes } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
 import Qr from "../components/Qr";
@@ -64,21 +66,36 @@ export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: bool
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<string | null>(null);
 
+  const [appBusy, setAppBusy] = useState(false);
+
   const load = useCallback(async () => {
     try {
       setData(await api<MapsReply>("/api/maps"));
       setErr(null);
+      return true;
     } catch (e) {
       setErr(errText(t, e));
+      return false;
     }
   }, [t]);
 
   const busy = !!data && (data.countries.some((c) => countryState(c).busy) || ["queued", "downloading", "verifying"].includes(data.app.status));
-  useEffect(() => {
-    load();
-    const id = setInterval(load, busy ? 2000 : 15000);
-    return () => clearInterval(id);
-  }, [load, busy]);
+  useVisiblePoll(load, busy ? 2000 : 15000);
+
+  // A paired phone copies the app over its trusted connection to the hub and
+  // checks it before the system installer sees it (the plain-HTTP address is
+  // for phones that are not paired yet).
+  const installApp = async () => {
+    setErr(null);
+    setAppBusy(true);
+    try {
+      await openUrl(await invoke<string>("client_fetch_app", { name: "comaps" }));
+    } catch (e) {
+      setErr(errText(t, e));
+    } finally {
+      setAppBusy(false);
+    }
+  };
 
   const act = async (p: Promise<unknown>) => {
     try {
@@ -121,9 +138,9 @@ export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: bool
           <ol className="steps">
             <li>
               {t("mapsStep1")}
-              {appReady && appUrl && !isHub ? (
+              {appReady && !isHub ? (
                 <div className="qr-line">
-                  <button className="btn" onClick={() => openUrl(appUrl).catch((e) => setErr(errText(t, e)))}>{t("mapsInstallApp")}</button>
+                  <button className="btn" onClick={installApp} disabled={appBusy}>{appBusy ? t("mapsAppCopying") : t("mapsInstallApp")}</button>
                 </div>
               ) : appReady && appUrl ? (
                 <div className="qr-line">

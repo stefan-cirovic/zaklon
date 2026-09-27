@@ -1,5 +1,24 @@
 import { invoke } from "@tauri-apps/api/core";
-import { adoptParked, clearOffline, flush, fromCache, isCacheable, isQueueable, markOnline, queue, remember } from "./offline";
+import {
+  adoptParked,
+  clearOffline,
+  flush,
+  fromCache,
+  isCacheable,
+  isQueueable,
+  knownAway,
+  markMissed,
+  markOnline,
+  offlineReady,
+  queue,
+  remember,
+  requestProbe,
+  setStore,
+  settle,
+  withClientId,
+  withWaiting,
+  type StoreName,
+} from "./offline";
 
 export type AppMode = {
   mode: "hub" | "client";
@@ -62,7 +81,20 @@ export function inTauri(): boolean {
 export function getMode(): Promise<AppMode> {
   if (!modePromise) {
     modePromise = inTauri()
-      ? invoke<AppMode>("app_mode").catch(() => sameOrigin())
+      ? invoke<AppMode>("app_mode")
+          .then((m) => {
+            // Phones keep waiting shopping list changes in files the app
+            // writes to the disk at once (the web view's storage may lose the
+            // last seconds when Android kills the app).
+            if (m.mode === "client") {
+              setStore({
+                load: (name: StoreName) => invoke<string | null>("outbox_read", { name }),
+                save: (name: StoreName, data: string) => invoke<void>("outbox_write", { name, data }),
+              });
+            }
+            return m;
+          })
+          .catch(() => sameOrigin())
       : Promise.resolve(sameOrigin());
   }
   return modePromise;
@@ -100,30 +132,42 @@ function errorFromBody(status: number, text: string, fallback: string): ApiError
 export async function api<T = unknown>(path: string, init: { method?: string; json?: unknown } = {}): Promise<T> {
   const mode = await getMode();
   const method = init.method ?? (init.json !== undefined ? "POST" : "GET");
-  const body = init.json !== undefined ? JSON.stringify(init.json) : undefined;
+  let body = init.json !== undefined ? JSON.stringify(init.json) : undefined;
 
   if (mode.mode === "client") {
+    // Everything but keeping a change works without the saved outbox (queue() reports that).
+    await offlineReady().catch(() => {});
+    body = withClientId(method, path, body);
+    // The hub was out of reach a moment ago (the phone is at the shop): answer
+    // from the copy, or keep the change, right away instead of waiting for
+    // every address to time out; the app looks for the hub meanwhile.
+    if (knownAway()) {
+      const answer = await offlineAnswer(method, path, body);
+      if (answer !== null) {
+        requestProbe();
+        return answer.value as T;
+      }
+    }
     let res: { status: number; body: string };
     try {
       res = await invoke<{ status: number; body: string }>("client_request", { method, path, body: body ?? null });
     } catch (e) {
       // The hub is out of reach (the phone is not at home): use the last copy,
-      // and let shopping list changes wait for the hub.
-      if (isCacheable(method, path)) {
-        const cached = fromCache(path);
-        if (cached !== null) return JSON.parse(cached) as T;
-      }
-      if (isQueueable(method, path)) {
-        const answer = queue(method, path, body ?? null);
-        return (answer ? JSON.parse(answer) : undefined) as T;
-      }
+      // and let shopping list changes wait for the hub. A shopping list add
+      // may have reached the hub even so; its client id makes a second copy
+      // harmless.
+      markMissed();
+      const answer = await offlineAnswer(method, path, body);
+      if (answer !== null) return answer.value as T;
       throw e;
     }
     markOnline();
     if (res.status < 300 && res.body && isCacheable(method, path)) remember(path, res.body);
     if (res.status >= 400) throw errorFromBody(res.status, res.body, `hub replied ${res.status}`);
     if (!res.body || !res.body.trim()) return undefined as T;
-    return JSON.parse(res.body) as T;
+    // Shopping list changes still waiting on this phone stay on the list.
+    const text = method === "GET" && path === "/api/shopping" ? withWaiting(res.body) : res.body;
+    return JSON.parse(text) as T;
   }
 
   if (mode.api_base === null) throw new ApiError(0, "not connected to a hub");
@@ -139,6 +183,20 @@ export async function api<T = unknown>(path: string, init: { method?: string; js
   return JSON.parse(text) as T;
 }
 
+/** Phones without the hub: the copy of a GET, or a shopping list change kept for later; null when neither applies. */
+async function offlineAnswer(method: string, path: string, body: string | undefined): Promise<{ value: unknown } | null> {
+  if (isCacheable(method, path)) {
+    const cached = fromCache(path);
+    if (cached !== null) return { value: JSON.parse(cached) };
+  }
+  if (isQueueable(method, path)) {
+    // Throws when the change could not be stored on the phone: then it is not kept.
+    const answer = await queue(method, path, body ?? null);
+    return { value: answer ? JSON.parse(answer) : undefined };
+  }
+  return null;
+}
+
 // ---- phone-side link management ------------------------------------------
 
 export function clientState(): Promise<LinkSummary> {
@@ -147,8 +205,9 @@ export function clientState(): Promise<LinkSummary> {
 
 export async function clientPair(payload: PairPayload, password: string, deviceName: string): Promise<LinkSummary> {
   const link = await invoke<LinkSummary>("client_pair", { payload, password, deviceName });
+  markOnline();
   // Back with the hub it left: shopping list changes set aside then are sent now.
-  adoptParked(link.hub_id);
+  await adoptParked(link.hub_id).catch(() => 0);
   return link;
 }
 
@@ -158,10 +217,11 @@ export async function clientPair(payload: PairPayload, password: string, deviceN
  * Resolves to how many changes were set aside.
  */
 export async function clientForget(): Promise<number> {
-  const hubId = await clientState()
-    .then((s) => s.hub_id)
-    .catch(() => null);
-  const parked = clearOffline(hubId);
+  const link = await clientState().catch(() => null);
+  // A change on its way to the hub right now should arrive (or not) before
+  // the rest is set aside, so it is not set aside and sent a second time.
+  await settle(5000);
+  const parked = await clearOffline(link?.hub_id ?? null, link?.hub_name ?? null);
   await invoke("client_forget");
   return parked;
 }

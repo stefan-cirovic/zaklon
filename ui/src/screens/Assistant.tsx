@@ -3,6 +3,7 @@ import { api, ApiError, inTauri } from "../api";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
+import { useVisiblePoll, whenVisible } from "../poll";
 import { fmtBytes } from "../format";
 import Reader from "../components/Reader";
 import PhoneAi from "./PhoneAi";
@@ -149,15 +150,10 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelIds.join(",")]);
-  useEffect(() => {
-    if (!ov || ov.engine !== "missing" && ov.engine !== "no_model") return;
-    pollDownloads();
-    const id = setInterval(() => {
-      pollDownloads();
-      load();
-    }, downloading ? 1500 : 8000);
-    return () => clearInterval(id);
-  }, [ov, downloading, pollDownloads, load]);
+  const needsDownload = !!ov && (ov.engine === "missing" || ov.engine === "no_model");
+  useVisiblePoll(async () => {
+    await Promise.all([pollDownloads(), load()]);
+  }, needsDownload ? (downloading ? 1500 : 8000) : null);
 
   const busy = chat.some((a) => !["done", "failed"].includes(a.status));
   const current = chat.find((a) => !["done", "failed"].includes(a.status));
@@ -171,8 +167,11 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
     let lastStatus = "";
     // One request at a time, so replies cannot arrive out of order. A phone
     // that drops Wi-Fi for a moment keeps waiting; only a lost answer (404)
-    // or a long silence ends it.
+    // or a long silence ends it. Nothing is asked while the app is in the
+    // background; the answer is fetched on return.
     const tick = async () => {
+      await whenVisible();
+      if (!alive) return;
       try {
         const a = await api<Answer>(`/api/assistant/answers/${current.id}`);
         if (!alive) return;

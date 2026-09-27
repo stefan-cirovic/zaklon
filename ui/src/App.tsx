@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { api, ApiError, clientForget, flushOutbox, clientState, getMode, type AppMode, type LinkSummary, type Status } from "./api";
+import { discardParked, onOfflineChange, onProbeRequest, parkedElsewhere, sendParkedHere } from "./offline";
 import { makeT, type Key, type Lang } from "./i18n";
 import { setFormatLang } from "./format";
 import { errText } from "./errors";
@@ -29,6 +31,8 @@ const TAB_IDS = [...TABS.map((x) => x.id), "household"];
 /** Poll every 2 s until the hub answers, then every 10 s. Never overlapping. */
 const POLL_FAST = 2000;
 const POLL_SLOW = 10000;
+/** Phones: the on-device AI engine holds 1-3 GB; it stops when the app has been in the background this long. */
+const AI_STOP_HIDDEN = 2 * 60 * 1000;
 
 function readPref(key: string, fallback: string): string {
   try {
@@ -86,6 +90,12 @@ export default function App() {
   const [notice, setNotice] = useState<Key | null>(null);
   // Shopping list changes set aside when this phone was unlinked.
   const [parked, setParked] = useState(0);
+  // Shows the offer of changes set aside for another hub (one that was
+  // replaced) again whenever the phone's waiting changes change.
+  const [, offlineChanged] = useReducer((n: number) => n + 1, 0);
+  const [parkedErr, setParkedErr] = useState<string | null>(null);
+  // A different Zaklon hub keeps answering where this phone's hub did.
+  const [hubChanged, setHubChanged] = useState(false);
   const connected = useRef(false);
   setFormatLang(lang);
   // Stable between renders so screens can safely depend on it.
@@ -118,6 +128,7 @@ export default function App() {
     setLink(await clientState().catch(() => null));
     setStatus(null);
     setStatusAt(null);
+    setHubChanged(false);
     setNotice(why);
   }, []);
 
@@ -127,6 +138,7 @@ export default function App() {
       setStatus(s);
       setStatusAt(Date.now());
       setError(null);
+      setHubChanged(false);
       connected.current = true;
       // Back in reach: send what waited on this phone.
       flushOutbox().catch(() => {});
@@ -138,11 +150,10 @@ export default function App() {
         await unlinked("removedFromHub");
         return;
       }
-      // The laptop was reinstalled (new identity): this pairing can never work again.
-      if (m.mode === "client" && /reinstalled or replaced/.test(String(e instanceof Error ? e.message : e))) {
-        await unlinked("hubChanged");
-        return;
-      }
+      // Another Zaklon hub keeps answering where ours did (the laptop was
+      // reinstalled?). Not unpaired automatically: the phone keeps its copy
+      // and its waiting changes until the person chooses to pair again.
+      setHubChanged(m.mode === "client" && /reinstalled or replaced/.test(String(e instanceof Error ? e.message : e)));
       setError(e instanceof Error ? e.message : String(e));
     }
   }, [unlinked]);
@@ -164,6 +175,7 @@ export default function App() {
   useEffect(() => {
     if (mode?.mode === "client" && link && !link.linked) return;
     let alive = true;
+    let running = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let misses = 0;
     const schedule = () => {
@@ -173,29 +185,63 @@ export default function App() {
       timer = setTimeout(tick, wait);
     };
     const tick = async () => {
+      if (running) return;
       if (typeof document !== "undefined" && document.hidden) {
         schedule();
         return;
       }
+      running = true;
       await refresh();
+      running = false;
       misses = connected.current ? 0 : misses + 1;
       schedule();
+    };
+    const now = () => {
+      if (running) return;
+      if (timer) clearTimeout(timer);
+      tick();
     };
     const onVisible = () => {
       if (!document.hidden) {
         misses = 0;
-        if (timer) clearTimeout(timer);
-        tick();
+        now();
       }
     };
     document.addEventListener("visibilitychange", onVisible);
+    // A screen was answered from the phone's copy: look for the hub now.
+    const stopProbe = onProbeRequest(() => {
+      if (!connected.current) now();
+    });
     tick();
     return () => {
       alive = false;
       document.removeEventListener("visibilitychange", onVisible);
+      stopProbe();
       if (timer) clearTimeout(timer);
     };
   }, [refresh, link?.linked, mode?.mode]);
+
+  // Phones: the AI engine on the phone holds a lot of memory. When the app
+  // has been in the background for a while, stop it (starting it again takes
+  // a few seconds).
+  useEffect(() => {
+    if (mode?.mode !== "client") return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onVisibility = () => {
+      if (timer) clearTimeout(timer);
+      timer = undefined;
+      if (document.hidden) timer = setTimeout(() => invoke("local_ai_stop").catch(() => {}), AI_STOP_HIDDEN);
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (timer) clearTimeout(timer);
+    };
+  }, [mode?.mode]);
+
+  // Changes set aside for another hub: offered once this phone is paired.
+  useEffect(() => onOfflineChange(offlineChanged), []);
+  const elsewhere = mode?.mode === "client" && link?.linked ? parkedElsewhere(link.hub_id) : [];
 
   useEffect(() => {
     document.documentElement.dataset.accent = accent;
@@ -214,6 +260,7 @@ export default function App() {
     setStatus(null);
     setStatusAt(null);
     setNotice(null);
+    setHubChanged(false);
     setParked(n);
   };
 
@@ -242,6 +289,36 @@ export default function App() {
     <div className="shell">
       <main className="content">
         {!isHub && <OfflineBanner t={t} />}
+        {!isHub && hubChanged && link?.linked && (
+          <div className="panel notice stack" role="alert">
+            <p style={{ margin: 0 }}>{t("hubChangedAsk")}</p>
+            <div className="row">
+              <ConfirmButton label={t("pairAgain")} confirmLabel={t("yesPairAgain")} cancelLabel={t("cancel")} className="btn" onConfirm={() => unlinked("hubChanged")} />
+            </div>
+          </div>
+        )}
+        {!isHub &&
+          elsewhere.map((p) => (
+            <div className="panel notice stack" role="status" key={p.hub_id}>
+              <p style={{ margin: 0 }}>
+                {t("parkedOther")}
+                {p.hub_name ? ` (${p.hub_name})` : ""}: {p.count}.
+              </p>
+              <div className="row wrap">
+                <button className="btn" onClick={() => sendParkedHere(p.hub_id).then(() => flushOutbox()).catch((e) => setParkedErr(errText(t, e)))}>
+                  {t("parkedSendHere")}
+                </button>
+                <ConfirmButton
+                  label={t("discard")}
+                  confirmLabel={t("yesDiscard")}
+                  cancelLabel={t("cancel")}
+                  className="btn secondary"
+                  onConfirm={() => discardParked(p.hub_id).catch((e) => setParkedErr(errText(t, e)))}
+                />
+              </div>
+              {parkedErr && <p className="error" role="alert">{parkedErr}</p>}
+            </div>
+          ))}
         {tab === "home" && <Home status={status} statusAt={statusAt} error={error ? errText(t, new Error(error)) : null} t={t} go={setTab} phone={!isHub} />}
         {tab === "household" && (
           <div className="stack">

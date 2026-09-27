@@ -5,6 +5,7 @@ import type { Key } from "./i18n";
 // original text in brackets, so it can still be reported.
 
 const KNOWN: [RegExp, Key][] = [
+  [/could not save on this phone/i, "errSaveOnPhone"],
   [/wrong household password/i, "errWrongPassword"],
   [/pairing code is invalid or expired/i, "errCodeExpired"],
   [/too many wrong attempts from this device/i, "errDeviceBlocked"],
@@ -26,7 +27,8 @@ const KNOWN: [RegExp, Key][] = [
   [/no AI model is installed/i, "aiNeedsModel"],
   [/AI engine is not installed/i, "errAiEngineMissing"],
   [/stopped while loading the model/i, "errAiMemory"],
-  [/did not start in time|could not start the AI engine|AI engine replied|stopped answering|^AI engine:/i, "errAiEngine"],
+  [/AI is still loading/i, "errAiLoading"],
+  [/did not start in time|could not start the AI engine|AI engine replied|AI engine returned an empty answer|stopped answering|^AI engine:/i, "errAiEngine"],
   [/ask something first/i, "askSomething"],
   [/question is too long/i, "errQuestionLong"],
   [/assistant is busy/i, "errAiBusy"],

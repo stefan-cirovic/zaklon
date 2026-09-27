@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { api } from "../api";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
+import { useVisiblePoll } from "../poll";
 import { fmtBytes, fmtQty } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
 
@@ -10,7 +11,12 @@ type T = (k: Key) => string;
 type Status = {
   engine: boolean;
   models: { file: string; size: number }[];
+  /** Copies that stopped midway ("<model>.gguf.part"). */
+  parts?: { file: string; size: number }[];
+  /** The model the engine runs with, once it has loaded. */
   running: string | null;
+  /** The model the engine is still loading. */
+  loading?: string | null;
   starting: boolean;
   copy: { model: string; model_id: string; verifying: boolean; done: number; total: number; error: string | null; finished: boolean } | null;
   cpu_cores: number;
@@ -44,13 +50,10 @@ export default function PhoneAi({ t, lang }: { t: T; lang: Lang }) {
     api<HubModel[]>("/api/models").then(setHubModels).catch(() => setHubModels([]));
   }, [load]);
 
-  // Poll while something is in progress (copying or starting).
-  const active = !!st && (st.starting || (!!st.copy && !st.copy.finished));
-  useEffect(() => {
-    if (!active) return;
-    const id = setInterval(load, 1000);
-    return () => clearInterval(id);
-  }, [active, load]);
+  // Poll while something is in progress (copying or starting), and not
+  // while the app is in the background.
+  const active = !!st && (st.starting || !!st.loading || (!!st.copy && !st.copy.finished));
+  useVisiblePoll(load, active ? 1000 : null);
 
   // A locked phone pauses the copy. Keep the screen on while a model is being
   // copied (the Screen Wake Lock of the web view); it is let go when done.
@@ -139,6 +142,9 @@ export default function PhoneAi({ t, lang }: { t: T; lang: Lang }) {
   if (!st.engine) return <p className="warn">{t("aiEngineMissing")}</p>;
 
   const onPhone = new Set(st.models.map((m) => m.file));
+  // Unfinished copies, except the one being copied right now.
+  const copyingPart = st.copy && !st.copy.finished ? `${st.copy.model}.part` : null;
+  const parts = (st.parts ?? []).filter((p) => p.file !== copyingPart);
   const title = (m: HubModel) => (lang === "sr" && m.title_sr ? m.title_sr : m.title_en);
 
   return (
@@ -159,13 +165,14 @@ export default function PhoneAi({ t, lang }: { t: T; lang: Lang }) {
                   <div className="muted" style={{ fontSize: 13 }}>
                     {fmtBytes(m.size)}
                     {st.running === m.file && <span className="ok"> · {t("aiRunning")}</span>}
+                    {st.loading === m.file && <span className="muted"> · {t("aiLoading")}</span>}
                   </div>
                 </div>
                 <div className="row">
-                  {st.running === m.file ? (
+                  {st.running === m.file || st.loading === m.file ? (
                     <button className="btn secondary" onClick={() => invoke("local_ai_stop").then(load)}>{t("aiStop")}</button>
                   ) : (
-                    <button className="btn" onClick={() => start(m.file)} disabled={busy}>
+                    <button className="btn" onClick={() => start(m.file)} disabled={busy || st.starting}>
                       {st.starting ? t("aiLoading") : t("aiStart")}
                     </button>
                   )}
@@ -176,6 +183,33 @@ export default function PhoneAi({ t, lang }: { t: T; lang: Lang }) {
           </div>
         )}
       </div>
+
+      {parts.length > 0 && (
+        <div>
+          <h2>{t("unfinishedCopies")}</h2>
+          <p className="muted">{t("unfinishedCopiesHint")}</p>
+          <div className="list">
+            {parts.map((p) => (
+              <div className="item wrap" key={p.file}>
+                <div>
+                  <div>{p.file.replace(".gguf.part", "")}</div>
+                  <div className="muted" style={{ fontSize: 13 }}>{fmtBytes(p.size)}</div>
+                </div>
+                <ConfirmButton
+                  label={t("discard")}
+                  confirmLabel={t("yesDiscard")}
+                  cancelLabel={t("cancel")}
+                  onConfirm={() =>
+                    invoke("local_ai_delete", { file: p.file })
+                      .then(load)
+                      .catch((e) => setErr(errText(t, e)))
+                  }
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {st.copy && !st.copy.finished && (
         <div className="panel">

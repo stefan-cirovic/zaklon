@@ -3,6 +3,7 @@ import { api, contentBase } from "../api";
 import Reader from "../components/Reader";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
+import { useVisiblePoll } from "../poll";
 import { cyrToLat, latinArticles } from "../format";
 
 type T = (k: Key) => string;
@@ -35,24 +36,18 @@ export default function Library({ t, lang, go }: Props) {
     contentBase().then(setBase).catch((e) => setErr(errText(t, e)));
   }, [t]);
 
-  // Refresh the library state; poll while the engine is starting.
-  useEffect(() => {
-    let alive = true;
-    const load = () =>
-      api<LibraryReply>("/api/library")
-        .then((r) => {
-          if (!alive) return;
-          setLib(r);
-          setErr(null);
-        })
-        .catch((e) => alive && setErr(errText(t, e)));
-    load();
-    const id = setInterval(load, lib?.engine === "starting" ? 2000 : 15000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [lib?.engine, t]);
+  // Refresh the library state; poll while the engine is starting. Not while
+  // the app is in the background.
+  useVisiblePoll(async () => {
+    try {
+      setLib(await api<LibraryReply>("/api/library"));
+      setErr(null);
+      return true;
+    } catch (e) {
+      setErr(errText(t, e));
+      return false;
+    }
+  }, lib?.engine === "starting" ? 2000 : 15000);
 
   // Search as you type, 300 ms after the last key; ignore stale replies.
   useEffect(() => {

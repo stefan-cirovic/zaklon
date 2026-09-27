@@ -91,6 +91,25 @@ async fn client_content_base(state: tauri::State<'_, Arc<ClientState>>) -> Resul
     state.inner().content_base().await
 }
 
+/// Phones: copy an app (the CoMaps map app) from the hub over the pinned
+/// connection, check it, and return a local address to install it from.
+#[tauri::command]
+async fn client_fetch_app(state: tauri::State<'_, Arc<ClientState>>, name: String) -> Result<String, String> {
+    state.inner().fetch_app(&name).await
+}
+
+/// Phones: shopping list changes waiting for the hub ("outbox", "parked"),
+/// kept in files that are on the disk before the change counts as saved.
+#[tauri::command]
+fn outbox_read(state: tauri::State<'_, Arc<ClientState>>, name: String) -> Result<Option<String>, String> {
+    state.read_store(&name)
+}
+
+#[tauri::command]
+fn outbox_write(state: tauri::State<'_, Arc<ClientState>>, name: String, data: String) -> Result<(), String> {
+    state.write_store(&name, &data)
+}
+
 // ---- on-device AI (phones; on desktop the engine is simply absent) -------------
 
 #[tauri::command]
@@ -171,8 +190,9 @@ pub fn run() {
     builder
         .setup(move |app| {
             let dir = app.path().app_data_dir().unwrap_or_else(|_| std::env::temp_dir().join("zaklon"));
+            let cache = app.path().app_cache_dir().unwrap_or_else(|_| dir.join("cache"));
             app.manage(Arc::new(local_ai::LocalAi::new(&dir)));
-            app.manage(Arc::new(ClientState::load(dir)));
+            app.manage(Arc::new(ClientState::load(dir, cache)));
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
                 desktop::start_hub(app.handle().clone(), root.clone());
@@ -192,6 +212,9 @@ pub fn run() {
             client_forget,
             client_discover,
             client_content_base,
+            client_fetch_app,
+            outbox_read,
+            outbox_write,
             local_ai_status,
             local_ai_copy,
             local_ai_start,

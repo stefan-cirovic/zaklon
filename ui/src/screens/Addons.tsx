@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
+import { useVisiblePoll } from "../poll";
 import { fmtBytes } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
 import { CopyToUsb, DrivePicker, type CopyItem } from "../components/Usb";
@@ -53,17 +54,15 @@ export default function Addons({ t, lang, isHub }: Props) {
     try {
       setData(await api<CatalogReply>("/api/catalog"));
       setErr(null);
+      return true;
     } catch (e) {
       setErr(errText(t, e));
+      return false;
     }
   }, [t]);
 
   const busy = data?.packs.some((p) => ["queued", "downloading", "verifying"].includes(p.state.status)) ?? false;
-  useEffect(() => {
-    load();
-    const id = setInterval(load, busy ? 1500 : 10000);
-    return () => clearInterval(id);
-  }, [load, busy]);
+  useVisiblePoll(load, busy ? 1500 : 10000);
 
   const act = async (path: string, method = "POST") => {
     try {

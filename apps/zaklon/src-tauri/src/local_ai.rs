@@ -4,7 +4,7 @@
 //! measuring what a phone can do.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -17,6 +17,10 @@ const SERVER_FILE: &str = "libllama_server_exec.so";
 const CONTEXT: &str = "2048";
 /// The engine's log is cut down to about this much at each start.
 const LOG_KEEP: u64 = 200 * 1024;
+/// The engine holds 1-3 GB of memory: it stops after this long unused.
+const IDLE_STOP: Duration = Duration::from_secs(10 * 60);
+/// A copy that was left unfinished this long is deleted when the app starts.
+const PART_KEEP: Duration = Duration::from_secs(30 * 24 * 3600);
 
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct CopyProgress {
@@ -42,8 +46,13 @@ pub struct Status {
     /// The AI engine is packaged in this build.
     pub engine: bool,
     pub models: Vec<LocalModel>,
-    /// Model file the engine is running with, when it is ready.
+    /// Copies that stopped midway (`<model>.gguf.part`); copying the model
+    /// again continues them.
+    pub parts: Vec<LocalModel>,
+    /// Model file the engine is running with, once it has loaded.
     pub running: Option<String>,
+    /// Model file the engine is still loading.
+    pub loading: Option<String>,
     pub starting: bool,
     pub copy: Option<CopyProgress>,
     pub cpu_cores: usize,
@@ -64,6 +73,8 @@ struct Server {
     child: std::process::Child,
     port: u16,
     model: String,
+    /// The model has loaded and the engine answers.
+    ready: bool,
 }
 
 pub struct LocalAi {
@@ -79,6 +90,20 @@ pub struct LocalAi {
     next_id: AtomicU64,
     copy: Arc<Mutex<Option<CopyProgress>>>,
     http: reqwest::Client,
+    /// When the engine was last started or asked something.
+    last_used: Mutex<Instant>,
+    /// Questions being answered right now.
+    asking: AtomicUsize,
+}
+
+/// Marks the engine as in use while a question is answered.
+struct AskGuard<'a>(&'a LocalAi);
+
+impl Drop for AskGuard<'_> {
+    fn drop(&mut self) {
+        self.0.touch();
+        self.0.asking.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 impl Drop for LocalAi {
@@ -118,6 +143,38 @@ fn native_lib_dir() -> Option<PathBuf> {
 
 fn server_exe() -> Option<PathBuf> {
     native_lib_dir().map(|d| d.join(SERVER_FILE)).filter(|p| p.is_file())
+}
+
+/// Model files (`.gguf`) or unfinished copies (`.gguf.part`) in `dir`.
+fn list_files(dir: &Path, suffix: &str) -> Vec<LocalModel> {
+    let mut out: Vec<LocalModel> = std::fs::read_dir(dir)
+        .map(|rd| {
+            rd.filter_map(|e| e.ok())
+                .filter(|e| e.file_name().to_string_lossy().ends_with(suffix))
+                .map(|e| LocalModel {
+                    file: e.file_name().to_string_lossy().to_string(),
+                    size: e.metadata().map(|m| m.len()).unwrap_or(0),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    out.sort_by(|a, b| a.file.cmp(&b.file));
+    out
+}
+
+/// Delete unfinished copies nobody continued for `PART_KEEP`: each can be
+/// gigabytes, and nothing else would ever remove them.
+fn prune_parts(dir: &Path) {
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    for e in rd.flatten() {
+        if !e.file_name().to_string_lossy().ends_with(".gguf.part") {
+            continue;
+        }
+        let old = e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age > PART_KEEP);
+        if old {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
 }
 
 fn free_port() -> std::io::Result<u16> {
@@ -183,6 +240,7 @@ impl LocalAi {
     pub fn new(app_data: &Path) -> Self {
         let models_dir = app_data.join("models");
         let _ = std::fs::create_dir_all(&models_dir);
+        prune_parts(&models_dir);
         Self {
             models_dir,
             log_file: app_data.join("llama.log"),
@@ -192,34 +250,34 @@ impl LocalAi {
             next_id: AtomicU64::new(1),
             copy: Arc::new(Mutex::new(None)),
             http: reqwest::Client::builder().no_proxy().timeout(Duration::from_secs(600)).build().expect("http client"),
+            last_used: Mutex::new(Instant::now()),
+            asking: AtomicUsize::new(0),
         }
     }
 
+    fn touch(&self) {
+        *self.last_used.lock().unwrap_or_else(|p| p.into_inner()) = Instant::now();
+    }
+
     pub fn status(&self) -> Status {
-        let mut models: Vec<LocalModel> = std::fs::read_dir(&self.models_dir)
-            .map(|rd| {
-                rd.filter_map(|e| e.ok())
-                    .filter(|e| e.file_name().to_string_lossy().ends_with(".gguf"))
-                    .map(|e| LocalModel {
-                        file: e.file_name().to_string_lossy().to_string(),
-                        size: e.metadata().map(|m| m.len()).unwrap_or(0),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        models.sort_by(|a, b| a.file.cmp(&b.file));
-        let running = {
+        let (running, loading) = {
             let mut guard = self.server.lock().unwrap_or_else(|p| p.into_inner());
             let alive = guard.as_mut().is_some_and(|s| matches!(s.child.try_wait(), Ok(None)));
             if !alive {
                 *guard = None;
             }
-            guard.as_ref().map(|s| s.model.clone())
+            match guard.as_ref() {
+                Some(s) if s.ready => (Some(s.model.clone()), None),
+                Some(s) => (None, Some(s.model.clone())),
+                None => (None, None),
+            }
         };
         Status {
             engine: server_exe().is_some(),
-            models,
+            models: list_files(&self.models_dir, ".gguf"),
+            parts: list_files(&self.models_dir, ".gguf.part"),
             running,
+            loading,
             starting: self.starting.lock().unwrap_or_else(|p| p.into_inner()).is_some(),
             copy: self.copy.lock().unwrap_or_else(|p| p.into_inner()).clone(),
             cpu_cores: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4),
@@ -260,8 +318,10 @@ impl LocalAi {
         Ok(())
     }
 
+    /// Delete a model, or an unfinished copy of one (`<model>.gguf.part`).
     pub fn delete_model(&self, file: &str) -> Result<(), String> {
-        if file.contains('/') || file.contains('\\') || file.contains("..") {
+        let named_ok = file.ends_with(".gguf") || file.ends_with(".gguf.part");
+        if !named_ok || file.contains('/') || file.contains('\\') || file.contains("..") {
             return Err("bad model file name".into());
         }
         let copying = self
@@ -269,7 +329,7 @@ impl LocalAi {
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .as_ref()
-            .is_some_and(|c| !c.finished && c.model == file);
+            .is_some_and(|c| !c.finished && (c.model == file || format!("{}.part", c.model) == file));
         if copying {
             return Err("that model is still being copied".into());
         }
@@ -309,7 +369,7 @@ impl LocalAi {
     }
 
     /// Start the engine with a model and wait until it has loaded.
-    pub async fn start(&self, file: &str) -> Result<(), String> {
+    pub async fn start(self: &Arc<Self>, file: &str) -> Result<(), String> {
         let exe = server_exe().ok_or("the AI engine is not part of this app build")?;
         let model = self.models_dir.join(file);
         if !model.is_file() {
@@ -353,7 +413,7 @@ impl LocalAi {
             .spawn()
             .map_err(|e| format!("could not start the AI engine: {e}"))?;
         let _ = std::fs::write(&self.pid_file, child.id().to_string());
-        *self.server.lock().unwrap_or_else(|p| p.into_inner()) = Some(Server { id, child, port, model: file.to_string() });
+        *self.server.lock().unwrap_or_else(|p| p.into_inner()) = Some(Server { id, child, port, model: file.to_string(), ready: false });
 
         // Loading a model takes a few seconds to a minute.
         let deadline = Instant::now() + Duration::from_secs(180);
@@ -385,20 +445,50 @@ impl LocalAi {
             }
             tokio::time::sleep(Duration::from_millis(500)).await;
         };
-        if result.is_err() {
-            self.stop_if(id);
+        match &result {
+            Ok(()) => {
+                if let Some(s) = self.server.lock().unwrap_or_else(|p| p.into_inner()).as_mut().filter(|s| s.id == id) {
+                    s.ready = true;
+                }
+                self.touch();
+                self.stop_when_idle(id);
+            }
+            Err(_) => self.stop_if(id),
         }
         result
     }
 
+    /// Stop the engine started by `start` call `id` once nobody has asked it
+    /// anything for `IDLE_STOP`, so its memory goes back to the phone.
+    fn stop_when_idle(self: &Arc<Self>, id: u64) {
+        let me = Arc::downgrade(self);
+        tauri::async_runtime::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+                let Some(ai) = me.upgrade() else { return };
+                let current = ai.server.lock().unwrap_or_else(|p| p.into_inner()).as_ref().map(|s| s.id);
+                if current != Some(id) {
+                    return;
+                }
+                let idle = ai.last_used.lock().unwrap_or_else(|p| p.into_inner()).elapsed();
+                if ai.asking.load(Ordering::SeqCst) == 0 && idle >= IDLE_STOP {
+                    tracing::info!("stopping the AI engine: unused for {} minutes", idle.as_secs() / 60);
+                    ai.stop_if(id);
+                    return;
+                }
+            }
+        });
+    }
+
     pub async fn ask(&self, prompt: &str, language: &str) -> Result<Answer, String> {
-        let port = self
-            .server
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .as_ref()
-            .map(|s| s.port)
-            .ok_or("start the AI engine first")?;
+        let port = match self.server.lock().unwrap_or_else(|p| p.into_inner()).as_ref() {
+            Some(s) if s.ready => s.port,
+            Some(_) => return Err("the AI is still loading; try again in a moment".into()),
+            None => return Err("start the AI engine first".into()),
+        };
+        self.asking.fetch_add(1, Ordering::SeqCst);
+        self.touch();
+        let _in_use = AskGuard(self);
         // Answer in the language of the question; the app language only breaks ties.
         let language = question_language(prompt).unwrap_or(language);
         let system = if language == "sr" {
@@ -426,9 +516,20 @@ impl LocalAi {
             .send()
             .await
             .map_err(|e| e.to_string())?;
-        let v: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
-        let raw = v["choices"][0]["message"]["content"].as_str().unwrap_or_default();
-        let text = strip_thinking(raw);
+        let status = res.status();
+        let v: serde_json::Value = res.json().await.unwrap_or_default();
+        if !status.is_success() {
+            // llama-server says {"error": {"code": 503, "message": "Loading model"}}.
+            if status == reqwest::StatusCode::SERVICE_UNAVAILABLE {
+                return Err("the AI is still loading; try again in a moment".into());
+            }
+            let msg = v["error"]["message"].as_str().unwrap_or_default();
+            return Err(format!("AI engine replied {status}: {msg}").trim_end_matches([':', ' ']).to_string());
+        }
+        let text = strip_thinking(v["choices"][0]["message"]["content"].as_str().unwrap_or_default());
+        if text.is_empty() {
+            return Err("the AI engine returned an empty answer".into());
+        }
         Ok(Answer {
             text,
             tokens: v["usage"]["completion_tokens"].as_u64().unwrap_or(0),
@@ -479,6 +580,43 @@ pub fn question_language(text: &str) -> Option<&'static str> {
         std::cmp::Ordering::Greater => Some("sr"),
         std::cmp::Ordering::Less => Some("en"),
         std::cmp::Ordering::Equal => None,
+    }
+}
+
+#[cfg(test)]
+mod file_tests {
+    use super::*;
+
+    #[test]
+    fn unfinished_copies_are_listed_deletable_and_pruned_when_old() {
+        let dir = std::env::temp_dir().join(format!("zaklon-local-ai-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let models = dir.join("models");
+        std::fs::create_dir_all(&models).unwrap();
+        std::fs::write(models.join("a.gguf"), b"model").unwrap();
+        std::fs::write(models.join("b.gguf.part"), b"half").unwrap();
+        let stale = models.join("c.gguf.part");
+        std::fs::write(&stale, b"old").unwrap();
+        let long_ago = std::time::SystemTime::now() - PART_KEEP - Duration::from_secs(3600);
+        std::fs::File::options().write(true).open(&stale).unwrap().set_modified(long_ago).unwrap();
+
+        let ai = LocalAi::new(&dir);
+        assert!(!stale.exists(), "an old unfinished copy is removed at start");
+        let st = ai.status();
+        assert_eq!(st.models.iter().map(|m| m.file.as_str()).collect::<Vec<_>>(), ["a.gguf"]);
+        assert_eq!(st.parts.iter().map(|m| (m.file.as_str(), m.size)).collect::<Vec<_>>(), [("b.gguf.part", 4)]);
+        assert_eq!(st.running, None);
+        assert_eq!(st.loading, None);
+        // A part being copied right now stays.
+        *ai.copy.lock().unwrap() = Some(CopyProgress { model: "b.gguf".into(), ..Default::default() });
+        assert!(ai.delete_model("b.gguf.part").is_err());
+        ai.copy.lock().unwrap().as_mut().unwrap().finished = true;
+        ai.delete_model("b.gguf.part").unwrap();
+        assert!(ai.status().parts.is_empty());
+        assert!(ai.delete_model("../llama.pid").is_err());
+        assert!(ai.delete_model("llama.log").is_err());
+        drop(ai);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 

@@ -1,6 +1,8 @@
 import { UpdateBanner } from "../components/Updates";
 import { useEffect, useState } from "react";
 import { api, type Status } from "../api";
+import { onBackOnline } from "../offline";
+import { useVisiblePoll } from "../poll";
 import ExpiryBadge from "../components/ExpiryBadge";
 import { fmtDateTime, fmtQty } from "../format";
 import type { Key } from "../i18n";
@@ -58,31 +60,21 @@ export default function Home({ status, statusAt, error, t, go, phone }: Props) {
   const [sys, setSys] = useState<{ battery_percent: number | null; plugged_in: boolean } | null>(null);
   const [sumFailed, setSumFailed] = useState(false);
 
-  // Refresh the supplies summary on its own slow schedule; keep the last good
-  // data when a refresh fails, and say that it is unavailable.
-  useEffect(() => {
-    if (!canLoad) return;
-    let alive = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const load = async () => {
-      try {
-        api<{ battery_percent: number | null; plugged_in: boolean }>("/api/system").then((x) => alive && setSys(x)).catch(() => {});
-        const s = await api<Summary>("/api/supplies/summary");
-        if (alive) {
-          setSum(s);
-          setSumFailed(false);
-        }
-      } catch {
-        if (alive) setSumFailed(true);
-      }
-      if (alive) timer = setTimeout(load, SUMMARY_EVERY);
-    };
-    load();
-    return () => {
-      alive = false;
-      if (timer) clearTimeout(timer);
-    };
-  }, [canLoad]);
+  // Refresh the supplies summary on its own slow schedule (not while the app
+  // is in the background); keep the last good data when a refresh fails, and
+  // say that it is unavailable. Back in reach of the hub: refresh at once.
+  const reload = useVisiblePoll(async () => {
+    api<{ battery_percent: number | null; plugged_in: boolean }>("/api/system").then(setSys).catch(() => {});
+    try {
+      setSum(await api<Summary>("/api/supplies/summary"));
+      setSumFailed(false);
+      return true;
+    } catch {
+      setSumFailed(true);
+      return false;
+    }
+  }, canLoad ? SUMMARY_EVERY : null);
+  useEffect(() => onBackOnline(reload), [reload]);
 
   // No data at all: say so instead of "nothing yet", which would read as "nothing expires".
   const unavailable = sum === null && (sumFailed || (!canLoad && !!error));

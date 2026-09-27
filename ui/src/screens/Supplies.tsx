@@ -1,6 +1,7 @@
 import { countWord } from "../format";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import { onBackOnline, onOfflineChange } from "../offline";
 import type { Key } from "../i18n";
 import { canScan, scan } from "../scan";
 import { errText } from "../errors";
@@ -78,6 +79,8 @@ export default function Supplies({ t }: { t: T }) {
     load();
     canScan().then(setScanner).catch(() => setScanner(false));
   }, [load]);
+  // Back in reach of the hub after showing the phone's copy: load the fresh data.
+  useEffect(() => onBackOnline(() => void load()), [load]);
 
   const placeName = useCallback(
     (p: string | null) => {
@@ -504,6 +507,9 @@ function ShoppingView({ t, onChanged }: { t: T; onChanged: () => void }) {
   useEffect(() => {
     load();
   }, [load]);
+  // Changes waiting on the phone were sent (or set aside), or the hub is back:
+  // show the list as it is now.
+  useEffect(() => onOfflineChange(() => void load()), [load]);
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
