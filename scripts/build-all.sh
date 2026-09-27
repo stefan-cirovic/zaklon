@@ -7,12 +7,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.cargo/bin:$PATH"
-# Paths on this project's Windows build machine (the shell may carry quoted ones).
-GRADLE_USER_HOME='D:\DevTools\gradle'
-ANDROID_HOME='D:\DevTools\Android\Sdk'
+# Android and Java paths: taken from the environment when set (without the
+# quotes some shells carry along), otherwise the defaults below.
+unquote() { printf '%s' "$1" | tr -d "\"'"; }
+DEFAULT_TOOLS='D:\DevTools'
+GRADLE_USER_HOME="$(unquote "${GRADLE_USER_HOME:-$DEFAULT_TOOLS\\gradle}")"
+ANDROID_HOME="$(unquote "${ANDROID_HOME:-$DEFAULT_TOOLS\\Android\\Sdk}")"
 ANDROID_SDK_ROOT="$ANDROID_HOME"
-JAVA_HOME='D:\DevTools\jdk\jdk-17.0.20.1+1'
-NDK_HOME='D:\DevTools\Android\Sdk\ndk\27.1.12297006'
+JAVA_HOME="$(unquote "${JAVA_HOME:-$DEFAULT_TOOLS\\jdk\\jdk-17.0.20.1+1}")"
+NDK_HOME="$(unquote "${NDK_HOME:-$ANDROID_HOME\\ndk\\27.1.12297006}")"
 export GRADLE_USER_HOME ANDROID_HOME ANDROID_SDK_ROOT JAVA_HOME NDK_HOME
 
 echo "== phone app"
