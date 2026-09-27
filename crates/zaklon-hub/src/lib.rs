@@ -12,6 +12,7 @@ pub mod backup;
 pub mod discovery;
 pub mod downloads;
 pub mod export;
+pub mod hotspot;
 pub mod install;
 pub mod kiwix;
 pub mod latin;

@@ -547,3 +547,19 @@ test("assistant: online research is off until switched on, and only for this con
   await page.getByRole("button", { name: "New conversation" }).click();
   await expect(page.getByLabel(/Also search the internet/)).not.toBeChecked();
 });
+
+test("household: the laptop can offer its own Wi-Fi network (simulated, never really started)", async ({ page }) => {
+  await ensureSetUp(page);
+  const off = { supported: true, on: false, ssid: "PC 1234", passphrase: "", clients: 0, error: null, qr: null };
+  const on = { supported: true, on: true, ssid: "Zaklon", passphrase: "abcd2345ef", clients: 1, error: null, qr: "WIFI:T:WPA;S:Zaklon;P:abcd2345ef;;" };
+  await page.route("**/api/hotspot", (r) => r.fulfill({ json: off }));
+  await page.route("**/api/hotspot/start", (r) => r.fulfill({ json: on }));
+  await page.route("**/api/hotspot/stop", (r) => r.fulfill({ json: off }));
+  await page.goto("/#household");
+  await page.getByRole("button", { name: "Make the Wi-Fi network" }).click();
+  await expect(page.getByText("abcd2345ef")).toBeVisible();
+  await expect(page.getByRole("img", { name: "QR code to join the Wi-Fi network" })).toBeVisible();
+  await page.getByRole("button", { name: "Turn the network off" }).click();
+  await expect(page.getByRole("button", { name: "Make the Wi-Fi network" })).toBeVisible();
+  await noHorizontalScroll(page);
+});

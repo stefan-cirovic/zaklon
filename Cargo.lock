@@ -6337,6 +6337,7 @@ dependencies = [
  "lol_html",
  "mdns-sd",
  "mime_guess",
+ "rand 0.8.8",
  "reqwest 0.12.28",
  "rust-embed",
  "rustls",

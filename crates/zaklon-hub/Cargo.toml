@@ -28,6 +28,7 @@ sha2.workspace = true
 sha1.workspace = true
 base64.workspace = true
 uuid.workspace = true
+rand.workspace = true
 axum = { version = "0.8", features = ["json", "macros"] }
 axum-server = { version = "0.7", features = ["tls-rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

@@ -57,6 +57,9 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/export", get(export_status).post(export_start))
         .route("/api/export/cancel", post(export_cancel))
         .route("/api/drives", get(drives))
+        .route("/api/hotspot", get(hotspot_status))
+        .route("/api/hotspot/start", post(hotspot_start))
+        .route("/api/hotspot/stop", post(hotspot_stop))
         .route("/api/updates", get(updates_state))
         .route("/api/updates/check", post(updates_check))
         .route("/api/updates/settings", post(updates_settings))
@@ -1384,4 +1387,49 @@ async fn memory_delete(State(state): State<Arc<HubState>>, caller: Caller, Path(
     } else {
         Err(not_found("no such note"))
     }
+}
+
+// ---- Wi-Fi network from the laptop ------------------------------------------------
+
+#[derive(Serialize)]
+struct HotspotReply {
+    #[serde(flatten)]
+    state: crate::hotspot::HotspotState,
+    /// For the "join this Wi-Fi" QR code, when ours is on.
+    qr: Option<String>,
+}
+
+fn hotspot_reply(mut state: crate::hotspot::HotspotState) -> HotspotReply {
+    // Only our own network's password is shown, not whatever Windows had before.
+    if state.ssid != crate::hotspot::SSID {
+        state.passphrase.clear();
+    }
+    let qr = (state.on && state.ssid == crate::hotspot::SSID).then(|| crate::hotspot::wifi_qr(&state.ssid, &state.passphrase));
+    HotspotReply { state, qr }
+}
+
+async fn hotspot_status(_: Local) -> Result<Json<HotspotReply>, ApiError> {
+    let s = tokio::task::spawn_blocking(crate::hotspot::status).await.map_err(|e| anyhow::anyhow!(e))?;
+    Ok(Json(hotspot_reply(s)))
+}
+
+/// Laptop only: it changes this computer's network.
+async fn hotspot_start(State(state): State<Arc<HubState>>, _: Local) -> Result<Json<HotspotReply>, ApiError> {
+    let pass = match state.db.get_setting(crate::hotspot::SETTING_PASSPHRASE)? {
+        Some(p) if p.len() >= 8 => p,
+        _ => {
+            let p = crate::hotspot::new_passphrase();
+            state.db.set_setting(crate::hotspot::SETTING_PASSPHRASE, &p)?;
+            p
+        }
+    };
+    tracing::info!("starting the Wi-Fi network");
+    let s = tokio::task::spawn_blocking(move || crate::hotspot::start(&pass)).await.map_err(|e| anyhow::anyhow!(e))?;
+    Ok(Json(hotspot_reply(s)))
+}
+
+async fn hotspot_stop(_: Local) -> Result<Json<HotspotReply>, ApiError> {
+    tracing::info!("stopping the Wi-Fi network");
+    let s = tokio::task::spawn_blocking(crate::hotspot::stop).await.map_err(|e| anyhow::anyhow!(e))?;
+    Ok(Json(hotspot_reply(s)))
 }
