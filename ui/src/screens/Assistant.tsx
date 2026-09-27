@@ -129,6 +129,8 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
 
   useEffect(() => {
     load();
+    // Start loading the model now, so the first answer comes sooner.
+    api("/api/assistant/warm", { method: "POST" }).catch(() => {});
   }, [load]);
 
   // While a model or the engine downloads, follow it.

@@ -89,6 +89,7 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/assistant/ask", post(assistant_ask))
         .route("/api/assistant/answers/{id}", get(assistant_answer))
         .route("/api/assistant/stop", post(assistant_stop))
+        .route("/api/assistant/warm", post(assistant_warm))
         .route("/api/memory", get(memory_list).post(memory_add))
         .route("/api/memory/{id}", axum::routing::delete(memory_delete))
         .route("/api/models", get(models_list))
@@ -1302,6 +1303,11 @@ async fn assistant_ask(State(state): State<Arc<HubState>>, caller: Caller, Json(
 
 async fn assistant_answer(State(state): State<Arc<HubState>>, _caller: Caller, Path(id): Path<String>) -> Result<Json<crate::assistant::Answer>, ApiError> {
     state.assistant.answer(&id).map(Json).ok_or_else(|| not_found("no such answer"))
+}
+
+async fn assistant_warm(State(state): State<Arc<HubState>>, _caller: Caller) -> StatusCode {
+    state.assistant.warm_up();
+    StatusCode::ACCEPTED
 }
 
 async fn assistant_stop(State(state): State<Arc<HubState>>, _caller: Caller) -> StatusCode {

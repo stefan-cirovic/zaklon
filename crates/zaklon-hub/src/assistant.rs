@@ -421,6 +421,24 @@ impl Assistant {
         }
     }
 
+    /// Start loading the model in the background (someone opened the
+    /// Assistant), so the first answer does not wait for it. Counts as use,
+    /// so the idle timer starts from now.
+    pub fn warm_up(self: &Arc<Self>) {
+        if !matches!(self.engine_state(), EngineState::Stopped | EngineState::Failed) {
+            return;
+        }
+        self.last_used.store(self.epoch.elapsed().as_secs(), Ordering::Relaxed);
+        let me = self.clone();
+        tokio::spawn(async move {
+            // Not while a question is being answered; that one starts it anyway.
+            let Ok(_turn) = me.turn.try_lock() else { return };
+            if let Err(e) = me.ensure_running().await {
+                warn!("warming up the AI engine: {e}");
+            }
+        });
+    }
+
     pub fn answer(&self, id: &str) -> Option<Answer> {
         self.answers.lock().unwrap_or_else(|p| p.into_inner()).get(id).cloned()
     }
