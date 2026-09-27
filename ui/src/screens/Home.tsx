@@ -44,6 +44,7 @@ export default function Home({ status, error, t, go }: Props) {
   const up = !!status && !error;
   const setUp = !!status?.set_up;
   const [sum, setSum] = useState<Summary | null>(null);
+  const [sys, setSys] = useState<{ battery_percent: number | null; plugged_in: boolean } | null>(null);
   const [sumFailed, setSumFailed] = useState(false);
 
   // Refresh the supplies summary on its own slow schedule; keep the last good
@@ -54,6 +55,7 @@ export default function Home({ status, error, t, go }: Props) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const load = async () => {
       try {
+        api<{ battery_percent: number | null; plugged_in: boolean }>("/api/system").then((x) => alive && setSys(x)).catch(() => {});
         const s = await api<Summary>("/api/supplies/summary");
         if (alive) {
           setSum(s);
@@ -72,6 +74,7 @@ export default function Home({ status, error, t, go }: Props) {
   }, [setUp]);
 
   const unavailable = sum === null && sumFailed;
+  const power = sys;
   return (
     <div className="stack">
       <div className="page-head">
@@ -92,8 +95,15 @@ export default function Home({ status, error, t, go }: Props) {
           <div className="value">{fmtUptime(status?.uptime_secs, t)}</div>
         </div>
         <div className="panel">
-          <div className="label">{t("version")}</div>
-          <div className="value">{status?.version ?? "–"}</div>
+          <div className="label">{t("battery")}</div>
+          <div className="value">
+            {power === null ? "–" : power.battery_percent === null ? t("mainsPower") : `${power.battery_percent}%`}
+          </div>
+          {power && power.battery_percent !== null && (
+            <div className={power.plugged_in ? "muted" : power.battery_percent < 30 ? "warn" : "muted"} style={{ fontSize: 13 }}>
+              {power.plugged_in ? t("pluggedIn") : t("onBattery")}
+            </div>
+          )}
         </div>
         <div className="panel">
           <div className="label">{t("addresses")}</div>
