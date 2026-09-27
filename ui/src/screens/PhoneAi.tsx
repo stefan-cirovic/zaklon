@@ -52,6 +52,35 @@ export default function PhoneAi({ t, lang }: { t: T; lang: Lang }) {
     return () => clearInterval(id);
   }, [active, load]);
 
+  // A locked phone pauses the copy. Keep the screen on while a model is being
+  // copied (the Screen Wake Lock of the web view); it is let go when done.
+  const copying = !!st?.copy && !st.copy.finished;
+  useEffect(() => {
+    if (!copying) return;
+    type Sentinel = { release: () => Promise<void> };
+    const wl = (navigator as unknown as { wakeLock?: { request: (t: "screen") => Promise<Sentinel> } }).wakeLock;
+    if (!wl) return;
+    let sentinel: Sentinel | null = null;
+    let alive = true;
+    const take = () => {
+      if (document.visibilityState !== "visible") return;
+      wl.request("screen")
+        .then((s) => {
+          if (alive) sentinel = s;
+          else s.release().catch(() => {});
+        })
+        .catch(() => {});
+    };
+    take();
+    // The lock ends when the app goes to the background; take it again on return.
+    document.addEventListener("visibilitychange", take);
+    return () => {
+      alive = false;
+      document.removeEventListener("visibilitychange", take);
+      sentinel?.release().catch(() => {});
+    };
+  }, [copying]);
+
   // The phone pauses network work while the screen is locked. When the app
   // comes back after an interrupted copy, carry on by itself.
   useEffect(() => {
