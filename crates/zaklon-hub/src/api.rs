@@ -1218,7 +1218,7 @@ async fn maps_app_file(State(state): State<Arc<HubState>>, _caller: Caller, head
 /// on disk) and `Range: bytes=N-` support.
 async fn stream_library_file(
     state: &HubState,
-    f: &crate::downloads::InstalledFile,
+    f: &zaklon_core::catalog::InstalledFile,
     headers: &axum::http::HeaderMap,
     content_type: &str,
 ) -> Result<Response, ApiError> {
