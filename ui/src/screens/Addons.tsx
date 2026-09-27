@@ -5,6 +5,7 @@ import { errText } from "../errors";
 import { fmtBytes } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
 import { CopyToUsb, DrivePicker, type CopyItem } from "../components/Usb";
+import StarterSet from "../components/StarterSet";
 
 type MapCountry = { id: string; name: string; name_sr: string; regions: { id: string; size: number; status: string }[] };
 
@@ -133,6 +134,7 @@ export default function Addons({ t, lang, isHub }: Props) {
           </div>
         </div>
       )}
+      {isHub && data && <StarterSet t={t} lang={lang} packs={data.packs} freeBytes={data.system.disk_free} onStarted={load} />}
       {groups.map((cat) => {
         const packs = data?.packs.filter((p) => p.category === cat) ?? [];
         if (packs.length === 0) return null;

@@ -567,3 +567,24 @@ test("household: the laptop can offer its own Wi-Fi network (simulated, never re
   await expect(page.getByRole("button", { name: "Make the Wi-Fi network" })).toBeVisible();
   await noHorizontalScroll(page);
 });
+
+test("add-ons: the starter set downloads the recommended packs in one go (requests intercepted)", async ({ page }) => {
+  await ensureSetUp(page);
+  const asked: string[] = [];
+  await page.route("**/api/packs/*/download", (r) => {
+    asked.push(new URL(r.request().url()).pathname);
+    return r.fulfill({ status: 202, body: "" });
+  });
+  await page.route("**/api/maps/*/download", (r) => {
+    asked.push(new URL(r.request().url()).pathname);
+    return r.fulfill({ status: 202, body: "" });
+  });
+  await page.goto("/#addons");
+  const panel = page.locator(".starter");
+  await expect(panel.getByRole("heading", { name: "English essentials" })).toBeVisible();
+  await expect(panel.getByText(/Still to download/)).toBeVisible();
+  await panel.getByRole("button", { name: "Download all" }).click();
+  await expect.poll(() => asked.length).toBeGreaterThanOrEqual(3);
+  expect(asked).toContain("/api/packs/wikimed-en/download");
+  expect(asked.some((p) => /\/api\/packs\/qwen35-/.test(p))).toBe(true);
+});
