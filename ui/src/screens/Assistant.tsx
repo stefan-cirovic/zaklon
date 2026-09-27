@@ -41,6 +41,7 @@ type Answer = {
   text: string;
   sources: Source[];
   searched?: string[];
+  cited?: boolean;
   grounded: boolean;
   language: string;
   tokens_per_second: number;
@@ -362,7 +363,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
             <select value={ov.selected ?? ""} onChange={(e) => select(e.target.value)} disabled={busy}>
               {installedModels.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {title(m)}{m.recommended ? ` · ${t("recommended")}` : ""}
+                  {title(m).match(/\(([^)]+)\)/)?.[1] ?? title(m)}{m.recommended ? ` · ${t("recommended")}` : ""}
                 </option>
               ))}
             </select>
@@ -410,6 +411,9 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
                         <div className="muted" style={{ fontSize: 13, marginTop: 8 }}>{t("aiFromSupplies")} · <a href="#supplies">{t("supplies")}</a></div>
                       )}
                       {a.status === "done" && !a.grounded && <p className="warn" style={{ margin: "8px 0 0", fontSize: 13 }}>{t("aiNotGrounded")}</p>}
+                      {a.status === "done" && a.grounded && !a.from_supplies && !a.proposal && a.sources.length > 0 && a.cited === false && (
+                        <p className="muted" style={{ margin: "8px 0 0", fontSize: 13 }}>{t("aiNotCited")}</p>
+                      )}
                       {a.sources.length > 0 && (a.status === "done" || a.text) && (
                         <div className="sources">
                           <div className="label">{t("aiSources")}</div>

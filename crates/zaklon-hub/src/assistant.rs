@@ -87,6 +87,8 @@ pub struct Answer {
     pub from_supplies: bool,
     /// Online research was on for this question.
     pub used_internet: bool,
+    /// The answer names at least one of its sources ([1]...).
+    pub cited: bool,
     pub proposal: Option<Proposal>,
     /// False when no library passage was found and the model answered alone.
     pub grounded: bool,
@@ -461,6 +463,7 @@ impl Assistant {
                     searched: Vec::new(),
                     from_supplies: false,
                     used_internet: ctx.online,
+                    cited: false,
                     proposal: None,
                     grounded: false,
                     language,
@@ -669,6 +672,7 @@ impl Assistant {
             if !cited.is_empty() {
                 a.sources.retain(|s| cited.contains(&s.n));
             }
+            a.cited = a.sources.iter().any(|s| cited.contains(&s.n));
             a.status = AnswerStatus::Done;
         });
         Ok(())
