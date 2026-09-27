@@ -32,7 +32,7 @@ const START_TIMEOUT: Duration = Duration::from_secs(180);
 /// Database setting that remembers the chosen model.
 pub const SETTING_MODEL: &str = "assistant_model";
 /// Characters of each source passage given to the model.
-const SOURCE_CHARS: usize = 1800;
+const SOURCE_CHARS: usize = 1400;
 const MAX_SOURCES: usize = 3;
 const KEEP_ANSWERS: usize = 30;
 /// Questions allowed to wait for their turn (the whole household, not a crowd).
@@ -359,7 +359,10 @@ impl Assistant {
         let mut cmd = Command::new(self.exe());
         cmd.arg("-m")
             .arg(&path)
-            .args(["--host", "127.0.0.1", "--port", &port.to_string(), "-c", "8192", "-np", "1", "--jinja"])
+            // Two slots, each keeping its own prompt cache: slot 0 decides what a
+            // question is about (its long instructions and examples stay cached),
+            // slot 1 writes answers. 12288 tokens of context, 6144 per slot.
+            .args(["--host", "127.0.0.1", "--port", &port.to_string(), "-c", "12288", "-np", "2", "--jinja"])
             .current_dir(&self.engine_dir)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
@@ -424,17 +427,23 @@ impl Assistant {
     /// Start loading the model in the background (someone opened the
     /// Assistant), so the first answer does not wait for it. Counts as use,
     /// so the idle timer starts from now.
-    pub fn warm_up(self: &Arc<Self>) {
+    pub fn warm_up(self: &Arc<Self>, language: &str) {
         if !matches!(self.engine_state(), EngineState::Stopped | EngineState::Failed) {
             return;
         }
         self.last_used.store(self.epoch.elapsed().as_secs(), Ordering::Relaxed);
         let me = self.clone();
+        let language = if language == "sr" { "sr".to_string() } else { "en".to_string() };
         tokio::spawn(async move {
             // Not while a question is being answered; that one starts it anyway.
             let Ok(_turn) = me.turn.try_lock() else { return };
-            if let Err(e) = me.ensure_running().await {
-                warn!("warming up the AI engine: {e}");
+            match me.ensure_running().await {
+                // Also read the long routing instructions once, so the first
+                // question does not wait for them (the slot keeps them cached).
+                Ok(port) => {
+                    let _ = me.plan(port, "?", &language).await;
+                }
+                Err(e) => warn!("warming up the AI engine: {e}"),
             }
         });
     }
@@ -516,7 +525,9 @@ impl Assistant {
         self.update(id, |a| a.status = AnswerStatus::Starting);
         let port = self.ensure_running().await?;
         self.update(id, |a| a.status = AnswerStatus::Searching);
+        let t0 = Instant::now();
         let mut plan = self.plan(port, question, language).await;
+        info!(ms = t0.elapsed().as_millis() as u64, kind = %plan.kind, "assistant: plan");
         if plan.kind == "library" && mentions_supplies(question) {
             plan.kind = "supplies_question".into();
         }
@@ -589,7 +600,10 @@ impl Assistant {
             }
             let shown = terms.clone();
             self.update(id, |a| a.searched = shown);
-            self.find_sources(&terms, question).await
+            let t1 = Instant::now();
+            let found = self.find_sources(&terms, question).await;
+            info!(ms = t1.elapsed().as_millis() as u64, sources = found.0.len(), "assistant: library search");
+            found
         };
         let (mut sources, mut passages) = (sources, passages);
         if online {
@@ -604,7 +618,10 @@ impl Assistant {
             a.status = AnswerStatus::Thinking;
         });
         let messages = with_notes(build_messages(question, language, &passages, history), &known, language);
-        self.stream_answer(id, port, messages, language).await
+        let t2 = Instant::now();
+        let r = self.stream_answer(id, port, messages, language).await;
+        info!(ms = t2.elapsed().as_millis() as u64, "assistant: answer written");
+        r
     }
 
     /// Online research: a web search for the question, and the relevant
@@ -634,7 +651,9 @@ impl Assistant {
         let body = serde_json::json!({
             "messages": messages,
             "stream": true,
-            "max_tokens": 450,
+            "max_tokens": 380,
+            "id_slot": 1,
+            "cache_prompt": true,
             "temperature": 0.3,
             "repeat_penalty": 1.1,
             "chat_template_kwargs": { "enable_thinking": false },
@@ -770,6 +789,8 @@ quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; categor
         let body = serde_json::json!({
             "messages": messages,
             "max_tokens": 120,
+            "id_slot": 0,
+            "cache_prompt": true,
             "temperature": 0.1,
             "chat_template_kwargs": { "enable_thinking": false },
             "response_format": { "type": "json_schema", "json_schema": { "name": "plan", "schema": schema } },

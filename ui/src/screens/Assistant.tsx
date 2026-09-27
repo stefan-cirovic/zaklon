@@ -132,7 +132,9 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
   useEffect(() => {
     load();
     // Start loading the model now, so the first answer comes sooner.
-    api("/api/assistant/warm", { method: "POST" }).catch(() => {});
+    api("/api/assistant/warm", { json: { language: lang } }).catch(() => {});
+    // Once per visit to the screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
 
   // While a model or the engine downloads, follow it.

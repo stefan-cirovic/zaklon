@@ -1342,8 +1342,15 @@ async fn assistant_answer(State(state): State<Arc<HubState>>, _caller: Caller, P
     state.assistant.answer(&id).map(Json).ok_or_else(|| not_found("no such answer"))
 }
 
-async fn assistant_warm(State(state): State<Arc<HubState>>, _caller: Caller) -> StatusCode {
-    state.assistant.warm_up();
+#[derive(Deserialize, Default)]
+struct WarmBody {
+    #[serde(default)]
+    language: String,
+}
+
+async fn assistant_warm(State(state): State<Arc<HubState>>, _caller: Caller, body: Option<Json<WarmBody>>) -> StatusCode {
+    let lang = body.map(|b| b.0.language).unwrap_or_default();
+    state.assistant.warm_up(&lang);
     StatusCode::ACCEPTED
 }
 
