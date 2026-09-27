@@ -29,6 +29,7 @@
           "path": "zim/wikipedia_sr_all_maxi_2026-09.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_sr_all_maxi_2026-09.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/wikipedia/wikipedia_sr_all_maxi_2026-09.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_sr_all_maxi_2026-09.zim"
           ],
           "sha256": "29e4a604c3037d17ee0c1518282138753b8f064c7e61464ce4a8403056dc2b5d",
@@ -61,6 +62,7 @@
           "path": "zim/wikipedia_sr_all_nopic_2026-09.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_sr_all_nopic_2026-09.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/wikipedia/wikipedia_sr_all_nopic_2026-09.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_sr_all_nopic_2026-09.zim"
           ],
           "sha256": "ffb274f9e4e80350f0bbe62cac7b503244e3e30d7c04710df3b27869ce86c150",
@@ -93,6 +95,7 @@
           "path": "zim/wikipedia_sr_all_mini_2026-09.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_sr_all_mini_2026-09.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/wikipedia/wikipedia_sr_all_mini_2026-09.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_sr_all_mini_2026-09.zim"
           ],
           "sha256": "3ff7fbae92c6eb911b0c1700eb589148d6ab2ed76e8225c3b7a5cf48081cc179",
@@ -127,6 +130,7 @@
           "path": "zim/wiktionary_sr_all_nopic_2026-07.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/wiktionary/wiktionary_sr_all_nopic_2026-07.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/wiktionary/wiktionary_sr_all_nopic_2026-07.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/wiktionary/wiktionary_sr_all_nopic_2026-07.zim"
           ],
           "sha256": "c34f0a957aaa8947e6ce20798d7bd216637688dee1ba8785c974804a217bd66e",
@@ -162,6 +166,7 @@
           "path": "zim/wikipedia_en_medicine_maxi_2026-04.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_en_medicine_maxi_2026-04.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/wikipedia/wikipedia_en_medicine_maxi_2026-04.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_en_medicine_maxi_2026-04.zim"
           ],
           "sha256": "6f67340a7cd7665bb57c27d2bbff97e26f2037477c9ea597345a118286820331",
@@ -197,6 +202,7 @@
           "path": "zim/ifixit_en_all_2025-12.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/ifixit/ifixit_en_all_2025-12.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/ifixit/ifixit_en_all_2025-12.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/ifixit/ifixit_en_all_2025-12.zim"
           ],
           "sha256": "9bb5f3408707fd0300c6ef47a425c3217187f144cd9154a928183816aa72eead",
@@ -231,6 +237,7 @@
           "path": "zim/wikipedia_en_all_mini_2026-09.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_en_all_mini_2026-09.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/wikipedia/wikipedia_en_all_mini_2026-09.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_en_all_mini_2026-09.zim"
           ],
           "sha256": "350d8956ee3d7abe2839c464c3a983f93d6934a16c7f04b10715b49439dfd349",
@@ -263,6 +270,7 @@
           "path": "zim/wikipedia_en_all_nopic_2026-06.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_en_all_nopic_2026-06.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/wikipedia/wikipedia_en_all_nopic_2026-06.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_en_all_nopic_2026-06.zim"
           ],
           "sha256": "441a56d9e05b2d98f8ae9acb7986a513ed47904d73852c92dc6b7d50baa122e5",
@@ -298,6 +306,7 @@
           "path": "zim/zimgit-water_en_2024-08.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/other/zimgit-water_en_2024-08.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/other/zimgit-water_en_2024-08.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/other/zimgit-water_en_2024-08.zim"
           ],
           "sha256": "392c7bc970a44fddd61dd17f6eabf1f4e21936f2d5c27c83093e1dc475cb56b6",
@@ -333,6 +342,7 @@
           "path": "zim/zimgit-medicine_en_2024-08.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/other/zimgit-medicine_en_2024-08.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/other/zimgit-medicine_en_2024-08.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/other/zimgit-medicine_en_2024-08.zim"
           ],
           "sha256": "a86c31b93e9800aae2cd812ef18cbf9c087a7537784c62fbc259db7f9f9d18c0",
@@ -368,6 +378,7 @@
           "path": "zim/zimgit-food-preparation_en_2025-04.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/other/zimgit-food-preparation_en_2025-04.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/other/zimgit-food-preparation_en_2025-04.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/other/zimgit-food-preparation_en_2025-04.zim"
           ],
           "sha256": "db92c6c9dac14ff30f1cbc15aa834a7c012c6e87d4ff0519f33a0902ab6e732b",
@@ -403,6 +414,7 @@
           "path": "zim/wikipedia_en_medicine_mini_2026-04.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_en_medicine_mini_2026-04.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/wikipedia/wikipedia_en_medicine_mini_2026-04.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_en_medicine_mini_2026-04.zim"
           ],
           "sha256": "55153075b0773ea9c04a3db295ec5898129434ab5cae087dcb7822f37a81f358",
@@ -438,6 +450,7 @@
           "path": "zim/nhs.uk_en_medicines_2026-09b.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/zimit/nhs.uk_en_medicines_2026-09b.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/zimit/nhs.uk_en_medicines_2026-09b.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/zimit/nhs.uk_en_medicines_2026-09b.zim"
           ],
           "sha256": "349f7bc833aa1cfedd1cdd10fbb9ae575aac63b22e17639bfaee6568b6668b62",
@@ -472,6 +485,7 @@
           "path": "zim/wikibooks_sr_all_nopic_2026-07.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/wikibooks/wikibooks_sr_all_nopic_2026-07.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/wikibooks/wikibooks_sr_all_nopic_2026-07.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/wikibooks/wikibooks_sr_all_nopic_2026-07.zim"
           ],
           "sha256": "9b8c31f50bc4ac64f5b8cfe90bca0cf8196037d018a54d2baaaacbf76ed6881b",
@@ -504,6 +518,7 @@
           "path": "zim/gardening.stackexchange.com_en_all_2026-08.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/stack_exchange/gardening.stackexchange.com_en_all_2026-08.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/stack_exchange/gardening.stackexchange.com_en_all_2026-08.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/stack_exchange/gardening.stackexchange.com_en_all_2026-08.zim"
           ],
           "sha256": "b8a3e0db65d8a678b47accefd8565f78af0caeb454672fe0d5f365336c71c25e",
@@ -536,6 +551,7 @@
           "path": "zim/sustainability.stackexchange.com_en_all_2026-08.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/stack_exchange/sustainability.stackexchange.com_en_all_2026-08.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/stack_exchange/sustainability.stackexchange.com_en_all_2026-08.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/stack_exchange/sustainability.stackexchange.com_en_all_2026-08.zim"
           ],
           "sha256": "e9a00e1d1032bc1a5859e1a7553e6b243fcecd0c82ba372548af517119ebd75d",
@@ -568,6 +584,7 @@
           "path": "zim/gardenology.org_en_all_2026-09.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/other/gardenology.org_en_all_2026-09.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/other/gardenology.org_en_all_2026-09.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/other/gardenology.org_en_all_2026-09.zim"
           ],
           "sha256": "796c4930a18174ef39c2f7aa676d9773d4d9c0f7c9f0eeae9a9338889edfd6c9",
@@ -600,6 +617,7 @@
           "path": "zim/usda-2015_en_2025-04.zim",
           "urls": [
             "https://lb.download.kiwix.org/zim/other/usda-2015_en_2025-04.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/other/usda-2015_en_2025-04.zim",
             "https://mirror.accum.se/mirror/kiwix.org/zim/other/usda-2015_en_2025-04.zim"
           ],
           "sha256": "089738e934f54c3b0343a01b1d93364b953d9fd40f53f62d0656973340cc4081",
@@ -691,7 +709,7 @@
         {
           "path": "models/Qwen3.5-0.8B-Q8_0.gguf",
           "urls": [
-            "https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q8_0.gguf"
+            "https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF/resolve/8fea620810c4afa23dd6443f999a48574c1611a3/Qwen3.5-0.8B-Q8_0.gguf"
           ],
           "sha256": "37ae482d336108d23516fa35e8e0c4126688d81018b87178a18d752a1357814f",
           "size": 833592096
@@ -720,7 +738,7 @@
         {
           "path": "models/Qwen3.5-2B-Q4_K_M.gguf",
           "urls": [
-            "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-Q4_K_M.gguf"
+            "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/f6d5376be1edb4d416d56da11e5397a961aca8ae/Qwen3.5-2B-Q4_K_M.gguf"
           ],
           "sha256": "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223",
           "size": 1280835840
@@ -749,7 +767,7 @@
         {
           "path": "models/Qwen3.5-4B-Q4_K_M.gguf",
           "urls": [
-            "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf"
+            "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/e87f176479d0855a907a41277aca2f8ee7a09523/Qwen3.5-4B-Q4_K_M.gguf"
           ],
           "sha256": "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4",
           "size": 2740937888
@@ -778,7 +796,7 @@
         {
           "path": "models/Qwen3.5-9B-Q4_K_M.gguf",
           "urls": [
-            "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf"
+            "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/3885219b6810b007914f3a7950a8d1b469d598a5/Qwen3.5-9B-Q4_K_M.gguf"
           ],
           "sha256": "03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8",
           "size": 5680522464
