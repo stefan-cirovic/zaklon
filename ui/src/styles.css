@@ -280,3 +280,4 @@ body::before {
 .model-line select { min-height: 40px; padding: 6px 10px; width: auto; max-width: 100%; min-width: 0; flex: 0 1 auto; }
 .chat, .exchange { min-width: 0; }
 .exchange .q, .answer-text { overflow-wrap: anywhere; }
+.proposal { margin-top: 12px; gap: 10px; }

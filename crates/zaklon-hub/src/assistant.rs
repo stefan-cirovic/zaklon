@@ -20,6 +20,8 @@ use tokio::process::{Child, Command};
 use tracing::{info, warn};
 use zaklon_core::catalog::{Category, PackStatus};
 
+use zaklon_core::supplies::Item;
+
 use crate::downloads::Downloads;
 use crate::kiwix::Library;
 
@@ -76,6 +78,9 @@ pub struct Answer {
     pub sources: Vec<Source>,
     /// What was looked up in the library.
     pub searched: Vec<String>,
+    /// Answered from the household's supplies.
+    pub from_supplies: bool,
+    pub proposal: Option<Proposal>,
     /// False when no library passage was found and the model answered alone.
     pub grounded: bool,
     pub language: &'static str,
@@ -83,6 +88,23 @@ pub struct Answer {
     pub error: Option<String>,
     #[serde(skip)]
     created: Instant,
+}
+
+/// A change to the supplies the assistant proposes. Nothing changes until
+/// someone confirms it in the app, which then calls the normal supplies API.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct Proposal {
+    /// "add", "use" or "shopping".
+    pub action: String,
+    /// The existing item it applies to, if one matches.
+    pub item_id: Option<String>,
+    /// The item's name as stored, or the new name.
+    pub name: String,
+    pub quantity: f64,
+    pub unit: String,
+    pub category: String,
+    /// How much is in stock now (existing items).
+    pub current: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -372,7 +394,7 @@ impl Assistant {
     }
 
     /// Start answering; the answer is read with `answer(id)`.
-    pub fn ask(self: &Arc<Self>, question: &str, app_language: &str, history: Vec<Turn>) -> Result<String, String> {
+    pub fn ask(self: &Arc<Self>, question: &str, app_language: &str, history: Vec<Turn>, items: Vec<Item>) -> Result<String, String> {
         let question = question.trim().to_string();
         if question.is_empty() {
             return Err("ask something first".into());
@@ -398,6 +420,8 @@ impl Assistant {
                     text: String::new(),
                     sources: Vec::new(),
                     searched: Vec::new(),
+                    from_supplies: false,
+                    proposal: None,
                     grounded: false,
                     language,
                     tokens_per_second: 0.0,
@@ -411,7 +435,7 @@ impl Assistant {
         let id2 = id.clone();
         tokio::spawn(async move {
             let _turn = me.turn.lock().await;
-            if let Err(e) = me.run(&id2, &question, language, &history).await {
+            if let Err(e) = me.run(&id2, &question, language, &history, &items).await {
                 warn!("assistant: {e}");
                 me.update(&id2, |a| {
                     a.status = AnswerStatus::Failed;
@@ -423,24 +447,53 @@ impl Assistant {
         Ok(id)
     }
 
-    async fn run(&self, id: &str, question: &str, language: &'static str, history: &[Turn]) -> Result<(), String> {
-        // 1. Make sure the engine runs (it also picks the search words).
+    async fn run(&self, id: &str, question: &str, language: &'static str, history: &[Turn], items: &[Item]) -> Result<(), String> {
+        // 1. Make sure the engine runs (it also decides what the question is about).
         self.update(id, |a| a.status = AnswerStatus::Starting);
         let port = self.ensure_running().await?;
-
-        // 2. Find passages in the library, if there is one.
         self.update(id, |a| a.status = AnswerStatus::Searching);
+        let plan = self.plan(port, question, language).await;
+
+        // 2a. A change to the supplies: propose it, change nothing.
+        if plan.kind == "supplies_change" {
+            if let Some(change) = plan.change.as_ref() {
+                let (text, proposal) = propose(change, items, language);
+                self.update(id, |a| {
+                    a.text = text;
+                    a.proposal = proposal;
+                    a.from_supplies = true;
+                    a.grounded = true;
+                    a.status = AnswerStatus::Done;
+                });
+                return Ok(());
+            }
+        }
+
+        // 2b. A question about the supplies: answer from the list.
+        if plan.kind == "supplies_question" {
+            let context = supplies_context(items, &plan.terms, language);
+            self.update(id, |a| {
+                a.from_supplies = true;
+                a.grounded = true;
+                a.searched = plan.terms.clone();
+                a.status = AnswerStatus::Thinking;
+            });
+            let messages = supplies_messages(question, language, &context, history);
+            return self.stream_answer(id, port, messages, language).await;
+        }
+
+        // 2c. Everything else: find passages in the library, if there is one.
         let (sources, passages) = if self.library.books().is_empty() {
             (Vec::new(), Vec::new())
         } else {
-            let mut terms = self.keywords(port, question, language).await;
+            let mut terms = plan.terms.clone();
             if terms.is_empty() {
                 // The model gave nothing usable: fall back to the question's own words.
                 terms = search_words(question).iter().map(|w| stem(w)).collect();
             }
             let shown = terms.clone();
             self.update(id, |a| a.searched = shown);
-            self.find_sources(&terms).await
+            self.find_sources(&terms, question).await
         };
         let grounded = !sources.is_empty();
         self.update(id, |a| {
@@ -448,9 +501,12 @@ impl Assistant {
             a.grounded = grounded;
             a.status = AnswerStatus::Thinking;
         });
-
-        // 3. Ask, streaming the text as it comes.
         let messages = build_messages(question, language, &passages, history);
+        self.stream_answer(id, port, messages, language).await
+    }
+
+    /// Ask the model, streaming its text into the answer as it comes.
+    async fn stream_answer(&self, id: &str, port: u16, messages: Vec<serde_json::Value>, language: &'static str) -> Result<(), String> {
         let body = serde_json::json!({
             "messages": messages,
             "stream": true,
@@ -503,34 +559,56 @@ impl Assistant {
         }
         self.update(id, |a| {
             a.text = finish_text(&a.text, language);
+            // Show only the sources the answer actually used, when it cites any.
+            let cited = cited_numbers(&a.text);
+            if !cited.is_empty() {
+                a.sources.retain(|s| cited.contains(&s.n));
+            }
             a.status = AnswerStatus::Done;
         });
         Ok(())
     }
 
-    /// Encyclopedia search terms for a question, written by the model in
-    /// their basic form ("konzerva, pasulj, rok trajanja"). A library search
-    /// works on terms, not sentences, and the model knows which words matter.
-    async fn keywords(&self, port: u16, question: &str, language: &str) -> Vec<String> {
-        // A few examples work better with small models than a long explanation.
-        let (prompt, examples): (&str, [(&str, &str); 3]) = if language == "sr" {
-            (
-                "Za pitanje napiši 2 do 4 pojma za pretragu srpske enciklopedije: imenice u osnovnom obliku, na srpskom, latinicom, odvojene zarezom. Samo pojmove.",
-                [
-                    ("Koliko dugo traje hleb?", "hleb, rok trajanja"),
-                    ("Kako da izlečim prehladu kod deteta?", "prehlada, lečenje, dete"),
-                    ("Kako se pravi sapun kod kuće?", "sapun, saponifikacija"),
-                ],
-            )
+    /// What the question is about, decided by the model in a fixed JSON
+    /// shape (the engine enforces the schema): a library question with its
+    /// search terms in basic form ("konzerva, pasulj, rok trajanja"), a
+    /// question about the supplies, or a change to them.
+    async fn plan(&self, port: u16, question: &str, language: &str) -> Plan {
+        let sr = language == "sr";
+        let prompt = if sr {
+            "Odluči o čemu je poruka i odgovori samo JSON-om.\n\
+kind: \"library\" za opšta pitanja (zdravlje, hrana, popravke, priroda...), \"supplies_question\" za pitanja o zalihama u kući \
+(šta imam, koliko imam, šta ističe, šta treba kupiti), \"supplies_change\" kad treba dodati, potrošiti ili staviti na listu za kupovinu.\n\
+terms: 2 do 4 pojma za pretragu enciklopedije ili zaliha, imenice u osnovnom obliku, na srpskom, latinicom.\n\
+change (samo za supplies_change): action je \"add\" (dodaj u zalihe), \"use\" (potrošeno) ili \"shopping\" (na listu za kupovinu); \
+name je naziv stvari u osnovnom obliku; quantity je broj (0 ako nije rečeno); unit je pcs, kg, g, l, ml ili pack; \
+category je food, drink, medicine, hygiene, equipment, fuel ili other."
         } else {
-            (
-                "For the question, write 2 to 4 terms to search an encyclopedia: nouns in their basic form, separated by commas. Only the terms.",
-                [
-                    ("How long does bread last?", "bread, shelf life"),
-                    ("How do I treat a cold in a child?", "common cold, treatment, child"),
-                    ("How is soap made at home?", "soap, saponification"),
-                ],
-            )
+            "Decide what the message is about and answer only with JSON.\n\
+kind: \"library\" for general questions (health, food, repairs, nature...), \"supplies_question\" for questions about the household's supplies \
+(what do I have, how much, what expires, what to buy), \"supplies_change\" to add, use up or put something on the shopping list.\n\
+terms: 2 to 4 terms to search the encyclopedia or the supplies, nouns in their basic form.\n\
+change (only for supplies_change): action is \"add\", \"use\" or \"shopping\"; name is the thing in its basic form; \
+quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; category is food, drink, medicine, hygiene, equipment, fuel or other."
+        };
+        let examples: [(&str, &str); 6] = if sr {
+            [
+                ("Koliko dugo traje hleb?", r#"{"kind":"library","terms":["hleb","rok trajanja"]}"#),
+                ("Kako da izlečim prehladu kod deteta?", r#"{"kind":"library","terms":["prehlada","lečenje","dete"]}"#),
+                ("Koliko imam brašna?", r#"{"kind":"supplies_question","terms":["brašno"]}"#),
+                ("Šta mi uskoro ističe?", r#"{"kind":"supplies_question","terms":[]}"#),
+                ("Dodaj 2 litra mleka", r#"{"kind":"supplies_change","terms":["mleko"],"change":{"action":"add","name":"mleko","quantity":2,"unit":"l","category":"drink"}}"#),
+                ("Potrošili smo 3 konzerve pasulja", r#"{"kind":"supplies_change","terms":["pasulj"],"change":{"action":"use","name":"pasulj","quantity":3,"unit":"pcs","category":"food"}}"#),
+            ]
+        } else {
+            [
+                ("How long does bread last?", r#"{"kind":"library","terms":["bread","shelf life"]}"#),
+                ("How do I treat a cold in a child?", r#"{"kind":"library","terms":["common cold","treatment","child"]}"#),
+                ("How much flour do we have?", r#"{"kind":"supplies_question","terms":["flour"]}"#),
+                ("What expires soon?", r#"{"kind":"supplies_question","terms":[]}"#),
+                ("Add 2 liters of milk", r#"{"kind":"supplies_change","terms":["milk"],"change":{"action":"add","name":"milk","quantity":2,"unit":"l","category":"drink"}}"#),
+                ("We used 3 cans of beans", r#"{"kind":"supplies_change","terms":["beans"],"change":{"action":"use","name":"beans","quantity":3,"unit":"pcs","category":"food"}}"#),
+            ]
         };
         let mut messages = vec![serde_json::json!({ "role": "system", "content": prompt })];
         for (q, a) in examples {
@@ -538,16 +616,36 @@ impl Assistant {
             messages.push(serde_json::json!({ "role": "assistant", "content": a }));
         }
         messages.push(serde_json::json!({ "role": "user", "content": question }));
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "kind": { "type": "string", "enum": ["library", "supplies_question", "supplies_change"] },
+                "terms": { "type": "array", "items": { "type": "string" }, "maxItems": 4 },
+                "change": {
+                    "type": "object",
+                    "properties": {
+                        "action": { "type": "string", "enum": ["add", "use", "shopping"] },
+                        "name": { "type": "string" },
+                        "quantity": { "type": "number" },
+                        "unit": { "type": "string", "enum": ["pcs", "kg", "g", "l", "ml", "pack"] },
+                        "category": { "type": "string", "enum": ["food", "drink", "medicine", "hygiene", "equipment", "fuel", "other"] }
+                    },
+                    "required": ["action", "name", "quantity", "unit", "category"]
+                }
+            },
+            "required": ["kind", "terms"]
+        });
         let body = serde_json::json!({
             "messages": messages,
-            "max_tokens": 40,
+            "max_tokens": 120,
             "temperature": 0.1,
             "chat_template_kwargs": { "enable_thinking": false },
+            "response_format": { "type": "json_schema", "json_schema": { "name": "plan", "schema": schema } },
         });
         let reply = self
             .http
             .post(format!("http://127.0.0.1:{port}/v1/chat/completions"))
-            .timeout(Duration::from_secs(60))
+            .timeout(Duration::from_secs(90))
             .json(&body)
             .send()
             .await;
@@ -556,13 +654,13 @@ impl Assistant {
             Err(_) => None,
         }
         .unwrap_or_default();
-        parse_keywords(&text)
+        parse_plan(&text)
     }
 
     /// The best few library passages for some search terms. Each term is
     /// looked up on its own, and articles are ranked by how well their title
     /// and text match the terms.
-    async fn find_sources(&self, terms: &[String]) -> (Vec<Source>, Vec<String>) {
+    async fn find_sources(&self, terms: &[String], question: &str) -> (Vec<Source>, Vec<String>) {
         if terms.is_empty() {
             return (Vec::new(), Vec::new());
         }
@@ -572,6 +670,15 @@ impl Assistant {
             .filter(|w| w.chars().count() >= 3)
             .collect();
         let whole: Vec<String> = terms.iter().map(|t| zaklon_core::translit::fold(t)).collect();
+        // Passages are chosen by the terms and by the question's own words
+        // ("treat", "leči"), so the practical parts of an article win.
+        let mut passage_stems = stems.clone();
+        for w in search_words(question) {
+            let f = zaklon_core::translit::fold(&stem(&w));
+            if f.chars().count() >= 3 && !passage_stems.contains(&f) {
+                passage_stems.push(f);
+            }
+        }
         let queries: Vec<String> = terms.iter().take(6).cloned().collect();
 
         // (score, order found, result)
@@ -617,7 +724,7 @@ impl Assistant {
                 continue;
             }
             let Ok(html) = res.text().await else { continue };
-            let text = relevant_text(&html, &stems, SOURCE_CHARS);
+            let text = relevant_text(&html, &passage_stems, SOURCE_CHARS);
             if text.chars().count() < 80 {
                 continue; // a redirect or an almost empty page
             }
@@ -628,6 +735,282 @@ impl Assistant {
         }
         (sources, passages)
     }
+}
+
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+pub struct PlannedChange {
+    pub action: String,
+    pub name: String,
+    #[serde(default)]
+    pub quantity: f64,
+    #[serde(default)]
+    pub unit: String,
+    #[serde(default)]
+    pub category: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+pub struct Plan {
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub terms: Vec<String>,
+    #[serde(default)]
+    pub change: Option<PlannedChange>,
+}
+
+/// The model's JSON; anything unusable becomes a library question with the
+/// words it wrote as search terms.
+pub fn parse_plan(text: &str) -> Plan {
+    let t = text.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
+    match serde_json::from_str::<Plan>(t) {
+        Ok(mut p) => {
+            p.terms = p
+                .terms
+                .iter()
+                .map(|x| zaklon_core::translit::cyrillic_to_latin(x.trim()).to_lowercase())
+                .filter(|x| !x.is_empty() && x.chars().count() <= 40)
+                .fold(Vec::new(), |mut acc: Vec<String>, x| {
+                    if !acc.contains(&x) {
+                        acc.push(x);
+                    }
+                    acc
+                });
+            p.terms.truncate(4);
+            if !["library", "supplies_question", "supplies_change"].contains(&p.kind.as_str()) {
+                p.kind = "library".into();
+            }
+            if let Some(c) = p.change.as_mut() {
+                c.name = zaklon_core::translit::cyrillic_to_latin(c.name.trim()).chars().take(120).collect();
+                if !c.quantity.is_finite() || c.quantity < 0.0 {
+                    c.quantity = 0.0;
+                }
+                if !zaklon_core::supplies::UNITS.contains(&c.unit.as_str()) {
+                    c.unit = "pcs".into();
+                }
+                if !zaklon_core::supplies::CATEGORIES.contains(&c.category.as_str()) {
+                    c.category = "other".into();
+                }
+                if !["add", "use", "shopping"].contains(&c.action.as_str()) || c.name.is_empty() {
+                    p.change = None;
+                }
+            }
+            if p.kind == "supplies_change" && p.change.is_none() {
+                p.kind = "supplies_question".into();
+            }
+            p
+        }
+        Err(_) => Plan { kind: "library".into(), terms: parse_keywords(text), change: None },
+    }
+}
+
+/// The stored item a spoken name most likely means ("mleka" -> "Mleko 2,8%").
+pub fn match_item<'a>(name: &str, items: &'a [Item]) -> Option<&'a Item> {
+    let want = plain(&stem(&plain(name)));
+    if want.chars().count() < 2 {
+        return None;
+    }
+    let full = plain(name);
+    items
+        .iter()
+        .filter_map(|i| {
+            let n = plain(&i.name);
+            let score = if n == full {
+                3
+            } else if n.split_whitespace().any(|w| w.starts_with(&want)) {
+                2
+            } else if n.contains(&want) {
+                1
+            } else {
+                0
+            };
+            (score > 0).then_some((score, i))
+        })
+        .max_by_key(|(score, i)| (*score, std::cmp::Reverse(i.name.len())))
+        .map(|(_, i)| i)
+}
+
+/// Lower-case Latin without diacritics, for matching what people type
+/// ("brasno") with what is stored ("Brašno", "Брашно").
+fn plain(s: &str) -> String {
+    zaklon_core::translit::cyrillic_to_latin(&s.to_lowercase())
+        .chars()
+        .map(|c| match c {
+            'č' | 'ć' => "c".to_string(),
+            'š' => "s".to_string(),
+            'ž' => "z".to_string(),
+            'đ' => "dj".to_string(),
+            c => c.to_string(),
+        })
+        .collect()
+}
+
+fn unit_text(unit: &str, sr: bool) -> &str {
+    match (unit, sr) {
+        ("pcs", true) => "kom",
+        ("pcs", false) => "pcs",
+        ("pack", true) => "pak.",
+        ("pack", false) => "packs",
+        (u, _) => u,
+    }
+}
+
+fn qty_text(q: f64) -> String {
+    if (q - q.round()).abs() < 1e-9 {
+        format!("{}", q.round() as i64)
+    } else {
+        format!("{q:.2}").trim_end_matches('0').trim_end_matches('.').to_string()
+    }
+}
+
+/// What the assistant offers to change, in words, and the change itself.
+pub fn propose(change: &PlannedChange, items: &[Item], language: &str) -> (String, Option<Proposal>) {
+    let sr = language == "sr";
+    let found = match_item(&change.name, items);
+    let qty = if change.quantity > 0.0 { change.quantity } else { 1.0 };
+    match change.action.as_str() {
+        "use" => {
+            let Some(item) = found else {
+                let text = if sr {
+                    format!("U zalihama nemam ništa što liči na „{}“.", change.name)
+                } else {
+                    format!("I found nothing like \"{}\" in the supplies.", change.name)
+                };
+                return (text, None);
+            };
+            let used = qty.min(item.quantity);
+            let unit = unit_text(&item.unit, sr);
+            let text = if sr {
+                format!("Da skinem {} {unit} sa „{}“? Sada ima {} {unit}.", qty_text(used), item.name, qty_text(item.quantity))
+            } else {
+                format!("Take {} {unit} off \"{}\"? There are {} {unit} now.", qty_text(used), item.name, qty_text(item.quantity))
+            };
+            let p = Proposal {
+                action: "use".into(),
+                item_id: Some(item.id.clone()),
+                name: item.name.clone(),
+                quantity: used,
+                unit: item.unit.clone(),
+                category: item.category.clone(),
+                current: Some(item.quantity),
+            };
+            (text, Some(p))
+        }
+        "add" => {
+            let (item_id, name, unit, category, current) = match found {
+                Some(i) => (Some(i.id.clone()), i.name.clone(), i.unit.clone(), i.category.clone(), Some(i.quantity)),
+                None => (None, capitalize(&change.name), change.unit.clone(), change.category.clone(), None),
+            };
+            let u = unit_text(&unit, sr);
+            let text = match (current, sr) {
+                (Some(c), true) => format!("Da dodam {} {u} u „{name}“? Sada ima {} {u}.", qty_text(qty), qty_text(c)),
+                (Some(c), false) => format!("Add {} {u} to \"{name}\"? There are {} {u} now.", qty_text(qty), qty_text(c)),
+                (None, true) => format!("Da dodam novu stavku „{name}“, {} {u}?", qty_text(qty)),
+                (None, false) => format!("Add a new item \"{name}\", {} {u}?", qty_text(qty)),
+            };
+            let p = Proposal { action: "add".into(), item_id, name, quantity: qty, unit, category, current };
+            (text, Some(p))
+        }
+        _ => {
+            let (item_id, name, unit) = match found {
+                Some(i) => (Some(i.id.clone()), i.name.clone(), i.unit.clone()),
+                None => (None, capitalize(&change.name), change.unit.clone()),
+            };
+            let u = unit_text(&unit, sr);
+            let amount = if change.quantity > 0.0 { format!(", {} {u}", qty_text(change.quantity)) } else { String::new() };
+            let text = if sr {
+                format!("Da stavim „{name}“{amount} na listu za kupovinu?")
+            } else {
+                format!("Put \"{name}\"{amount} on the shopping list?")
+            };
+            let p = Proposal {
+                action: "shopping".into(),
+                item_id,
+                name,
+                quantity: change.quantity,
+                unit,
+                category: change.category.clone(),
+                current: None,
+            };
+            (text, Some(p))
+        }
+    }
+}
+
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
+    }
+}
+
+/// The supplies, as the model sees them: matching items first, then what
+/// expires, what runs low, and the rest, one line each.
+pub fn supplies_context(items: &[Item], terms: &[String], language: &str) -> String {
+    let sr = language == "sr";
+    let today = chrono_today();
+    let stems: Vec<String> = terms.iter().map(|t| stem(&plain(t))).filter(|t| t.chars().count() >= 2).collect();
+    let matches = |i: &Item| {
+        let n = plain(&i.name);
+        stems.iter().any(|s| n.contains(s.as_str()))
+    };
+    let mut ordered: Vec<&Item> = items.iter().filter(|i| matches(i)).collect();
+    let mut rest: Vec<&Item> = items.iter().filter(|i| !matches(i)).collect();
+    rest.sort_by(|a, b| a.expiry.clone().unwrap_or_else(|| "9999".into()).cmp(&b.expiry.clone().unwrap_or_else(|| "9999".into())));
+    ordered.extend(rest);
+    let mut lines = vec![if sr { format!("Danas je {today}. Zalihe ({} stavki):", items.len()) } else { format!("Today is {today}. Supplies ({} items):", items.len()) }];
+    for i in ordered.into_iter().take(80) {
+        let mut l = format!("- {}: {} {}", i.name, qty_text(i.quantity), unit_text(&i.unit, sr));
+        if let Some(e) = &i.expiry {
+            l.push_str(&if sr { format!(", rok {e}") } else { format!(", expires {e}") });
+        }
+        if let Some(p) = &i.place {
+            l.push_str(&if sr { format!(", mesto: {p}") } else { format!(", place: {p}") });
+        }
+        if let Some(m) = i.min_quantity {
+            if i.quantity < m {
+                l.push_str(if sr { ", ponestaje" } else { ", running low" });
+            }
+        }
+        lines.push(l);
+    }
+    if items.is_empty() {
+        lines.push(if sr { "(u zalihama još nema ničega)".into() } else { "(nothing in the supplies yet)".into() });
+    }
+    lines.join("\n")
+}
+
+fn chrono_today() -> String {
+    // Days since 1970-01-01 to a civil date (no time zone database needed).
+    let days = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) / 86_400) as i64;
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+fn supplies_messages(question: &str, language: &str, context: &str, history: &[Turn]) -> Vec<serde_json::Value> {
+    let system = if language == "sr" {
+        "Ti si Zaklon, pomoćnik za domaćinstvo. Odgovaraj na srpskom, latinicom, kratko i jasno. \
+Koristi samo spisak zaliha ispod; ne izmišljaj stavke ni količine. Ako nečega nema na spisku, reci da toga nema u zalihama."
+    } else {
+        "You are Zaklon, a household assistant. Answer briefly and clearly. \
+Use only the supplies list below; do not invent items or amounts. If something is not on the list, say it is not in the supplies."
+    };
+    let mut messages = vec![serde_json::json!({ "role": "system", "content": system })];
+    for t in history.iter().rev().take(2).rev() {
+        messages.push(serde_json::json!({ "role": "user", "content": t.question }));
+        messages.push(serde_json::json!({ "role": "assistant", "content": t.answer }));
+    }
+    messages.push(serde_json::json!({ "role": "user", "content": format!("{context}\n\n{question}") }));
+    messages
 }
 
 /// "konzerva, pasulj, rok trajanja" -> terms; tolerant of numbering, quotes and odd separators.
@@ -727,6 +1110,22 @@ Do not make things up, and do not claim something is impossible or does not exis
     };
     messages.push(serde_json::json!({ "role": "user", "content": user }));
     messages
+}
+
+/// Source numbers cited in an answer: "[1]", "[2, 3]".
+fn cited_numbers(text: &str) -> Vec<usize> {
+    let mut out = Vec::new();
+    for part in text.split('[').skip(1) {
+        let Some(inner) = part.split(']').next() else { continue };
+        for n in inner.split(',') {
+            if let Ok(n) = n.trim().parse::<usize>() {
+                if !out.contains(&n) {
+                    out.push(n);
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Serbian answers in Latin script, whatever the model wrote.
@@ -946,6 +1345,71 @@ mod tests {
         assert!(parse_keywords("This is a very long sentence that is not a keyword at all").is_empty());
     }
 
+    fn item(name: &str, qty: f64, unit: &str) -> Item {
+        serde_json::from_value(serde_json::json!({
+            "id": format!("id-{name}"), "name": name, "quantity": qty, "unit": unit, "category": "food",
+            "place": null, "expiry": null, "barcode": null, "min_quantity": null, "notes": null,
+            "updated_at": "2026-09-28T00:00:00Z", "updated_by": null, "batches": []
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn plans_are_parsed_and_cleaned() {
+        let p = parse_plan(r#"{"kind":"supplies_change","terms":["Млеко"],"change":{"action":"add","name":"mleko","quantity":2,"unit":"l","category":"drink"}}"#);
+        assert_eq!(p.kind, "supplies_change");
+        assert_eq!(p.terms, vec!["mleko"]);
+        assert_eq!(p.change.unwrap().quantity, 2.0);
+        let bad_unit = parse_plan(r#"{"kind":"supplies_change","terms":[],"change":{"action":"add","name":"x","quantity":-1,"unit":"liters","category":"?"}}"#);
+        let c = bad_unit.change.unwrap();
+        assert_eq!((c.unit.as_str(), c.category.as_str(), c.quantity), ("pcs", "other", 0.0));
+        let not_json = parse_plan("hleb, rok trajanja");
+        assert_eq!(not_json.kind, "library");
+        assert_eq!(not_json.terms, vec!["hleb", "rok trajanja"]);
+        let no_change = parse_plan(r#"{"kind":"supplies_change","terms":["x"]}"#);
+        assert_eq!(no_change.kind, "supplies_question");
+    }
+
+    #[test]
+    fn spoken_names_find_stored_items() {
+        let items = vec![item("Mleko 2,8%", 1.0, "l"), item("Pasulj tetovac", 2.0, "kg"), item("Brašno", 5.0, "kg")];
+        assert_eq!(match_item("mleka", &items).unwrap().name, "Mleko 2,8%");
+        assert_eq!(match_item("pasulj", &items).unwrap().name, "Pasulj tetovac");
+        assert_eq!(match_item("brasno", &items).unwrap().name, "Brašno");
+        assert!(match_item("šećer", &items).is_none());
+    }
+
+    #[test]
+    fn proposals_say_what_will_change() {
+        let items = vec![item("Mleko", 1.0, "l"), item("Pasulj", 2.0, "pcs")];
+        let add = PlannedChange { action: "add".into(), name: "mleko".into(), quantity: 2.0, unit: "l".into(), category: "drink".into() };
+        let (text, p) = propose(&add, &items, "sr");
+        assert_eq!(text, "Da dodam 2 l u „Mleko“? Sada ima 1 l.");
+        assert_eq!(p.unwrap().item_id.as_deref(), Some("id-Mleko"));
+        let used = PlannedChange { action: "use".into(), name: "pasulja".into(), quantity: 3.0, unit: "pcs".into(), category: "food".into() };
+        let (text, p) = propose(&used, &items, "sr");
+        assert_eq!(text, "Da skinem 2 kom sa „Pasulj“? Sada ima 2 kom.");
+        assert_eq!(p.unwrap().quantity, 2.0, "never more than there is");
+        let new = PlannedChange { action: "add".into(), name: "šećer".into(), quantity: 0.0, unit: "kg".into(), category: "food".into() };
+        let (text, p) = propose(&new, &items, "en");
+        assert_eq!(text, "Add a new item \"Šećer\", 1 kg?");
+        assert!(p.unwrap().item_id.is_none());
+        let missing = PlannedChange { action: "use".into(), name: "so".into(), quantity: 1.0, unit: "kg".into(), category: "food".into() };
+        assert!(propose(&missing, &items, "sr").1.is_none());
+        let shop = PlannedChange { action: "shopping".into(), name: "hleb".into(), quantity: 0.0, unit: "pcs".into(), category: "food".into() };
+        assert_eq!(propose(&shop, &items, "sr").0, "Da stavim „Hleb“ na listu za kupovinu?");
+    }
+
+    #[test]
+    fn supplies_context_lists_matches_first() {
+        let items = vec![item("Brašno", 5.0, "kg"), item("Mleko", 1.0, "l")];
+        let c = supplies_context(&items, &["mleko".into()], "sr");
+        let lines: Vec<&str> = c.lines().collect();
+        assert!(lines[0].starts_with("Danas je 20"), "{c}");
+        assert_eq!(lines[1], "- Mleko: 1 l");
+        assert_eq!(lines[2], "- Brašno: 5 kg");
+    }
+
     #[test]
     fn stems_find_the_basic_form() {
         assert_eq!(stem("pasulja"), "pasulj");
@@ -988,6 +1452,13 @@ mod tests {
         let alone = build_messages("How?", "en", &[], &[Turn { question: "q".into(), answer: "a".into() }]);
         assert_eq!(alone.len(), 4);
         assert!(alone[0]["content"].as_str().unwrap().contains("general knowledge"));
+    }
+
+    #[test]
+    fn cited_sources_are_found() {
+        assert_eq!(cited_numbers("A [1]. B [2, 3]. C [1]."), vec![1, 2, 3]);
+        assert!(cited_numbers("No sources.").is_empty());
+        assert_eq!(cited_numbers("[x] and [3]"), vec![3]);
     }
 
     #[test]

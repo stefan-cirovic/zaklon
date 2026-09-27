@@ -1237,7 +1237,9 @@ struct AskBody {
 }
 
 async fn assistant_ask(State(state): State<Arc<HubState>>, caller: Caller, Json(body): Json<AskBody>) -> Result<Json<serde_json::Value>, ApiError> {
-    let id = state.assistant.ask(&body.question, &body.language, body.history).map_err(|e| bad(&e))?;
+    // The assistant can answer about the supplies and propose changes to them.
+    let items = state.db.list_items().unwrap_or_default();
+    let id = state.assistant.ask(&body.question, &body.language, body.history, items).map_err(|e| bad(&e))?;
     tracing::info!(by = %caller.actor(), "assistant asked");
     Ok(Json(serde_json::json!({ "id": id })))
 }

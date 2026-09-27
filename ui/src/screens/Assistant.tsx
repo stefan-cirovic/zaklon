@@ -19,12 +19,26 @@ type Overview = {
   books: number;
 };
 type Source = { n: number; title: string; url: string; book_title_en: string; book_title_sr: string };
+type Proposal = {
+  action: "add" | "use" | "shopping";
+  item_id: string | null;
+  name: string;
+  quantity: number;
+  unit: string;
+  category: string;
+  current: number | null;
+};
 type Answer = {
   id: string;
+  from_supplies?: boolean;
+  proposal?: Proposal | null;
+  /** What happened to the proposal on this device. */
+  outcome?: "done" | "cancelled";
   question: string;
   status: "searching" | "starting" | "thinking" | "done" | "failed";
   text: string;
   sources: Source[];
+  searched?: string[];
   grounded: boolean;
   language: string;
   tokens_per_second: number;
@@ -210,6 +224,29 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
     }
   };
 
+  // Carry out a proposed change through the normal supplies API.
+  const confirm = async (a: Answer) => {
+    const p = a.proposal;
+    if (!p) return;
+    setErr(null);
+    try {
+      if (p.action === "add" && p.item_id) await api(`/api/items/${p.item_id}/adjust`, { json: { delta: p.quantity } });
+      else if (p.action === "add") await api("/api/items", { json: { name: p.name, quantity: p.quantity, unit: p.unit, category: p.category } });
+      else if (p.action === "use" && p.item_id) await api(`/api/items/${p.item_id}/adjust`, { json: { delta: -p.quantity } });
+      else if (p.action === "shopping")
+        await api("/api/shopping", { json: { text: p.name, quantity: p.quantity > 0 ? p.quantity : null, unit: p.quantity > 0 ? p.unit : null, item_id: p.item_id } });
+      setOutcome(a.id, "done");
+    } catch (ex) {
+      setErr(errText(t, ex));
+    }
+  };
+  const setOutcome = (id: string, outcome: "done" | "cancelled") =>
+    setChat((list) => {
+      const next = list.map((x) => (x.id === id ? { ...x, outcome } : x));
+      saveChat(next);
+      return next;
+    });
+
   const title = (m: ModelChoice) => (lang === "sr" && m.title_sr ? m.title_sr : m.title_en);
   const bookTitle = (s: Source) => (lang === "sr" && s.book_title_sr ? s.book_title_sr : s.book_title_en);
 
@@ -316,6 +353,23 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
                   ) : (
                     <>
                       {a.text ? <AnswerText text={a.text} sources={a.sources} open={setReader} /> : <p className="muted" style={{ margin: 0 }}>{t(statusText[a.status])}</p>}
+                      {a.status === "done" && a.proposal && (
+                        <div className="row wrap proposal">
+                          {a.outcome === "done" ? (
+                            <span className="ok">✓ {t("aiDone")} · <a href="#supplies">{t("supplies")}</a></span>
+                          ) : a.outcome === "cancelled" ? (
+                            <span className="muted">{t("aiCancelled")}</span>
+                          ) : (
+                            <>
+                              <button className="btn" onClick={() => confirm(a)}>{t("aiConfirm")}</button>
+                              <button className="btn secondary" onClick={() => setOutcome(a.id, "cancelled")}>{t("cancel")}</button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      {a.status === "done" && a.from_supplies && !a.proposal && (
+                        <div className="muted" style={{ fontSize: 13, marginTop: 8 }}>{t("aiFromSupplies")} · <a href="#supplies">{t("supplies")}</a></div>
+                      )}
                       {a.status === "done" && !a.grounded && <p className="warn" style={{ margin: "8px 0 0", fontSize: 13 }}>{t("aiNotGrounded")}</p>}
                       {a.sources.length > 0 && (a.status === "done" || a.text) && (
                         <div className="sources">
@@ -327,8 +381,12 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
                           ))}
                         </div>
                       )}
-                      {a.status === "done" && a.tokens_per_second > 0 && (
-                        <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>{a.tokens_per_second.toFixed(1)} {t("tokensPerSecond")}</div>
+                      {a.status === "done" && (a.tokens_per_second > 0 || (a.searched?.length ?? 0) > 0) && (
+                        <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                          {a.searched && a.searched.length > 0 && !a.from_supplies && `${t("aiSearched")}: ${a.searched.join(", ")}`}
+                          {a.searched && a.searched.length > 0 && !a.from_supplies && a.tokens_per_second > 0 && " · "}
+                          {a.tokens_per_second > 0 && `${a.tokens_per_second.toFixed(1)} ${t("tokensPerSecond")}`}
+                        </div>
                       )}
                     </>
                   )}

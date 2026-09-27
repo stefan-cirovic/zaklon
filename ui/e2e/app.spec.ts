@@ -414,3 +414,39 @@ test("assistant: an answer shows its sources, which open the article", async ({ 
   await expect(page.getByText("Dry beans keep for")).toBeVisible();
   await noHorizontalScroll(page);
 });
+
+test("assistant: a proposed supplies change happens only after confirming", async ({ page }) => {
+  await ensureSetUp(page);
+  const name = `Test milk ${Date.now()}`;
+  await page.route("**/api/assistant", (route) =>
+    route.fulfill({
+      json: {
+        engine: "ready", engine_installed: true, selected: "qwen35-2b", recommended: "qwen35-2b", ram_total: 8e9, books: 0,
+        models: [{ id: "qwen35-2b", title_en: "AI model for phones (Qwen3.5 2B)", title_sr: "x", size: 1e9, installed: true, recommended: true }],
+      },
+    }),
+  );
+  await page.route("**/api/assistant/ask", (route) => route.fulfill({ json: { id: "p1" } }));
+  await page.route("**/api/assistant/answers/p1", (route) =>
+    route.fulfill({
+      json: {
+        id: "p1", question: "Add 2 liters of milk", status: "done", grounded: true, from_supplies: true, language: "en",
+        tokens_per_second: 0, error: null, sources: [], searched: [], text: `Add a new item "${name}", 2 l?`,
+        proposal: { action: "add", item_id: null, name, quantity: 2, unit: "l", category: "drink", current: null },
+      },
+    }),
+  );
+  await page.goto("/#assistant");
+  await page.getByRole("textbox", { name: "Ask something" }).fill("Add 2 liters of milk");
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  await expect(page.getByText(`Add a new item "${name}", 2 l?`)).toBeVisible();
+  // Nothing is in the supplies yet.
+  const before = await page.request.get("/api/items");
+  expect((await before.json()).some((i: { name: string }) => i.name === name)).toBe(false);
+  await page.getByRole("button", { name: "Yes, do it" }).click();
+  await expect(page.getByText("Done")).toBeVisible();
+  const after = await page.request.get("/api/items");
+  const item = (await after.json()).find((i: { name: string }) => i.name === name);
+  expect(item.quantity).toBe(2);
+  expect(item.unit).toBe("l");
+});
