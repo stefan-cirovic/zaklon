@@ -464,9 +464,9 @@ test("household: a backup can be made and a restore is prepared for the next sta
   await expect(page.getByText(/The backup is checked and ready/)).toBeVisible();
   // A file that is not a backup is refused.
   await page.getByRole("textbox", { name: "Restore from a backup file" }).fill("C:\\Windows\\win.ini");
-  const panel = page.locator(".panel").filter({ has: page.getByRole("heading", { name: "Backups" }) });
-  await panel.getByRole("button", { name: "Restore", exact: true }).last().click();
-  await panel.getByRole("button", { name: "Yes, restore" }).click();
+  const fromFile = page.locator(".restore-file");
+  await fromFile.getByRole("button", { name: "Restore", exact: true }).click();
+  await fromFile.getByRole("button", { name: "Yes, restore" }).click();
   await expect(page.getByText("This is not a Zaklon backup, or it is damaged.")).toBeVisible();
   await noHorizontalScroll(page);
 });
@@ -555,7 +555,9 @@ test("household: the laptop can offer its own Wi-Fi network (simulated, never re
   await page.route("**/api/hotspot", (r) => r.fulfill({ json: off }));
   await page.route("**/api/hotspot/start", (r) => r.fulfill({ json: on }));
   await page.route("**/api/hotspot/stop", (r) => r.fulfill({ json: off }));
+  // Same address as after setup: reload so the panel asks again (and gets the simulated answer).
   await page.goto("/#household");
+  await page.reload();
   await page.getByRole("button", { name: "Make the Wi-Fi network" }).click();
   await expect(page.getByText("abcd2345ef")).toBeVisible();
   await expect(page.getByRole("img", { name: "QR code to join the Wi-Fi network" })).toBeVisible();

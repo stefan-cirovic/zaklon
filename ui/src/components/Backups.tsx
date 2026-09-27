@@ -113,6 +113,7 @@ export default function Backups({ t }: { t: T }) {
         <button className="btn secondary" onClick={() => save(dir)} disabled={busy || !dir.trim()}>{t("saveBackup")}</button>
       </div>
 
+      <div className="stack restore-file" style={{ gap: 8 }}>
       <div className="label">{t("restoreFromFile")}</div>
       <input type="text" value={file} onChange={(e) => setFile(e.target.value)} placeholder="E:\zaklon-backup-2026-09-28-101500.zip" aria-label={t("restoreFromFile")} />
       <div>
@@ -123,6 +124,7 @@ export default function Backups({ t }: { t: T }) {
           className="btn secondary"
           onConfirm={() => restore(file)}
         />
+      </div>
       </div>
       <p className="muted" style={{ margin: 0, fontSize: 13 }}>{t("backupPrivate")}</p>
     </div>
