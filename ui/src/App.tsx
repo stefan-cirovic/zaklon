@@ -125,6 +125,11 @@ export default function App() {
         await unlinked("removedFromHub");
         return;
       }
+      // The laptop was reinstalled (new identity): this pairing can never work again.
+      if (m.mode === "client" && /reinstalled or replaced/.test(String(e instanceof Error ? e.message : e))) {
+        await unlinked("hubChanged");
+        return;
+      }
       setError(e instanceof Error ? e.message : String(e));
     }
   }, [unlinked]);

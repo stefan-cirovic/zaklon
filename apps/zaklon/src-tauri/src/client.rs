@@ -445,6 +445,7 @@ impl ClientState {
                     }
                     // Only when the hub never got the request is it safe to try
                     // another address; otherwise a "-1" could be applied twice.
+                    Err(e) if short_err(&e) == HUB_CHANGED => return Err(HUB_CHANGED.into()),
                     Err(e) if e.is_connect() => last_err = format!("{host}: {}", short_err(&e)),
                     Err(e) => return Err(format!("{host}: {}", short_err(&e))),
                 }
@@ -558,7 +559,19 @@ fn pinned_client(fingerprint: &str) -> Result<reqwest::Client, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Said when the hub answers with a different identity than the one this
+/// phone paired with (the laptop was reinstalled, or it is another hub).
+pub const HUB_CHANGED: &str = "the hub was reinstalled or replaced; pair this phone again";
+
 fn short_err(e: &reqwest::Error) -> String {
+    // A certificate that does not match the pairing is not "no answer".
+    let mut source: Option<&dyn std::error::Error> = Some(e);
+    while let Some(err) = source {
+        if err.to_string().contains("does not match the pairing code") {
+            return HUB_CHANGED.into();
+        }
+        source = err.source();
+    }
     if e.is_connect() {
         "no answer".into()
     } else if e.is_timeout() {

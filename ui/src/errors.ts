@@ -42,6 +42,7 @@ const KNOWN: [RegExp, Key][] = [
   [/could not delete/i, "errDelete"],
   [/not paired with a hub/i, "errNotPaired"],
   [/not a zaklon pairing code/i, "notAPairingCode"],
+  [/reinstalled or replaced/i, "hubChanged"],
   [/fingerprint/i, "errFingerprint"],
 ];
 
