@@ -200,7 +200,10 @@ pub fn run() {
             }
             #[cfg(any(target_os = "android", target_os = "ios"))]
             {
-                tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into())).build()?;
+                // The page's background color, so the web view never shows white while it loads.
+                tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
+                    .background_color(tauri::window::Color(11, 13, 18, 255))
+                    .build()?;
             }
             Ok(())
         })

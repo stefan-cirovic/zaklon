@@ -7,4 +7,6 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- The app's background (--bg in ui/src/styles.css). -->
+    <color name="zaklon_background">#FF0B0D12</color>
 </resources>

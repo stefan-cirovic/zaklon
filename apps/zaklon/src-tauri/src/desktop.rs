@@ -530,7 +530,7 @@ fn open_window(app: &AppHandle, visible: bool) -> Result<(), Box<dyn std::error:
         .title("Zaklon")
         .inner_size(1200.0, 800.0)
         .min_inner_size(900.0, 600.0)
-        .background_color(tauri::window::Color(11, 13, 16, 255))
+        .background_color(tauri::window::Color(11, 13, 18, 255)) // --bg, #0B0D12
         .visible(visible)
         .on_navigation(|url| {
             let ok = may_show(url);

@@ -1,6 +1,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Theme.zaklon_app" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
+    <!-- Base application theme. The app is always dark: no white window before the page paints. -->
+    <style name="Theme.zaklon_app" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="android:windowBackground">@color/zaklon_background</item>
     </style>
 </resources>
