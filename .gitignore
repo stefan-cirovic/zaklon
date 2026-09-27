@@ -1,6 +1,9 @@
 # Private working notes (Serbian) - never published
 notes/
 
+# Logo and brand drafts (private until one is chosen)
+logo-drafts/
+
 # Rust
 target/
 **/*.rs.bk
