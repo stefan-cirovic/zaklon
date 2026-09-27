@@ -287,3 +287,4 @@ body::before {
 .proposal { margin-top: 12px; gap: 10px; }
 .backup-row { padding: 6px 0; border-top: 1px solid var(--line); gap: 8px; }
 .notice { border: 1px solid var(--accent); border-radius: 10px; padding: 12px 14px; }
+.update-banner { gap: 10px; }

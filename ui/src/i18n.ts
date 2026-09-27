@@ -126,6 +126,11 @@ const en = {
   restoreReady: "The backup is checked and ready. It replaces the current data when Zaklon starts again; today's data is kept as a backup too.",
   restartNow: "Restart Zaklon now", restartByHand: "Close Zaklon (tray icon, Quit) and open it again.",
   backupPrivate: "A backup holds the household's password check and the phones' keys. Keep it as safe as the laptop.",
+  updates: "New versions", updateSwitch: "Check once a day whether a newer Zaklon is out (only when there is internet)",
+  updateAvailable: "A newer Zaklon is available:", updateOpen: "Open the download page", updateCheckNow: "Check now",
+  updateUpToDate: "This is the newest version.", updateNoReleases: "No version has been published yet.",
+  updateNotChecked: "Not checked yet.", updateNoInternet: "No internet right now.", updateFailed: "Could not check",
+  updateChecked: "checked",
 
 };
 
@@ -255,6 +260,11 @@ const sr: typeof en = {
   restoreReady: "Kopija je proverena i spremna. Zameniće trenutne podatke kad se Zaklon ponovo pokrene; današnji podaci se takođe čuvaju kao kopija.",
   restartNow: "Pokreni Zaklon ponovo", restartByHand: "Zatvori Zaklon (ikonica kod sata, Izađi) i ponovo ga otvori.",
   backupPrivate: "Kopija sadrži proveru lozinke domaćinstva i ključeve telefona. Čuvaj je kao i sam laptop.",
+  updates: "Nove verzije", updateSwitch: "Jednom dnevno proveri da li postoji novija verzija Zaklona (samo kad ima interneta)",
+  updateAvailable: "Dostupna je novija verzija Zaklona:", updateOpen: "Otvori stranicu za preuzimanje", updateCheckNow: "Proveri sada",
+  updateUpToDate: "Ovo je najnovija verzija.", updateNoReleases: "Još nije objavljena nijedna verzija.",
+  updateNotChecked: "Još nije provereno.", updateNoInternet: "Trenutno nema interneta.", updateFailed: "Provera nije uspela",
+  updateChecked: "provereno",
 
 };
 

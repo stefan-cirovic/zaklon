@@ -44,7 +44,7 @@ pub struct BackupFile {
     pub automatic: bool,
 }
 
-fn now_rfc3339() -> String {
+pub fn now_rfc3339() -> String {
     let secs = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let (y, m, d, hh, mm, ss) = civil(secs);
     format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}Z")

@@ -1,3 +1,4 @@
+import { UpdateBanner } from "../components/Updates";
 import { useEffect, useState } from "react";
 import { api, type Status } from "../api";
 import ExpiryBadge from "../components/ExpiryBadge";
@@ -80,6 +81,7 @@ export default function Home({ status, error, t, go }: Props) {
         </p>
         {error && <p className="error" role="alert">{error}</p>}
       </div>
+      <UpdateBanner t={t} />
       <div className="grid">
         <div className="panel">
           <div className="label">{t("devices")}</div>

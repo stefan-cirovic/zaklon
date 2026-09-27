@@ -470,3 +470,19 @@ test("household: a backup can be made and a restore is prepared for the next sta
   await expect(page.getByText("This is not a Zaklon backup, or it is damaged.")).toBeVisible();
   await noHorizontalScroll(page);
 });
+
+test("updates: Home tells about a newer version; Household has the switch", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.route("**/api/updates", (route) =>
+    route.fulfill({
+      json: { enabled: true, current: "0.1.0", latest: "0.2.0", newer: true, url: "https://github.com/stefan-cirovic/zaklon/releases/tag/v0.2.0", checked_at: "2026-09-28T08:00:00Z", error: null },
+    }),
+  );
+  await page.goto("/#home");
+  await expect(page.getByText("A newer Zaklon is available:")).toBeVisible();
+  await expect(page.locator(".update-banner strong")).toHaveText("0.2.0");
+  await page.goto("/#household");
+  await expect(page.getByText(/Check once a day whether a newer Zaklon is out/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Check now" })).toBeVisible();
+  await noHorizontalScroll(page);
+});

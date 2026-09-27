@@ -17,6 +17,7 @@ pub mod kiwix;
 pub mod latin;
 pub mod machine;
 pub mod ui;
+pub mod updates;
 
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -58,6 +59,7 @@ pub struct HubState {
     pub library: Arc<Library>,
     pub export: Arc<export::Exporter>,
     pub assistant: Arc<assistant::Assistant>,
+    pub updates: Arc<updates::Updates>,
 }
 
 impl HubState {
@@ -112,6 +114,7 @@ impl Hub {
         let library = Library::new(downloads.clone());
         let chosen = db.get_setting(assistant::SETTING_MODEL).ok().flatten();
         let assistant = assistant::Assistant::new(downloads.clone(), library.clone(), chosen);
+        let updates = updates::Updates::new(config.auto_update_check);
         Ok(Self {
             state: Arc::new(HubState {
                 config: Mutex::new(config),
@@ -124,6 +127,7 @@ impl Hub {
                 library,
                 export: export::Exporter::new(),
                 assistant,
+                updates,
                 downloads,
             }),
         })
@@ -169,6 +173,7 @@ impl Hub {
         state.downloads.start();
         state.library.start();
         state.assistant.start();
+        state.updates.start(state.clone());
         // A backup a day, checked every hour.
         let st = state.clone();
         tokio::spawn(async move {

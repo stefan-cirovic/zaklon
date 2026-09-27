@@ -34,7 +34,7 @@ export default function Household({ status, t, lang, setLang, refresh, isHub, ow
       {isHub && <ChangePassword t={t} />}
       {isHub && <Backups t={t} />}
       <ThisHub t={t} status={status} isHub={isHub} />
-      <About t={t} status={status} />
+      <About t={t} status={status} isHub={isHub} />
     </div>
   );
 }

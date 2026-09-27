@@ -57,6 +57,9 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/export", get(export_status).post(export_start))
         .route("/api/export/cancel", post(export_cancel))
         .route("/api/drives", get(drives))
+        .route("/api/updates", get(updates_state))
+        .route("/api/updates/check", post(updates_check))
+        .route("/api/updates/settings", post(updates_settings))
         .route("/api/backups", get(backups_list).post(backups_create))
         .route("/api/backups/restore", post(backups_restore))
         .route("/api/hardware", get(hardware))
@@ -1325,4 +1328,29 @@ async fn backups_restore(State(state): State<Arc<HubState>>, _: Local, Json(body
         .map_err(|e| anyhow::anyhow!(e))?
         .map_err(|e| bad(&e))?;
     Ok(Json(manifest))
+}
+
+// ---- updates ----------------------------------------------------------------------
+
+async fn updates_state(State(state): State<Arc<HubState>>, _caller: Caller) -> Json<crate::updates::UpdateState> {
+    Json(state.updates.state())
+}
+
+async fn updates_check(State(state): State<Arc<HubState>>, _caller: Caller) -> Json<crate::updates::UpdateState> {
+    Json(state.updates.check().await)
+}
+
+#[derive(Deserialize)]
+struct UpdateSettings {
+    enabled: bool,
+}
+
+async fn updates_settings(State(state): State<Arc<HubState>>, _: Local, Json(body): Json<UpdateSettings>) -> Result<StatusCode, ApiError> {
+    {
+        let mut cfg = state.config.lock().unwrap_or_else(|p| p.into_inner());
+        cfg.auto_update_check = body.enabled;
+        cfg.save()?;
+    }
+    state.updates.set_enabled(body.enabled);
+    Ok(StatusCode::NO_CONTENT)
 }
