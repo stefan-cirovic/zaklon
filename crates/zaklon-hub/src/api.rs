@@ -20,12 +20,10 @@ use tower_http::trace::TraceLayer;
 use zaklon_core::db::{now_rfc3339, Device};
 use zaklon_core::pairing;
 
-use crate::{HubState, PairingSession, VERSION};
+use crate::{HubState, PairingFailure, PairingSession, VERSION};
 
 const PAIRING_TTL: Duration = Duration::from_secs(5 * 60);
 const MAX_PAIRING_ATTEMPTS: u8 = 3;
-/// After this many wrong codes, every open code is canceled (stops guessing).
-const MAX_PAIRING_FAILURES: u32 = 20;
 /// How long a phone may repeat a pairing request after the reply was lost.
 const PAIR_REPLAY_WINDOW: Duration = Duration::from_secs(120);
 
@@ -403,7 +401,7 @@ async fn pair_start(State(state): State<Arc<HubState>>, _: Local) -> Result<Json
         return Err(bad("set a household password first"));
     }
     let code = pairing::pairing_code();
-    *state.pairing_failures.lock().unwrap_or_else(|p| p.into_inner()) = 0;
+    state.pairing_failures.lock().unwrap_or_else(|p| p.into_inner()).reset_total();
     {
         let mut sessions = state.pairing.lock().unwrap_or_else(|p| p.into_inner());
         // Only the newest code is valid: showing a new QR cancels the old one.
@@ -455,11 +453,58 @@ pub struct Paired {
     fingerprint: String,
 }
 
+/// Checks a pairing code and the household password. Returns the reason on
+/// failure. The password check (Argon2, slow on purpose) runs on a blocking
+/// thread without holding the pairing lock; an attempt is reserved before it
+/// starts, so parallel guesses still count toward the per-code limit.
+async fn pair_check(
+    state: &Arc<HubState>,
+    code: &str,
+    password: &str,
+    now: Instant,
+) -> Result<Option<&'static str>, ApiError> {
+    {
+        let mut sessions = state.pairing.lock().unwrap_or_else(|p| p.into_inner());
+        sessions.retain(|_, s| s.expires_at > now);
+        match sessions.get_mut(code) {
+            None => return Ok(Some("pairing code is invalid or expired")),
+            Some(session) if session.failed_attempts >= MAX_PAIRING_ATTEMPTS => {
+                sessions.remove(code);
+                return Ok(Some("too many attempts; start pairing again on the laptop"));
+            }
+            Some(session) => session.failed_attempts += 1,
+        }
+    }
+    let hash = state.db.get_setting("household_password_hash")?.unwrap_or_default();
+    let password = password.to_string();
+    let ok = tokio::task::spawn_blocking(move || pairing::verify_password(&password, &hash))
+        .await
+        .map_err(|e| anyhow::anyhow!("password check failed: {e}"))?;
+
+    let mut sessions = state.pairing.lock().unwrap_or_else(|p| p.into_inner());
+    sessions.retain(|_, s| s.expires_at > Instant::now());
+    // The code may have been used, replaced, canceled or burned meanwhile.
+    let Some(session) = sessions.get(code) else {
+        return Ok(Some("pairing code is invalid or expired"));
+    };
+    if ok {
+        sessions.remove(code);
+        Ok(None)
+    } else if session.failed_attempts >= MAX_PAIRING_ATTEMPTS {
+        sessions.remove(code);
+        Ok(Some("too many attempts; start pairing again on the laptop"))
+    } else {
+        Ok(Some("wrong household password"))
+    }
+}
+
 async fn pair_complete(
     State(state): State<Arc<HubState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Json(body): Json<PairComplete>,
 ) -> Result<Json<Paired>, ApiError> {
     let now = Instant::now();
+    let ip = peer.ip();
     let nonce = body.nonce.as_deref().map(str::trim).filter(|n| n.len() >= 16 && n.len() <= 128).map(str::to_string);
 
     // A repeat of a pairing that already succeeded (the phone never got the reply).
@@ -473,37 +518,27 @@ async fn pair_complete(
         }
     }
 
-    let failure = {
-        let mut sessions = state.pairing.lock().unwrap_or_else(|p| p.into_inner());
-        sessions.retain(|_, s| s.expires_at > now);
-        match sessions.get_mut(&body.code) {
-            None => Some("pairing code is invalid or expired"),
-            Some(session) => {
-                let hash = state.db.get_setting("household_password_hash")?.unwrap_or_default();
-                if pairing::verify_password(&body.password, &hash) {
-                    sessions.remove(&body.code);
-                    None
-                } else {
-                    session.failed_attempts += 1;
-                    if session.failed_attempts >= MAX_PAIRING_ATTEMPTS {
-                        sessions.remove(&body.code);
-                        Some("too many attempts; start pairing again on the laptop")
-                    } else {
-                        Some("wrong household password")
-                    }
-                }
-            }
-        }
-    };
+    // A device that failed too often waits; others can still pair.
+    if state.pairing_failures.lock().unwrap_or_else(|p| p.into_inner()).is_blocked(ip, now) {
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        return Err(ApiError(
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many wrong attempts from this device; try again in a few minutes".into(),
+        ));
+    }
+
+    let failure = pair_check(&state, &body.code, &body.password, now).await?;
     if let Some(msg) = failure {
-        let exhausted = {
-            let mut f = state.pairing_failures.lock().unwrap_or_else(|p| p.into_inner());
-            *f += 1;
-            *f >= MAX_PAIRING_FAILURES
-        };
-        if exhausted {
-            state.pairing.lock().unwrap_or_else(|p| p.into_inner()).clear();
-            tracing::warn!("too many wrong pairing attempts; open pairing codes canceled");
+        let outcome = state.pairing_failures.lock().unwrap_or_else(|p| p.into_inner()).record(ip, now);
+        match outcome {
+            PairingFailure::Counted => {}
+            PairingFailure::AddressBlocked => {
+                tracing::warn!(%ip, "too many wrong pairing attempts; this address is blocked for a while");
+            }
+            PairingFailure::CancelAll => {
+                state.pairing.lock().unwrap_or_else(|p| p.into_inner()).clear();
+                tracing::warn!("too many wrong pairing attempts overall; open pairing codes canceled");
+            }
         }
         // Slow down guessing.
         tokio::time::sleep(Duration::from_millis(400)).await;

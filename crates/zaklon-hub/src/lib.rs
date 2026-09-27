@@ -22,10 +22,10 @@ pub mod updates;
 pub mod web;
 
 use std::collections::HashMap;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use tracing::info;
@@ -46,14 +46,78 @@ pub struct PairingSession {
     pub failed_attempts: u8,
 }
 
+/// Failed pairing attempts. Each network address is blocked on its own after
+/// too many failures, so one device guessing cannot cancel pairing for everyone;
+/// a much higher total still cancels every open code.
+#[derive(Debug, Default)]
+pub struct PairingFailures {
+    total: u32,
+    /// Failures per address and when the last one happened.
+    by_ip: HashMap<IpAddr, (u32, Instant)>,
+}
+
+/// Outcome of recording one failed pairing attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PairingFailure {
+    /// Counted; nothing else happens.
+    Counted,
+    /// This address is now blocked for a while.
+    AddressBlocked,
+    /// Too many failures overall: open codes must be canceled.
+    CancelAll,
+}
+
+impl PairingFailures {
+    /// Failures from one address before it is blocked.
+    pub const MAX_PER_IP: u32 = 10;
+    /// How long a blocked address stays blocked (counted from its last failure).
+    pub const IP_BLOCK: Duration = Duration::from_secs(10 * 60);
+    /// Failures from all addresses together before every open code is canceled.
+    pub const MAX_TOTAL: u32 = 200;
+
+    /// Whether `ip` may not try pairing right now.
+    pub fn is_blocked(&mut self, ip: IpAddr, now: Instant) -> bool {
+        self.forget_old(now);
+        self.by_ip.get(&ip).is_some_and(|(n, _)| *n >= Self::MAX_PER_IP)
+    }
+
+    /// Records one failed attempt from `ip`.
+    pub fn record(&mut self, ip: IpAddr, now: Instant) -> PairingFailure {
+        self.forget_old(now);
+        let entry = self.by_ip.entry(ip).or_insert((0, now));
+        entry.0 += 1;
+        entry.1 = now;
+        let per_ip = entry.0;
+        self.total += 1;
+        if self.total >= Self::MAX_TOTAL {
+            self.total = 0;
+            PairingFailure::CancelAll
+        } else if per_ip >= Self::MAX_PER_IP {
+            PairingFailure::AddressBlocked
+        } else {
+            PairingFailure::Counted
+        }
+    }
+
+    /// A new code on the laptop starts the total over; blocked addresses stay
+    /// blocked until their time runs out.
+    pub fn reset_total(&mut self) {
+        self.total = 0;
+    }
+
+    fn forget_old(&mut self, now: Instant) {
+        self.by_ip.retain(|_, (_, last)| now.saturating_duration_since(*last) < Self::IP_BLOCK);
+    }
+}
+
 pub struct HubState {
     pub config: Mutex<Config>,
     pub db: Db,
     pub identity: Identity,
     pub started: Instant,
     pub pairing: Mutex<HashMap<String, PairingSession>>,
-    /// Wrong or unknown pairing codes since the last "Add a phone".
-    pub pairing_failures: Mutex<u32>,
+    /// Failed pairing attempts since the last "Add a phone", per phone address.
+    pub pairing_failures: Mutex<PairingFailures>,
     /// Recent successful pairings by the phone's nonce, so a phone whose
     /// reply got lost can ask again and get the same answer (no ghost device).
     pub recent_pairs: Mutex<HashMap<String, (Instant, String, api::Paired)>>,
@@ -127,7 +191,7 @@ impl Hub {
                 identity,
                 started: Instant::now(),
                 pairing: Mutex::new(HashMap::new()),
-                pairing_failures: Mutex::new(0),
+                pairing_failures: Mutex::new(PairingFailures::default()),
                 recent_pairs: Mutex::new(HashMap::new()),
                 library,
                 export: export::Exporter::new(),
@@ -196,5 +260,39 @@ impl Hub {
             r = install_srv => r.context("install server")?,
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pairing_failures_block_one_address_only() {
+        let mut f = PairingFailures::default();
+        let now = Instant::now();
+        let bad: IpAddr = "192.168.1.50".parse().unwrap();
+        let good: IpAddr = "192.168.1.60".parse().unwrap();
+        for _ in 1..PairingFailures::MAX_PER_IP {
+            assert_eq!(f.record(bad, now), PairingFailure::Counted);
+        }
+        assert_eq!(f.record(bad, now), PairingFailure::AddressBlocked);
+        assert!(f.is_blocked(bad, now));
+        assert!(!f.is_blocked(good, now), "other phones can still pair");
+        // The block runs out.
+        assert!(!f.is_blocked(bad, now + PairingFailures::IP_BLOCK));
+    }
+
+    #[test]
+    fn pairing_failures_total_cap_cancels() {
+        let mut f = PairingFailures::default();
+        let now = Instant::now();
+        let mut outcomes = Vec::new();
+        for i in 0..PairingFailures::MAX_TOTAL {
+            let ip = IpAddr::from([10, 0, (i / 250) as u8, (i % 250) as u8]);
+            outcomes.push(f.record(ip, now));
+        }
+        assert_eq!(outcomes.last(), Some(&PairingFailure::CancelAll));
+        assert!(outcomes[..outcomes.len() - 1].iter().all(|o| *o == PairingFailure::Counted));
     }
 }

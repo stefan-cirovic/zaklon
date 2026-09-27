@@ -715,17 +715,16 @@ impl Db {
             bail!("name is required");
         }
         let conn = self.lock();
-        if let Some(existing) = conn
-            .query_row("SELECT id, name FROM places WHERE name = ?1 COLLATE NOCASE", params![name], |r| {
-                Ok(Place { id: r.get(0)?, name: r.get(1)?, preset: false })
-            })
-            .optional()?
-        {
-            return Ok(existing);
-        }
+        // Adding a name that already exists (also at the same moment from
+        // another connection) returns the existing place instead of failing.
         let id = uuid::Uuid::new_v4().to_string();
-        conn.execute("INSERT INTO places (id, name, created_at) VALUES (?1, ?2, ?3)", params![id, name, now_rfc3339()])?;
-        Ok(Place { id, name, preset: false })
+        conn.execute(
+            "INSERT INTO places (id, name, created_at) VALUES (?1, ?2, ?3) ON CONFLICT DO NOTHING",
+            params![id, name, now_rfc3339()],
+        )?;
+        Ok(conn.query_row("SELECT id, name FROM places WHERE name = ?1 COLLATE NOCASE", params![name], |r| {
+            Ok(Place { id: r.get(0)?, name: r.get(1)?, preset: false })
+        })?)
     }
 
     pub fn delete_place(&self, id: &str) -> Result<bool> {
@@ -1233,6 +1232,33 @@ mod tests {
         let p = db.add_place("Vikendica").unwrap();
         assert_eq!(db.add_place("vikendica").unwrap().id, p.id, "no duplicates");
         assert!(db.list_places().unwrap().iter().any(|x| x.name == "Vikendica" && !x.preset));
+    }
+
+    #[test]
+    fn same_new_place_added_at_once_is_one_place() {
+        // Two connections to one file, adding the same new name at the same time.
+        let dir = std::env::temp_dir().join(format!("zaklon-places-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("household.db");
+        let a = Db::open(&path).unwrap();
+        let b = Db::open(&path).unwrap();
+        let start = std::sync::Barrier::new(2);
+        let (pa, pb) = std::thread::scope(|s| {
+            let ta = s.spawn(|| {
+                start.wait();
+                a.add_place("Garaža").unwrap()
+            });
+            let tb = s.spawn(|| {
+                start.wait();
+                b.add_place("garaža").unwrap()
+            });
+            (ta.join().unwrap(), tb.join().unwrap())
+        });
+        assert_eq!(pa.id, pb.id);
+        assert_eq!(a.list_places().unwrap().iter().filter(|p| p.name.to_lowercase() == "garaža").count(), 1);
+        drop((a, b));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
