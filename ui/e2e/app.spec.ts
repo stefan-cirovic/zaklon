@@ -15,7 +15,8 @@ async function ensureSetUp(page: Page) {
     await page.getByLabel(/Repeat password|Ponovi lozinku/).fill(PASSWORD);
     await page.getByRole("button", { name: /Finish setup|Završi podešavanje/ }).click();
   }
-  await expect(page.getByRole("button", { name: /Add a phone|Dodaj telefon/ })).toBeVisible();
+  // Setup hashes the password with Argon2, slow on purpose; a busy machine needs longer.
+  await expect(page.getByRole("button", { name: /Add a phone|Dodaj telefon/ })).toBeVisible({ timeout: 20_000 });
 }
 
 async function noHorizontalScroll(page: Page) {
