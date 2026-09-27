@@ -115,6 +115,7 @@ export default function Addons({ t, lang, isHub }: Props) {
         <p className="muted" style={{ fontSize: 14 }}>{t("addonsMapsNote")} <a href="#maps">{t("maps")}</a>.</p>
       </div>
       {err && <p className="error" role="alert">{err}</p>}
+      {!data && !err && <p className="muted">{t("aiLoading")}</p>}
       {data && (
         <div className="grid">
           <div className="panel">
@@ -176,14 +177,19 @@ function PackRow({ p, t, lang, title, act }: { p: Pack; t: T; lang: Lang; title:
       <div className="row between wrap">
         <div style={{ flex: "1 1 220px", minWidth: 0 }}>
           <div>
-            {title(p.title)} {recommended && <span className="ok" style={{ fontSize: 12 }}>· {t("recommended")}</span>}
+            {title(p.title)} {recommended && <span className="badge ok">{t("recommended")}</span>}
           </div>
           <div className="muted" style={{ fontSize: 13 }}>{title(p.description)}</div>
           <div className="muted" style={{ fontSize: 13 }}>{fmtBytes(p.size)} · {p.version} · {p.license}</div>
         </div>
         <div className="row wrap">
           {s.status === "not_installed" && <button className="btn" onClick={() => act(`/api/packs/${p.id}/download`)}>{t("download")}</button>}
-          {s.status === "queued" && <button className="btn secondary" onClick={() => act(`/api/packs/${p.id}/pause`)}>{t("queued")} · {t("cancel")}</button>}
+          {s.status === "queued" && (
+            <>
+              <span className="muted">{t("queued")}</span>
+              <button className="btn secondary" onClick={() => act(`/api/packs/${p.id}/pause`)}>{t("cancel")}</button>
+            </>
+          )}
           {(s.status === "downloading" || s.status === "verifying") && (
             <button className="btn secondary" onClick={() => act(`/api/packs/${p.id}/pause`)}>{t("pause")}</button>
           )}

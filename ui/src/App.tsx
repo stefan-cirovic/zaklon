@@ -265,12 +265,19 @@ export default function App() {
   };
 
   const isHub = mode?.mode !== "client";
+  // Setup comes first: until then there is nothing to go to.
+  const setupOnly = isHub && needsSetup;
+  let homeError = error ? errText(t, new Error(error)) : null;
+  // On the laptop the hub is this computer, not something on the Wi-Fi.
+  if (isHub && homeError === t("errUnreachable")) homeError = t("errHubStopped");
 
   if (mode?.mode === "client" && link && !link.linked) {
     return (
       <main className="center-screen">
         <Connect
           t={t}
+          lang={lang}
+          setLang={setLang}
           notice={
             [notice ? t(notice) : "", parked > 0 ? `${t("outboxParked")} ${parked}. ${t("outboxParkedAfter")}` : ""].filter(Boolean).join(" ") || null
           }
@@ -319,11 +326,11 @@ export default function App() {
               {parkedErr && <p className="error" role="alert">{parkedErr}</p>}
             </div>
           ))}
-        {tab === "home" && <Home status={status} statusAt={statusAt} error={error ? errText(t, new Error(error)) : null} t={t} go={setTab} phone={!isHub} />}
+        {tab === "home" && <Home status={status} statusAt={statusAt} error={homeError} t={t} go={setTab} phone={!isHub} />}
         {tab === "household" && (
           <div className="stack">
             {link?.linked && (
-              <div className="panel row between wrap">
+              <div className="panel left row between wrap">
                 <div>
                   <div className="label">{t("linkedTo")}</div>
                   <div>
@@ -343,31 +350,33 @@ export default function App() {
         {tab === "addons" && <Addons t={t} lang={lang} isHub={isHub} />}
         {status?.version && <p className="muted footer-note">Zaklon {status.version}</p>}
       </main>
-      <nav className="nav" aria-label="Zaklon">
-        <Brand size={28} className="brand" />
-        {TABS.map((x) => (
-          <button key={x.id} className={tab === x.id ? "active" : ""} aria-current={tab === x.id ? "page" : undefined} onClick={() => setTab(x.id)}>
-            <span className="ico" aria-hidden="true">{x.ico}</span>
-            <span>{t(x.key)}</span>
+      {!setupOnly && (
+        <nav className="nav" aria-label="Zaklon">
+          <Brand size={28} className="brand" />
+          {TABS.map((x) => (
+            <button key={x.id} className={tab === x.id ? "active" : ""} aria-current={tab === x.id ? "page" : undefined} onClick={() => setTab(x.id)}>
+              <span className="ico" aria-hidden="true">{x.ico}</span>
+              <span>{t(x.key)}</span>
+            </button>
+          ))}
+          <button
+            className={"wide-only" + (tab === "household" ? " active" : "")}
+            aria-current={tab === "household" ? "page" : undefined}
+            onClick={() => setTab("household")}
+          >
+            <span className="ico" aria-hidden="true">⚙</span>
+            <span>{t("household")}</span>
           </button>
-        ))}
-        <button
-          className={"wide-only" + (tab === "household" ? " active" : "")}
-          aria-current={tab === "household" ? "page" : undefined}
-          onClick={() => setTab("household")}
-        >
-          <span className="ico" aria-hidden="true">⚙</span>
-          <span>{t("household")}</span>
-        </button>
-        <button
-          className={"more-only" + (tab === "household" ? " active" : "")}
-          aria-current={tab === "household" ? "page" : undefined}
-          onClick={() => setTab("household")}
-        >
-          <span className="ico" aria-hidden="true">⚙</span>
-          <span>{t("more")}</span>
-        </button>
-      </nav>
+          <button
+            className={"more-only" + (tab === "household" ? " active" : "")}
+            aria-current={tab === "household" ? "page" : undefined}
+            onClick={() => setTab("household")}
+          >
+            <span className="ico" aria-hidden="true">⚙</span>
+            <span>{t("more")}</span>
+          </button>
+        </nav>
+      )}
     </div>
   );
 }

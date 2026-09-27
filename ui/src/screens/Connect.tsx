@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { clientDiscover, clientPair, type DiscoveredHub, type PairPayload } from "../api";
-import type { Key } from "../i18n";
+import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
 import { securityCode } from "../format";
 import { scanCode } from "../scan";
 import { Brand } from "../components/Brand";
 
 type T = (k: Key) => string;
-type Props = { t: T; onLinked: () => void; notice: string | null };
+type Props = { t: T; lang: Lang; setLang: (l: Lang) => void; onLinked: () => void; notice: string | null };
 
-export default function Connect({ t, onLinked, notice }: Props) {
+export default function Connect({ t, lang, setLang, onLinked, notice }: Props) {
   const [payload, setPayload] = useState<PairPayload | null>(null);
   const [hubs, setHubs] = useState<DiscoveredHub[] | null>(null);
   const [picked, setPicked] = useState<DiscoveredHub | null>(null);
@@ -91,6 +91,11 @@ export default function Connect({ t, onLinked, notice }: Props) {
         </div>
         <h1>{t("connectTitle")}</h1>
         <p className="muted">{t("connectIntro")}</p>
+        {/* The phone's language decides at first; each name is in its own language so it can be found. */}
+        <select className="lang-pick" value={lang} onChange={(e) => setLang(e.target.value as Lang)} aria-label={t("language")}>
+          <option value="en">English</option>
+          <option value="sr">Srpski</option>
+        </select>
       </div>
       {notice && <p className="warn" role="alert">{notice}</p>}
 

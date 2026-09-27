@@ -128,7 +128,7 @@ test("supplies: an expired item is flagged and a bad date is refused", async ({ 
   await row.locator(".supply-main").click();
   await expect(page.getByRole("heading", { name: "Edit item" })).toBeVisible();
   await page.getByRole("button", { name: "Delete" }).click();
-  await page.getByRole("button", { name: "Cancel" }).last().click();
+  await page.getByRole("button", { name: "Keep it" }).click();
   await expect(page.getByRole("heading", { name: "Edit item" })).toBeVisible();
   await page.getByRole("button", { name: "Delete" }).click();
   await page.getByRole("button", { name: "Yes, delete" }).click();
@@ -160,17 +160,44 @@ test("library without packs points to add-ons, which lists the catalog", async (
   await page.getByRole("button", { name: "Open Add-ons" }).click();
   await expect(page.getByRole("heading", { name: "Add-ons" })).toBeVisible();
   await expect(page.getByText("Wikipedia in Serbian (with pictures)")).toBeVisible();
-  await expect(page.getByText("Free disk space")).toBeVisible();
+  // Exact: on a nearly full disk "Not enough free disk space." shows too.
+  await expect(page.getByText("Free disk space", { exact: true })).toBeVisible();
   await expect(page.getByText("Battery")).toBeVisible();
 });
 
-test("every screen fits the width of the device", async ({ page }) => {
+test("every screen fits the width of the device", async ({ page }, info) => {
   await ensureSetUp(page);
+  // A long name, expiring soon: it shows on Supplies and on Home, and must be cut short there, not widen the page.
+  const soon = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+  const name = `Extra virgin olive oil from the cooperative in Istria, 750 ml (${info.project.name})`;
+  const res = await page.request.post("/api/items", { data: { name, quantity: 2, unit: "pcs", category: "food", expiry: soon, min_quantity: 3 } });
+  expect(res.ok()).toBe(true);
   for (const tab of ["home", "library", "maps", "supplies", "assistant", "addons", "household"]) {
     await page.goto(`/#${tab}`);
     await page.waitForTimeout(300);
     await noHorizontalScroll(page);
   }
+  // Supplies: the name ends in "…" and the −/+ buttons stay on the screen.
+  await page.goto("/#supplies");
+  const row = page.locator(".item.supply", { hasText: name });
+  await expect(row).toBeVisible();
+  const width = page.viewportSize()!.width;
+  const plus = await row.getByRole("button", { name: /^Add one/ }).boundingBox();
+  expect(plus!.x + plus!.width).toBeLessThanOrEqual(width);
+  // Home: every date badge stays inside its panel.
+  await page.goto("/#home");
+  await expect(page.locator(".mini-row", { hasText: name }).first()).toBeVisible();
+  const outside = await page.evaluate(() =>
+    [...document.querySelectorAll(".mini-row")].filter((row) => {
+      const panel = row.closest(".panel")!.getBoundingClientRect();
+      return [...row.children].some((c) => c.getBoundingClientRect().right > panel.right + 1);
+    }).length,
+  );
+  expect(outside, "nothing sticks out of the Home panels").toBe(0);
+  await noHorizontalScroll(page);
+  const del = await page.request.get("/api/items");
+  const item = (await del.json()).find((i: { name: string }) => i.name === name);
+  await page.request.delete(`/api/items/${item.id}`);
 });
 
 test("the tab is remembered in the address", async ({ page }) => {
@@ -570,6 +597,12 @@ test("household: the laptop can offer its own Wi-Fi network (simulated, never re
 
 test("add-ons: the starter set downloads the recommended packs in one go (requests intercepted)", async ({ page }) => {
   await ensureSetUp(page);
+  // Whatever this computer's disk holds, the set fits.
+  await page.route("**/api/catalog", async (r) => {
+    const json = await (await r.fetch()).json();
+    json.system.disk_free = 1e12;
+    return r.fulfill({ json });
+  });
   const asked: string[] = [];
   await page.route("**/api/packs/*/download", (r) => {
     asked.push(new URL(r.request().url()).pathname);

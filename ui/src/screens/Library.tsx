@@ -102,6 +102,7 @@ export default function Library({ t, lang, go }: Props) {
           </div>
         </div>
       )}
+      {!lib && !err && <p className="muted">{t("aiLoading")}</p>}
       {engine === "starting" && <p className="muted">{t("engineStarting")}</p>}
       {engine === "failed" && <p className="error">{t("engineFailed")}</p>}
 
@@ -136,7 +137,7 @@ export default function Library({ t, lang, go }: Props) {
             </div>
           ) : (
             <div className="list">
-              {searching && results.length === 0 && <p className="muted">…</p>}
+              {searching && results.length === 0 && <p className="muted">{t("aiLoading")}</p>}
               {!searching && results.length === 0 && <p className="muted">{t("noResults")}</p>}
               {results.map((r) => (
                 <button key={r.url} className="item clickable result" onClick={() => setReader({ url: r.url, title: r.title })}>

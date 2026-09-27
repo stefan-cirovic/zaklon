@@ -138,7 +138,7 @@ export default function PhoneAi({ t, lang }: { t: T; lang: Lang }) {
     }
   };
 
-  if (!st) return <p className="muted">…</p>;
+  if (!st) return <p className="muted">{t("aiLoading")}</p>;
   if (!st.engine) return <p className="warn">{t("aiEngineMissing")}</p>;
 
   const onPhone = new Set(st.models.map((m) => m.file));
@@ -146,6 +146,11 @@ export default function PhoneAi({ t, lang }: { t: T; lang: Lang }) {
   const copyingPart = st.copy && !st.copy.finished ? `${st.copy.model}.part` : null;
   const parts = (st.parts ?? []).filter((p) => p.file !== copyingPart);
   const title = (m: HubModel) => (lang === "sr" && m.title_sr ? m.title_sr : m.title_en);
+  /** A model copied from the hub by the hub's name for it; otherwise its file name. */
+  const nameOf = (file: string) => {
+    const known = hubModels?.find((h) => h.file === file);
+    return known ? title(known) : file.replace(".gguf", "");
+  };
 
   return (
     <div className="stack">
@@ -161,7 +166,7 @@ export default function PhoneAi({ t, lang }: { t: T; lang: Lang }) {
             {st.models.map((m) => (
               <div className="item wrap" key={m.file}>
                 <div>
-                  <div>{m.file.replace(".gguf", "")}</div>
+                  <div>{nameOf(m.file)}</div>
                   <div className="muted" style={{ fontSize: 13 }}>
                     {fmtBytes(m.size)}
                     {st.running === m.file && <span className="ok"> · {t("aiRunning")}</span>}
@@ -224,7 +229,7 @@ export default function PhoneAi({ t, lang }: { t: T; lang: Lang }) {
       <div>
         <h2>{t("modelsOnHub")}</h2>
         {hubModels === null ? (
-          <p className="muted">…</p>
+          <p className="muted">{t("aiLoading")}</p>
         ) : hubModels.length === 0 ? (
           <p className="muted">{t("noModelsOnHub")}</p>
         ) : (
@@ -236,7 +241,7 @@ export default function PhoneAi({ t, lang }: { t: T; lang: Lang }) {
                   <div className="muted" style={{ fontSize: 13 }}>{fmtBytes(m.size)}</div>
                 </div>
                 {onPhone.has(m.file) ? (
-                  <span className="ok">{t("installed")}</span>
+                  <span className="ok">{t("onThisPhone")}</span>
                 ) : (
                   <button className="btn secondary" onClick={() => copy(m)} disabled={active}>{t("copyToPhone")}</button>
                 )}

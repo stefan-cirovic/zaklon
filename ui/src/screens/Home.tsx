@@ -6,6 +6,7 @@ import { useVisiblePoll } from "../poll";
 import ExpiryBadge from "../components/ExpiryBadge";
 import { fmtDateTime, fmtQty } from "../format";
 import type { Key } from "../i18n";
+import { offlineState, onOfflineChange } from "../offline";
 import type { Item } from "./Supplies";
 
 type T = (k: Key) => string;
@@ -59,6 +60,9 @@ export default function Home({ status, statusAt, error, t, go, phone }: Props) {
   const [sum, setSum] = useState<Summary | null>(null);
   const [sys, setSys] = useState<{ battery_percent: number | null; plugged_in: boolean } | null>(null);
   const [sumFailed, setSumFailed] = useState(false);
+  // A phone away from home shows its own copy, and the banner above says so.
+  const [away, setAway] = useState(() => phone && offlineState().since !== null);
+  useEffect(() => onOfflineChange(() => setAway(phone && offlineState().since !== null)), [phone]);
 
   // Refresh the supplies summary on its own slow schedule (not while the app
   // is in the background); keep the last good data when a refresh fails, and
@@ -88,10 +92,11 @@ export default function Home({ status, statusAt, error, t, go, phone }: Props) {
         <p className="muted row">
           <span className={"status-dot" + (up ? "" : " off")} aria-hidden="true" /> {up ? t("online") : t("offline")}
         </p>
-        {error && <p className="error" role="alert">{error}</p>}
+        {error && !away && <p className="error" role="alert">{error}</p>}
       </div>
       <UpdateBanner t={t} />
-      <div className="grid" style={stale ? { opacity: 0.55 } : undefined} aria-describedby={stale ? "status-as-of" : undefined}>
+      {/* Dimmed, but the labels stay readable (4.5:1). */}
+      <div className="grid" style={stale ? { opacity: 0.8 } : undefined} aria-describedby={stale ? "status-as-of" : undefined}>
         <div className="panel">
           <div className="label">{t("devices")}</div>
           <div className="value">{status?.devices ?? "–"}</div>

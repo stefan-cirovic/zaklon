@@ -37,10 +37,11 @@ function countryState(c: Country) {
   const installed = c.regions.filter((r) => r.status === "installed").length;
   const busy = c.regions.some((r) => ["queued", "downloading", "verifying"].includes(r.status));
   const failed = c.regions.some((r) => r.status === "failed");
+  const paused = c.regions.some((r) => r.status === "paused");
   const done = c.regions.reduce((s, r) => s + (r.status === "installed" ? r.size : Math.min(r.bytes_done, r.size)), 0);
   // Pieces of an older map version: they keep working until updated.
   const update = c.regions.some((r) => r.status === "installed" && r.update);
-  return { installed, all: installed === c.regions.length, some: installed > 0, busy, failed, done, update };
+  return { installed, all: installed === c.regions.length, some: installed > 0, busy, failed, paused, done, update };
 }
 
 /** Clipboard, with a fallback for web views that do not allow it. */
@@ -114,7 +115,11 @@ export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: bool
     const needle = fold(q.trim());
     const list = needle
       ? data.countries.filter((c) => [c, ...c.regions].some((x) => fold(x.name).includes(needle) || fold(x.name_sr).includes(needle)))
-      : data.countries.filter((c) => SUGGESTED[lang].includes(c.id) || countryState(c).some || countryState(c).busy);
+      : data.countries.filter((c) => {
+          // Without a search: the suggestions, and every country something was done with.
+          const s = countryState(c);
+          return SUGGESTED[lang].includes(c.id) || s.some || s.busy || s.failed || s.paused;
+        });
     const order = (c: Country) => {
       const i = SUGGESTED[lang].indexOf(c.id);
       return i === -1 ? 100 : i;
@@ -133,6 +138,7 @@ export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: bool
         <p className="muted">{t("mapsIntro")}</p>
       </div>
       {err && <p className="error" role="alert">{err}</p>}
+      {!data && !err && <p className="muted">{t("aiLoading")}</p>}
 
       {data && (
         <div className="panel stack maps-phone">
@@ -202,10 +208,10 @@ export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: bool
                     <span className="muted">{pct}%</span>
                   ) : (
                     <button className="btn small" onClick={() => act(api(`/api/maps/${encodeURIComponent(c.id)}/download`, { method: "POST" }))}>
-                      {s.update ? t("packUpdate") : s.some || s.failed ? t("resume") : t("download")}
+                      {s.update ? t("packUpdate") : s.some || s.paused ? t("resume") : s.failed ? t("retry") : t("download")}
                     </button>
                   )}
-                  {(s.some || s.failed) && !s.busy && (
+                  {(s.some || s.failed || s.paused) && !s.busy && (
                     <ConfirmButton
                       label={t("remove")}
                       confirmLabel={t("yesRemove")}

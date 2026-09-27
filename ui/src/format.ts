@@ -17,13 +17,16 @@ export function fmtQty(n: number): string {
   return new Intl.NumberFormat(locale(), { maximumFractionDigits: 3 }).format(n);
 }
 
-/** Sizes the way Windows Explorer, Android and CoMaps show them (1 MB = 1024 × 1024 bytes). */
+/**
+ * Sizes the way Windows Explorer, Android and CoMaps show them (1 MB = 1024 × 1024 bytes).
+ * A no-break space keeps the number and the unit on one line.
+ */
 export function fmtBytes(n: number): string {
   const nf = (v: number, digits: number) => new Intl.NumberFormat(locale(), { maximumFractionDigits: digits }).format(v);
   const KB = 1024, MB = KB * 1024, GB = MB * 1024;
-  if (n >= 1000 * MB) return `${nf(n / GB, n >= 10 * GB ? 0 : 1)} GB`;
-  if (n >= 1000 * KB) return `${nf(n / MB, 0)} MB`;
-  return `${nf(n / KB, 0)} kB`;
+  if (n >= 1000 * MB) return `${nf(n / GB, n >= 10 * GB ? 0 : 1)} GB`;
+  if (n >= 1000 * KB) return `${nf(n / MB, 0)} MB`;
+  return `${nf(n / KB, 0)} kB`;
 }
 
 /** "YYYY-MM-DD" -> "31.01.2027." (Serbian) or "31 Jan 2027" (English). */
@@ -34,10 +37,14 @@ export function fmtDate(iso: string): string {
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
-/** A timestamp (RFC 3339) in local time. */
+/** A timestamp (RFC 3339) in local time; Serbian "27.09.2026. 18:27", like fmtDate. */
 export function fmtDateTime(ts: string): string {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return ts;
+  if (lang === "sr") {
+    const p = (x: number) => String(x).padStart(2, "0");
+    return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}. ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
   return d.toLocaleString(locale(), { dateStyle: "medium", timeStyle: "short" });
 }
 
@@ -71,8 +78,10 @@ export function securityCode(fp: string): string {
  * Unit name for a quantity. Most units stay abbreviated (kg, g, ml, pcs);
  * liters are written out with the right grammatical form:
  * Serbian 1 litar, 2 litra, 5 litara, 1,5 litra; English 1 liter, 2 liters.
+ * English packs too (1 pack, 2 packs); Serbian "pak." fits any number.
  */
 export function unitLabel(unit: string, qty: number, short: (u: string) => string): string {
+  if (unit === "pack" && lang === "en") return qty === 1 ? "pack" : "packs";
   if (unit !== "l") return short(unit);
   if (lang === "sr") {
     if (!Number.isInteger(qty)) return "litra";

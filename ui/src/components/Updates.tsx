@@ -3,6 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { api, inTauri } from "../api";
 import type { Key } from "../i18n";
 import { fmtDateTime } from "../format";
+import { detail } from "../errors";
 
 type T = (k: Key) => string;
 export type UpdateState = {
@@ -65,7 +66,7 @@ export function UpdateSettings({ t, isHub }: { t: T; isHub: boolean }) {
 
   if (!u) return null;
   let status: string;
-  if (u.error) status = u.error === "no internet" ? t("updateNoInternet") : `${t("updateFailed")} (${u.error})`;
+  if (u.error) status = u.error === "no internet" ? t("updateNoInternet") : `${t("updateFailed")}${detail(t, u.error)}. ${t("updateTryLater")}`;
   else if (!u.checked_at) status = t("updateNotChecked");
   else if (u.newer && u.latest) status = `${t("updateAvailable")} ${u.latest}`;
   else if (!u.latest) status = t("updateNoReleases");

@@ -4,7 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
 import { useVisiblePoll, whenVisible } from "../poll";
-import { fmtBytes } from "../format";
+import { fmtBytes, fmtQty } from "../format";
 import Reader from "../components/Reader";
 import PhoneAi from "./PhoneAi";
 import Memory from "../components/Memory";
@@ -347,12 +347,13 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
         <p className="muted">{t("assistantIntro")}</p>
       </div>
       {err && <p className="error" role="alert">{err}</p>}
+      {!ov && !err && !hubDown && <p className="muted">{t("aiLoading")}</p>}
 
       {ov && !hubReady && rec && (
         <div className="panel stack">
           <h2>{t("aiNeedsModel")}</h2>
           <p className="muted" style={{ margin: 0 }}>
-            {t("aiRecommendedFor")} {fmtBytes(ov.ram_total)}: <strong>{title(rec)}</strong> ({fmtBytes(rec.size)})
+            {t("aiRecommendedFor")} {fmtBytes(ov.ram_total)} {t("aiRecommendedMemory")}: <strong>{title(rec)}</strong> ({fmtBytes(rec.size)})
           </p>
           {(() => {
             const st = stateOf(rec.id);
@@ -363,7 +364,10 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
               return (
                 <>
                   <div className="bar"><i style={{ width: `${pct}%` }} /></div>
-                  <p className="muted" style={{ margin: 0, fontSize: 13 }}>{t("aiDownloading")} {fmtBytes(active.bytes_done)} / {fmtBytes(active.bytes_total)}</p>
+                  <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+                    {/* The engine comes along with the model: say which of the two these bytes are. */}
+                    {t("aiDownloading")} {active === eng ? t("aiEngine") : t("aiModel")} · {fmtBytes(active.bytes_done)} / {fmtBytes(active.bytes_total)}
+                  </p>
                 </>
               );
             }
@@ -406,7 +410,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
         <>
           {ov?.books === 0 && (
             <p className="warn" style={{ margin: 0, fontSize: 14 }}>
-              {t("aiNoLibraryLong")} <a href="#addons">{t("addons")}</a>.
+              {t("aiNoLibraryLong")} <a href="#addons">{t("addonsIn")}</a>.
             </p>
           )}
           <div className="sr-only" aria-live="polite" aria-atomic="true">{announce}</div>
@@ -458,7 +462,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
                         <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
                           {a.searched && a.searched.length > 0 && !a.from_supplies && `${t("aiSearched")}: ${a.searched.join(", ")}`}
                           {a.searched && a.searched.length > 0 && !a.from_supplies && a.tokens_per_second > 0 && " · "}
-                          {a.tokens_per_second > 0 && `${a.tokens_per_second.toFixed(1)} ${t("tokensPerSecond")}`}
+                          {a.tokens_per_second > 0 && `${fmtQty(Math.round(a.tokens_per_second * 10) / 10)} ${t("tokensPerSecond")}`}
                         </div>
                       )}
                     </>

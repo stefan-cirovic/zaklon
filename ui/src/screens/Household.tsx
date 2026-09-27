@@ -26,14 +26,13 @@ type Props = {
 };
 
 export default function Household({ status, t, lang, setLang, refresh, isHub, ownDeviceId, look }: Props) {
-  if (!status) return <p className="muted">…</p>;
+  if (!status) return <p className="muted">{t("loadingOrUnavailable")}</p>;
   if (!status.set_up) {
     return isHub ? <Setup t={t} lang={lang} setLang={setLang} onDone={refresh} defaultName={status.hub_name} /> : <p className="muted">{t("hubNotSetUp")}</p>;
   }
   return (
     <div className="stack">
-      {isHub && <Firewall t={t} />}
-      <Devices t={t} status={status} lang={lang} setLang={setLang} isHub={isHub} ownDeviceId={ownDeviceId} />
+      <Devices t={t} status={status} lang={lang} setLang={setLang} isHub={isHub} ownDeviceId={ownDeviceId} alert={isHub && <Firewall t={t} />} />
       <Appearance t={t} look={look} />
       {isHub && <ChangePassword t={t} />}
       {isHub && <Backups t={t} />}
@@ -113,9 +112,25 @@ function Setup({ t, lang, setLang, onDone, defaultName }: SetupProps) {
   );
 }
 
-type DevicesProps = { t: T; status: Status; lang: Lang; setLang: (l: Lang) => void; isHub: boolean; ownDeviceId: string | null };
+const PLATFORMS: Record<string, string> = { android: "Android", ios: "iOS", windows: "Windows", macos: "macOS", linux: "Linux" };
 
-function Devices({ t, status, lang, setLang, isHub, ownDeviceId }: DevicesProps) {
+/** "android" as people write it. */
+function platformName(p: string): string {
+  return PLATFORMS[p.toLowerCase()] ?? p.charAt(0).toUpperCase() + p.slice(1);
+}
+
+type DevicesProps = {
+  t: T;
+  status: Status;
+  lang: Lang;
+  setLang: (l: Lang) => void;
+  isHub: boolean;
+  ownDeviceId: string | null;
+  /** A warning shown right under the page title. */
+  alert?: React.ReactNode;
+};
+
+function Devices({ t, status, lang, setLang, isHub, ownDeviceId, alert }: DevicesProps) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [pair, setPair] = useState<PairStart | null>(null);
   const [expiresAt, setExpiresAt] = useState(0);
@@ -203,6 +218,7 @@ function Devices({ t, status, lang, setLang, isHub, ownDeviceId }: DevicesProps)
           <option value="sr">{t("serbian")}</option>
         </select>
       </div>
+      {alert}
       {err && <p className="error" role="alert">{err}</p>}
 
       <label className="check-line panel left">
@@ -254,14 +270,14 @@ function Devices({ t, status, lang, setLang, isHub, ownDeviceId }: DevicesProps)
             {devices.map((d) => {
               const own = d.id === ownDeviceId;
               return (
-                <div className="item wrap" key={d.id}>
-                  <div>
+                <div className="item" key={d.id}>
+                  <div style={{ minWidth: 0, overflowWrap: "anywhere" }}>
                     <div>
                       {d.name}
                       {own && <span className="muted"> · {t("thisDevice")}</span>}
                     </div>
                     <div className="muted" style={{ fontSize: 13 }}>
-                      {d.platform} · {t("lastSeen")}: {d.last_seen ? fmtDateTime(d.last_seen) : t("never")}
+                      {platformName(d.platform)} · {t("lastSeen")}: {d.last_seen ? fmtDateTime(d.last_seen) : t("never")}
                     </div>
                   </div>
                   {!own && isHub && (

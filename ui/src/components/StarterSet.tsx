@@ -15,7 +15,9 @@ const KNOWLEDGE: Record<Lang, string[]> = {
 };
 const MAP: Record<Lang, string | null> = { sr: "Serbia", en: null };
 
-type Line = { key: string; label: string; size: number; done: boolean; start: () => Promise<unknown> };
+/** done: installed or on its way (not started again); installed: ready to use; busy: downloading now. */
+type Line = { key: string; label: string; size: number; done: boolean; installed: boolean; busy: boolean; start: () => Promise<unknown> };
+const BUSY = ["queued", "downloading", "verifying"];
 
 /** One button for the recommended start: knowledge, the region's map and the AI model that fits. */
 export default function StarterSet({ t, lang, packs, freeBytes, onStarted }: { t: T; lang: Lang; packs: Pack[]; freeBytes: number; onStarted: () => void }) {
@@ -39,7 +41,15 @@ export default function StarterSet({ t, lang, packs, freeBytes, onStarted }: { t
   for (const id of [...KNOWLEDGE[lang], ...(model ? [model] : [])]) {
     const p = packs.find((x) => x.id === id);
     if (!p) continue;
-    lines.push({ key: id, label: title(p), size: p.size, done: p.state.status !== "not_installed" && p.state.status !== "failed", start: () => api(`/api/packs/${id}/download`, { method: "POST" }) });
+    lines.push({
+      key: id,
+      label: title(p),
+      size: p.size,
+      done: p.state.status !== "not_installed" && p.state.status !== "failed",
+      installed: p.state.status === "installed",
+      busy: BUSY.includes(p.state.status),
+      start: () => api(`/api/packs/${id}/download`, { method: "POST" }),
+    });
   }
   if (map) {
     lines.push({
@@ -47,6 +57,8 @@ export default function StarterSet({ t, lang, packs, freeBytes, onStarted }: { t
       label: `${t("mapsOf")}: ${lang === "sr" ? map.name_sr : map.name}`,
       size: map.size,
       done: map.regions.every((r) => r.status !== "not_installed" && r.status !== "failed"),
+      installed: map.regions.every((r) => r.status === "installed"),
+      busy: map.regions.some((r) => BUSY.includes(r.status)),
       start: () => api(`/api/maps/${encodeURIComponent(map.id)}/download`, { method: "POST" }),
     });
   }
@@ -74,9 +86,9 @@ export default function StarterSet({ t, lang, packs, freeBytes, onStarted }: { t
       <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("starterIntro")}</p>
       <ul className="plain">
         {lines.map((l) => (
-          <li key={l.key}>
-            {l.done ? "✓ " : ""}
+          <li key={l.key} className={l.installed ? "installed" : undefined}>
             {l.label} <span className="muted">· {fmtBytes(l.size)}</span>
+            {l.busy && <span className="muted"> · {t("aiDownloading")}</span>}
           </li>
         ))}
       </ul>

@@ -1,8 +1,9 @@
-import type { Key } from "./i18n";
+import { tLang, type Key } from "./i18n";
 
 // Server and network errors arrive as English text. Show them in the user's
-// language; anything unknown gets a translated generic message plus the
-// original text in brackets, so it can still be reported.
+// language; anything unknown gets a translated generic message. In English the
+// original text follows in brackets, so it can still be reported; in other
+// languages it would only be foreign words.
 
 const KNOWN: [RegExp, Key][] = [
   [/could not save on this phone/i, "errSaveOnPhone"],
@@ -52,8 +53,26 @@ const KNOWN: [RegExp, Key][] = [
   [/fingerprint/i, "errFingerprint"],
 ];
 
-/** The hub's error codes (see ERROR_CODES in the hub's api.rs). */
+/**
+ * The hub's error codes: every code in ERROR_CODES in the hub's api.rs, plus
+ * the ones error_code() falls back to by status. A hub test reads this list
+ * and fails when a code is missing. "errGeneric" means there are no better
+ * words than "Something went wrong." (in English the hub's text follows).
+ */
 const CODES: Record<string, Key> = {
+  not_set_up: "hubNotSetUp",
+  already_set_up: "errAlreadySetUp",
+  nothing_selected: "errNothingSelected",
+  not_installed: "errPacksGone",
+  cannot_copy: "errPacksGone",
+  bad_quantity: "errBadQuantity",
+  several_batches: "errSeveralBatches",
+  bad_barcode: "errBadBarcode",
+  not_found: "errNotFound",
+  bad_category: "errGeneric",
+  internal: "errGeneric",
+  forbidden: "errGeneric",
+  other: "errGeneric",
   wrong_password: "errWrongPassword",
   code_expired: "errCodeExpired",
   too_many_attempts: "errTooManyAttempts",
@@ -92,17 +111,29 @@ const CODES: Record<string, Key> = {
   notes_full: "errNotesFull",
 };
 
+/** " (the technical text)" in English; nothing in other languages, where it would be foreign. */
+export function detail(t: (k: Key) => string, raw: string | null | undefined): string {
+  const text = String(raw ?? "").trim();
+  return text && tLang(t) === "en" ? ` (${text})` : "";
+}
+
 export function tErr(t: (k: Key) => string, message: string | null | undefined, code?: string): string {
-  if (code && CODES[code]) return t(CODES[code]);
+  const mapped = code ? CODES[code] : undefined;
+  if (mapped && mapped !== "errGeneric") return t(mapped);
   const msg = String(message ?? "").trim();
   if (!msg) return t("errGeneric");
   for (const [re, key] of KNOWN) {
     if (re.test(msg)) return t(key);
   }
-  return `${t("errGeneric")} (${msg})`;
+  return t("errGeneric") + detail(t, msg);
+}
+
+/** The hub's code for an error, if it sent one. */
+export function errCode(e: unknown): string | undefined {
+  return e instanceof Error ? (e as { code?: string }).code : undefined;
 }
 
 export function errText(t: (k: Key) => string, e: unknown): string {
-  if (e instanceof Error) return tErr(t, e.message, (e as { code?: string }).code);
+  if (e instanceof Error) return tErr(t, e.message, errCode(e));
   return tErr(t, String(e));
 }

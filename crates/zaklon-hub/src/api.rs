@@ -1813,6 +1813,30 @@ mod error_code_tests {
         assert!(missing.is_empty(), "add these codes to CODES in ui/src/errors.ts: {missing:?}");
     }
 
+    /// The app translates codes with the table `CODES` in ui/src/errors.ts;
+    /// a code missing there would show up as "Something went wrong".
+    #[test]
+    fn every_code_has_a_translation_in_the_app() {
+        let src = include_str!("../../../ui/src/errors.ts");
+        let table = &src[src.find("const CODES").expect("CODES in errors.ts")..];
+        let table = &table[table.find('{').expect("start of CODES") + 1..table.find("};").expect("end of CODES")];
+        let mapped: std::collections::HashSet<&str> =
+            table.lines().filter_map(|l| l.split_once(':')).map(|(code, _)| code.trim().trim_matches('"')).collect();
+        let by_status = [
+            StatusCode::BAD_REQUEST,
+            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
+            StatusCode::NOT_FOUND,
+            StatusCode::TOO_MANY_REQUESTS,
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ]
+        .map(|s| error_code(s, ""));
+        let mut missing: Vec<&str> =
+            ERROR_CODES.iter().map(|(_, code)| *code).chain(by_status).filter(|code| !mapped.contains(code)).collect();
+        missing.dedup();
+        assert!(missing.is_empty(), "add these codes to CODES in ui/src/errors.ts: {missing:?}");
+    }
+
     #[test]
     fn user_mistakes_are_400_and_our_failures_500() {
         let user = invalid(anyhow::anyhow!("any wording at all"));

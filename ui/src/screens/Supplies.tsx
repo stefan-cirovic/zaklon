@@ -4,7 +4,7 @@ import { api } from "../api";
 import { onBackOnline, onOfflineChange } from "../offline";
 import type { Key } from "../i18n";
 import { canScan, scan } from "../scan";
-import { errText } from "../errors";
+import { errCode, errText } from "../errors";
 import { fmtDateTime, fmtQty, parseNumber, unitLabel } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
 import ExpiryBadge from "../components/ExpiryBadge";
@@ -104,6 +104,8 @@ export default function Supplies({ t }: { t: T }) {
       const updated = await api<Item>(`/api/items/${i.id}/adjust`, { json: { delta } });
       setItems((all) => (all ?? []).map((x) => (x.id === updated.id ? updated : x)));
     } catch (e) {
+      // Deleted on another device meanwhile: show the list as it is now.
+      if (errCode(e) === "not_found") await load();
       setErr(errText(t, e));
     }
   };
@@ -130,9 +132,10 @@ export default function Supplies({ t }: { t: T }) {
         placeName={placeName}
         scanner={scanner}
         onPlacesChanged={load}
-        onDone={() => {
+        onDone={async (message) => {
           setEditing(null);
-          load();
+          await load();
+          if (message) setErr(message);
         }}
       />
     );
@@ -175,7 +178,7 @@ export default function Supplies({ t }: { t: T }) {
             ))}
           </div>
           {items === null ? (
-            <p className="muted">…</p>
+            !err && <p className="muted">{t("aiLoading")}</p>
           ) : shown.length === 0 ? (
             <p className="muted" style={{ textAlign: "center" }}>{items.length === 0 ? t("noItemsYet") : t("noResults")}</p>
           ) : (
@@ -237,7 +240,8 @@ function ItemForm({
   placeName: (p: string | null) => string;
   scanner: boolean;
   onPlacesChanged: () => void;
-  onDone: () => void;
+  /** Back to the list; with a message when the item was gone meanwhile. */
+  onDone: (message?: string) => void;
 }) {
   const isNew = !initial.id;
   const [f, setF] = useState({
@@ -262,6 +266,11 @@ function ItemForm({
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    const quantity = parseNumber(f.quantity) ?? 0;
+    if (isNew && quantity < 0) {
+      setErr(t("errBadQuantity"));
+      return;
+    }
     setBusy(true);
     setErr(null);
     const common = {
@@ -274,11 +283,12 @@ function ItemForm({
       notes: f.notes || null,
     };
     try {
-      if (isNew) await api("/api/items", { json: { ...common, quantity: parseNumber(f.quantity) ?? 0, expiry: f.expiry || null } });
+      if (isNew) await api("/api/items", { json: { ...common, quantity, expiry: f.expiry || null } });
       else await api(`/api/items/${initial.id}`, { method: "PATCH", json: common });
       onDone();
     } catch (ex) {
-      setErr(errText(t, ex));
+      if (errCode(ex) === "not_found") onDone(errText(t, ex));
+      else setErr(errText(t, ex));
     } finally {
       setBusy(false);
     }
@@ -290,7 +300,8 @@ function ItemForm({
       await api(`/api/items/${initial.id}`, { method: "DELETE" });
       onDone();
     } catch (ex) {
-      setErr(errText(t, ex));
+      if (errCode(ex) === "not_found") onDone(errText(t, ex));
+      else setErr(errText(t, ex));
     }
   };
 
@@ -393,8 +404,8 @@ function ItemForm({
       {err && <p className="error" role="alert">{err}</p>}
       <div className="row actions">
         <button className="btn" disabled={busy || !f.name.trim()}>{t("save")}</button>
-        <button type="button" className="btn secondary" onClick={onDone}>{t("cancel")}</button>
-        {!isNew && <ConfirmButton label={t("delete")} confirmLabel={t("yesDelete")} cancelLabel={t("cancel")} onConfirm={remove} />}
+        <button type="button" className="btn secondary" onClick={() => onDone()}>{t("cancel")}</button>
+        {!isNew && <ConfirmButton label={t("delete")} confirmLabel={t("yesDelete")} cancelLabel={t("keepIt")} onConfirm={remove} />}
       </div>
     </form>
   );
@@ -430,10 +441,16 @@ function BatchesEditor({
     }
   };
 
-  const update = (b: Batch, field: "quantity" | "expiry", value: string) => {
+  const update = (b: Batch, field: "quantity" | "expiry", input: HTMLInputElement) => {
+    const value = input.value;
     if (field === "quantity") {
       const q = parseNumber(value);
-      if (q === null || q === b.quantity) return;
+      if (q === b.quantity) return;
+      // Emptying a batch is what "×" is for (it asks first); put the number back.
+      if (q === null || q <= 0) {
+        input.value = fmtQty(b.quantity);
+        return;
+      }
       apply(api<Item>(`/api/batches/${b.id}`, { method: "PATCH", json: { quantity: q } }));
     } else {
       if ((value || null) === b.expiry) return;
@@ -450,7 +467,7 @@ function BatchesEditor({
   };
 
   return (
-    <div className="panel stack batches">
+    <div className="panel stack left batches">
       <div className="row between">
         <div className="label">{t("batches")}</div>
         <div className="muted" style={{ fontSize: 14 }}>
@@ -465,9 +482,9 @@ function BatchesEditor({
             inputMode="decimal"
             defaultValue={fmtQty(b.quantity)}
             aria-label={t("quantity")}
-            onBlur={(e) => update(b, "quantity", e.target.value)}
+            onBlur={(e) => update(b, "quantity", e.target)}
           />
-          <input type="date" defaultValue={b.expiry ?? ""} aria-label={t("expiry")} onBlur={(e) => update(b, "expiry", e.target.value)} />
+          <input type="date" defaultValue={b.expiry ?? ""} aria-label={t("expiry")} onBlur={(e) => update(b, "expiry", e.target)} />
           <ConfirmButton
             label="×"
             ariaLabel={t("removeBatch")}
@@ -529,6 +546,7 @@ function ShoppingView({ t, onChanged }: { t: T; onChanged: () => void }) {
       load();
       onChanged();
     } catch (ex) {
+      if (errCode(ex) === "not_found") await load();
       setErr(errText(t, ex));
     }
   };
@@ -594,9 +612,10 @@ function PutAwayView({
     load();
   }, [load]);
 
-  const done = () => {
-    load();
+  const done = async (message?: string) => {
+    await load();
     onChanged();
+    if (message) setErr(message);
   };
 
   return (
@@ -634,7 +653,8 @@ function PutAwayCard({
   item: Item | null;
   places: Place[];
   placeName: (p: string | null) => string;
-  onDone: () => void;
+  /** Refresh the list; with a message when the entry was gone meanwhile. */
+  onDone: (message?: string) => void;
   onError: (e: string | null) => void;
 }) {
   const [qty, setQty] = useState(entry.quantity && entry.quantity > 0 ? fmtQty(entry.quantity) : "1");
@@ -654,7 +674,8 @@ function PutAwayCard({
       });
       onDone();
     } catch (e) {
-      onError(errText(t, e));
+      if (errCode(e) === "not_found") onDone(errText(t, e));
+      else onError(errText(t, e));
     } finally {
       setBusy(false);
     }
@@ -665,12 +686,13 @@ function PutAwayCard({
       await api(`/api/shopping/${entry.id}/dismiss`, { method: "POST" });
       onDone();
     } catch (e) {
-      onError(errText(t, e));
+      if (errCode(e) === "not_found") onDone(errText(t, e));
+      else onError(errText(t, e));
     }
   };
 
   return (
-    <div className="panel stack put-away" aria-label={entry.text}>
+    <div className="panel stack left put-away" aria-label={entry.text}>
       <div className="row between wrap">
         <strong>{entry.text}</strong>
         <span className="muted" style={{ fontSize: 13 }}>{item ? t("addsToStock") : t("newItem")}</span>
