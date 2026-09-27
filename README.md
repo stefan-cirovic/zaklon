@@ -4,15 +4,15 @@
 
 *Zaklon* is the Serbian word for shelter. A laptop runs the hub; the phones in your home connect to it over Wi-Fi, with or without internet. It is built for the bad day, and it is useful on every ordinary day in between.
 
-> Status: early development. The hub, phone pairing, library, supplies and add-ons work; maps and the assistant are next. Follow the [roadmap](docs/roadmap.md).
+> Status: early development, not released yet. The hub, phone pairing, library, maps, supplies, the assistant, backups and add-ons work; profiles and the first release are next. Follow the [roadmap](docs/roadmap.md).
 
 ## What it does
 
 - **Library.** Offline Wikipedia, medical reference, repair guides and more, searchable from every phone in the house.
-- **Maps.** Offline maps for your region, served from the hub to phones without internet.
-- **Supplies.** What you have, where it is, when it expires and what is running low. Barcode scanning from the phone.
-- **Assistant.** A local AI model on the hub, and a smaller one on the phone, that searches your library, answers questions about your supplies and, only when you switch it on, researches online.
-- **Household.** Profiles for each person, a shared space for the family, backup to USB, and a laptop that can become the Wi-Fi network when there is none.
+- **Maps.** The whole world in pieces (countries and regions), downloaded once by the hub and served to phones running [CoMaps](https://comaps.app), without internet.
+- **Supplies.** What you have, where it is, when it expires and what is running low, with batches that each keep their own expiry date, a shopping list and a "put away" step. Barcode scanning from the phone. A phone away from home keeps its last copy, and its shopping list keeps working.
+- **Assistant.** A local AI model on the hub that answers from your library and names its sources, answers about your supplies and proposes changes to them (nothing changes until you confirm), remembers what you ask it to remember, and, only when you switch it on for a conversation, researches online. Phones use it at home and fall back to a smaller model of their own.
+- **Household.** Pairing phones with a code, daily backups and backups to USB, copying packs to USB for another household, and (planned) profiles for each person and a laptop that can become the Wi-Fi network when there is none.
 
 ## Principles
 

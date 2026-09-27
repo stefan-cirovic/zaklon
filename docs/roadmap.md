@@ -7,18 +7,18 @@ Zaklon is developed in the open, without a fixed deadline, in order of technical
 Validate the riskiest pieces before building modules:
 
 - [x] Android app (Tauri 2) connects to the Rust hub over pinned TLS on the local network with no internet (tested on a real phone, 2026-09-26). Laptop-created Wi-Fi still to test.
-- [ ] On-device AI on Android (small Qwen3.5 model) with the model downloaded from the hub.
-- [ ] Barcode scanning from the Android app.
-- [ ] 20 GB pack download with resume, verification and USB import; kiwix-serve and llama-server supervised as sidecars on Windows.
+- [x] On-device AI on Android (Qwen3.5 2B) with the model copied from the hub (tested on a Samsung A56, about 12 words per second).
+- [x] Barcode scanning from the Android app.
+- [x] Large pack downloads with resume, verification and USB import; kiwix-serve and llama-server supervised as sidecars on Windows.
 
 ## 1.0
 
 1. Hub core, pairing, Household screen, Windows installer. *Done: per-user installer with bundled WebView2 (works offline), tray icon, start with Windows, single instance, data kept on uninstall.*
 2. Library: kiwix-serve, catalog, downloads, USB export/import. *Working: supervised kiwix-serve, search across books in Latin and Cyrillic (also without diacritics), reader on laptop and phone.*
-3. Supplies: items, barcodes, history, backup/restore.
-4. Maps: CoMaps APK and map files served by the hub.
-5. Assistant: hub model, then phone model, then opt-in online research.
-6. Profiles with optional personal passwords, polish, release.
+3. Supplies: items, barcodes, history, backup/restore. *Done: batches with their own expiry dates, shopping list and put-away, daily backups and backups to USB with restore, a phone's offline copy with a shopping list that syncs when back home.*
+4. Maps: CoMaps APK and map files served by the hub. *Done: the whole world in pieces, with English and Serbian names.*
+5. Assistant: hub model, then phone model, then opt-in online research. *Done: answers grounded in the library with sources, supplies questions and confirmed changes, memory, opt-in online research; phones use the hub's model at home and their own away.*
+6. Profiles with optional personal passwords, polish, release. *Next.*
 
 ## 1.1
 
