@@ -1060,14 +1060,27 @@ fn with_notes(mut messages: Vec<serde_json::Value>, notes: &[String], language: 
 
 /// Questions that are clearly about the household's own supplies, whatever
 /// the model thought ("Šta imam u zalihama?", "What do we have?").
+/// A supply word alone is not enough: "Kako da napravim zalihe hrane?" is a
+/// how-to question for the library, so only possessive or household cues count.
 pub fn mentions_supplies(question: &str) -> bool {
-    let q = plain(question);
+    // Whole words only: punctuation becomes spaces and the text is padded,
+    // so " imam " does not match inside other words.
+    let words: String = plain(question).chars().map(|c| if c.is_alphanumeric() { c } else { ' ' }).collect();
+    let q = format!(" {} ", words.split_whitespace().collect::<Vec<_>>().join(" "));
     const MARKS: &[&str] = &[
-        "zalih", "u kuci imam", "sta imam", "koliko imam", "imamo li", "da li imam", "sta imamo", "koliko imamo", "istice", "isticu", "istekl",
-        "lista za kupovinu", "listu za kupovinu", "listi za kupovinu", "ponestaje", "supplies", "pantry", "do we have", "do i have", "how much do we",
-        "shopping list", "expire", "running low",
+        // Serbian: what we have.
+        "sta imam", "sta imamo", "sta imas", "koliko imam", "koliko imamo", "koliko imas", "da li imam", "da li imamo", "da li imas", "imam li",
+        "imamo li", "imas li", "imamo u kuci", "u kuci imam", "u kuci imamo", "imam u kuci", "imamo kod kuce",
+        // Serbian: our supplies and lists.
+        "u zalihama", "nase zalihe", "nasih zaliha", "nasim zalihama", "moje zalihe", "mojih zaliha", "mojim zalihama", "zalihe u kuci",
+        "na listi", "lista za kupovinu", "listu za kupovinu", "listi za kupovinu", "sta mi istice", "sta nam istice", "sta mi isticu",
+        "sta nam isticu", "sta je isteklo", "sta nam je isteklo", "sta mi je isteklo", "istice mi", "istice nam", "ponestaje",
+        // English.
+        "do we have", "do i have", "have we got", "how much do we", "how many do we", "our supplies", "my supplies", "our pantry",
+        "my pantry", "in the pantry", "in stock", "shopping list", "what expires", "what s expiring", "whats expiring", "what is expiring",
+        "expiring soon", "running low", "are we out of", "we re out of",
     ];
-    MARKS.iter().any(|m| q.contains(m))
+    MARKS.iter().any(|m| q.contains(&format!(" {m} ")))
 }
 
 /// The stored item a spoken name most likely means ("mleka" -> "Mleko 2,8%").
@@ -1643,11 +1656,40 @@ Pitanje?"));
 
     #[test]
     fn supply_words_are_recognised() {
-        assert!(mentions_supplies("Šta imam u zalihama?"));
-        assert!(mentions_supplies("sta mi istice ove nedelje"));
-        assert!(mentions_supplies("What's on the shopping list?"));
-        assert!(!mentions_supplies("Kako se leči ubod pčele?"));
-        assert!(!mentions_supplies("How do I treat a burn?"));
+        for q in [
+            "Šta imam u zalihama?",
+            "sta mi istice ove nedelje",
+            "Koliko imamo brašna?",
+            "Da li imamo sveće u kući?",
+            "Šta nam ponestaje?",
+            "Pokaži naše zalihe",
+            "Šta je na listi za kupovinu?",
+            "Шта имам у залихама?",
+            "What's on the shopping list?",
+            "Do we have any rice?",
+            "How much water is in our supplies?",
+            "What's in my pantry?",
+            "What expires this week?",
+            "What are we running low on?",
+        ] {
+            assert!(mentions_supplies(q), "{q}");
+        }
+        for q in [
+            "Koliko dugo mogu da čuvam zalihe vode?",
+            "Kako da napravim zalihe hrane za zimu?",
+            "Kako se leči ubod pčele?",
+            "Imam temperaturu, šta da radim?",
+            "Koje zalihe su potrebne za 72 sata?",
+            "Kako se čuva brašno?",
+            "How do I treat a burn?",
+            "How long can I store water supplies?",
+            "How do I build an emergency pantry?",
+            "What supplies should a first aid kit contain?",
+            "Does canned food expire?",
+            "How do I ration food during a long blackout?",
+        ] {
+            assert!(!mentions_supplies(q), "{q}");
+        }
     }
 
     #[test]
