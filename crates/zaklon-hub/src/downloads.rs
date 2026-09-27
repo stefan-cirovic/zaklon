@@ -347,10 +347,9 @@ impl Downloads {
         self.save();
 
         let sys = system_info(&self.library);
-        // ZAKLON_IGNORE_BATTERY=1 is for automated tests on laptops running on battery.
-        let ignore_battery = std::env::var("ZAKLON_IGNORE_BATTERY").is_ok_and(|v| v == "1");
-        if !ignore_battery && !sys.plugged_in && sys.battery_percent.map(|p| p < MIN_BATTERY_PERCENT).unwrap_or(false) {
-            self.finish(id, Outcome::Failed(format!("battery below {MIN_BATTERY_PERCENT}%: plug in the charger and resume")));
+        if battery_too_low() {
+            // Paused, not failed: it continues with one tap once the charger is in.
+            self.finish(id, Outcome::Paused);
             return;
         }
         if sys.disk_free < pack.size.saturating_sub(already) + DISK_MARGIN {
@@ -576,6 +575,13 @@ impl Downloads {
             if last_save.elapsed() >= STATE_SAVE_INTERVAL {
                 self.save();
                 last_save = Instant::now();
+                // The battery rule holds for the whole download, not just its start:
+                // a long download on a laptop that was unplugged pauses in time.
+                if battery_too_low() {
+                    info!(pack = id, "battery low while downloading; pausing");
+                    file.flush().ok();
+                    return Ok(false);
+                }
             }
             if self.pause_requested(id) {
                 file.flush().ok();
@@ -752,6 +758,16 @@ pub fn system_info(dir: &Path) -> SystemInfo {
     let disk_total = fs4::total_space(&probe).unwrap_or(0);
     let (battery_percent, plugged_in) = battery();
     SystemInfo { disk_free, disk_total, battery_percent, plugged_in }
+}
+
+/// On battery and below the minimum (ZAKLON_IGNORE_BATTERY=1 turns the rule
+/// off for automated tests on laptops running on battery).
+fn battery_too_low() -> bool {
+    if std::env::var("ZAKLON_IGNORE_BATTERY").is_ok_and(|v| v == "1") {
+        return false;
+    }
+    let (percent, plugged) = battery();
+    !plugged && percent.is_some_and(|p| p < MIN_BATTERY_PERCENT)
 }
 
 #[cfg(windows)]
