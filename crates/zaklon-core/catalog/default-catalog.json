@@ -480,6 +480,134 @@
       ]
     },
     {
+      "id": "stackexchange-gardening-en",
+      "title": {
+        "en": "Gardening & Landscaping Q&A (English)",
+        "sr": "Pitanja i odgovori o baštovanstvu (engleski)"
+      },
+      "description": {
+        "en": "Questions and answers from Gardening & Landscaping Stack Exchange on growing vegetables, fruit, plant care, pests and soil.",
+        "sr": "Pitanja i odgovori sa Gardening Stack Exchange-a o gajenju povrća i voća, nezi biljaka, štetočinama i zemljištu."
+      },
+      "category": "knowledge",
+      "version": "2026-08",
+      "size": 926805273,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-SA 4.0",
+      "attribution": "Stack Exchange contributors",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/gardening.stackexchange.com_en_all_2026-08.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/stack_exchange/gardening.stackexchange.com_en_all_2026-08.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/stack_exchange/gardening.stackexchange.com_en_all_2026-08.zim"
+          ],
+          "sha256": "b8a3e0db65d8a678b47accefd8565f78af0caeb454672fe0d5f365336c71c25e",
+          "size": 926805273
+        }
+      ]
+    },
+    {
+      "id": "stackexchange-sustainability-en",
+      "title": {
+        "en": "Sustainable Living Q&A (English)",
+        "sr": "Pitanja i odgovori o održivom životu (engleski)"
+      },
+      "description": {
+        "en": "Questions and answers from Sustainable Living Stack Exchange on saving energy and water, composting and reducing waste.",
+        "sr": "Pitanja i odgovori sa Sustainable Living Stack Exchange-a o štednji struje i vode, kompostiranju i manje otpada."
+      },
+      "category": "knowledge",
+      "version": "2026-08",
+      "size": 27666982,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-SA 4.0",
+      "attribution": "Stack Exchange contributors",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/sustainability.stackexchange.com_en_all_2026-08.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/stack_exchange/sustainability.stackexchange.com_en_all_2026-08.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/stack_exchange/sustainability.stackexchange.com_en_all_2026-08.zim"
+          ],
+          "sha256": "e9a00e1d1032bc1a5859e1a7553e6b243fcecd0c82ba372548af517119ebd75d",
+          "size": 27666982
+        }
+      ]
+    },
+    {
+      "id": "gardenology-en",
+      "title": {
+        "en": "Gardenology plant encyclopedia (English)",
+        "sr": "Gardenology enciklopedija biljaka (engleski)"
+      },
+      "description": {
+        "en": "A wiki encyclopedia of garden plants with growing conditions, care and propagation tips.",
+        "sr": "Wiki enciklopedija baštenskih biljaka sa uslovima gajenja, negom i savetima za razmnožavanje."
+      },
+      "category": "knowledge",
+      "version": "2026-09",
+      "size": 112499438,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-SA 3.0",
+      "attribution": "Gardenology.org contributors",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/gardenology.org_en_all_2026-09.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/other/gardenology.org_en_all_2026-09.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/other/gardenology.org_en_all_2026-09.zim"
+          ],
+          "sha256": "796c4930a18174ef39c2f7aa676d9773d4d9c0f7c9f0eeae9a9338889edfd6c9",
+          "size": 112499438
+        }
+      ]
+    },
+    {
+      "id": "usda-home-canning-en",
+      "title": {
+        "en": "USDA Complete Guide to Home Canning (English)",
+        "sr": "USDA vodič za zimnicu i konzerviranje (engleski)"
+      },
+      "description": {
+        "en": "The USDA's tested guide to safely canning fruit, vegetables, meat, pickles and jams at home.",
+        "sr": "Provereni USDA vodič kako da bezbedno spremiš zimnicu: voće, povrće, meso, turšiju i džemove."
+      },
+      "category": "knowledge",
+      "version": "2025-04",
+      "size": 19787133,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "Public domain (U.S. government work)",
+      "attribution": "U.S. Department of Agriculture",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/usda-2015_en_2025-04.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/other/usda-2015_en_2025-04.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/other/usda-2015_en_2025-04.zim"
+          ],
+          "sha256": "089738e934f54c3b0343a01b1d93364b953d9fd40f53f62d0656973340cc4081",
+          "size": 19787133
+        }
+      ]
+    },
+    {
       "id": "kiwix-tools",
       "title": {
         "en": "Library engine (Kiwix)",
