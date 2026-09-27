@@ -150,7 +150,8 @@ async fn wait_pack(hub: &Hub, id: &str, until: &[&str]) -> Value {
 }
 
 async fn start_hub() -> Hub {
-    let root = temp_dir("hub");
+    // Windows accounts are often named like this, and the data folder lives under them.
+    let root = temp_dir("hub-Đorđe-Ћирић");
     let (tls, local, install, beacon) = (free_port(), free_port(), free_port(), free_port());
     std::env::set_var("ZAKLON_TLS_PORT", tls.to_string());
     std::env::set_var("ZAKLON_LOCAL_PORT", local.to_string());
@@ -547,9 +548,13 @@ async fn full_hub_flow() {
     let (st, _) = hub.send(reqwest::Method::DELETE, "/api/packs/test-pack", None).await;
     assert_eq!(st, 204);
     assert!(!installed.exists());
-    let (_, imported) = hub.post("/api/packs/import", json!({ "dir": usb.display().to_string() })).await;
-    assert_eq!(imported["imported"], json!(["test-pack"]));
+    // The import is queued and copies in the background, with progress.
+    let (_, importing) = hub.post("/api/packs/import", json!({ "dir": usb.display().to_string() })).await;
+    assert_eq!(importing["importing"], json!(["test-pack"]));
+    let pack = wait_pack(&hub, "test-pack", &["installed", "failed"]).await;
+    assert_eq!(pack["state"]["status"], "installed", "{pack}");
     assert!(installed.exists());
+    assert!(!hub.root.join("library/zim/tiny_test_2026-01.zim.import").exists());
 
     // 14. Resume: a partial download continues from where it stopped.
     hub.send(reqwest::Method::DELETE, "/api/packs/test-pack", None).await;

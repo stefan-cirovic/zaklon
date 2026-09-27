@@ -177,6 +177,30 @@ pub fn log_file(root: &Path, name: &str) -> Result<tracing_appender::rolling::Ro
         .with_context(|| format!("opening the log in {}", dir.display()))
 }
 
+/// Before a pack's files are replaced or deleted, the program holding them
+/// open stops: kiwix-serve for knowledge packs and itself, llama-server for
+/// AI models and itself. Both start again by themselves when needed.
+fn release_engines(library: &Arc<Library>, assistant: &Arc<assistant::Assistant>) -> Box<downloads::ReleaseFn> {
+    use zaklon_core::catalog::Category;
+    // Weak: the downloads must not keep the engines (which hold the downloads) alive.
+    let (library, assistant) = (Arc::downgrade(library), Arc::downgrade(assistant));
+    Box::new(move |pack| {
+        let (library, assistant) = (library.upgrade(), assistant.upgrade());
+        Box::pin(async move {
+            if pack.category == Category::Knowledge || pack.id == "kiwix-tools" {
+                if let Some(l) = library {
+                    l.stop_for(Duration::from_secs(10)).await;
+                }
+            }
+            if pack.category == Category::Model || pack.id == "llama-cpp" {
+                if let Some(a) = assistant {
+                    a.stop().await;
+                }
+            }
+        })
+    })
+}
+
 impl Hub {
     pub fn open(root: &Path) -> Result<Self> {
         // A restore chosen before the last restart is swapped in before anything opens the data.
@@ -200,6 +224,7 @@ impl Hub {
         let library = Library::new(downloads.clone());
         let chosen = db.get_setting(assistant::SETTING_MODEL).ok().flatten();
         let assistant = assistant::Assistant::new(downloads.clone(), library.clone(), chosen);
+        downloads.set_release(release_engines(&library, &assistant));
         let updates = updates::Updates::new(config.auto_update_check);
         Ok(Self {
             state: Arc::new(HubState {

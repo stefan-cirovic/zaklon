@@ -144,10 +144,12 @@ impl Exporter {
         let mut jobs = Vec::new();
         for id in &ids {
             let pack = downloads.catalog().pack(id).ok_or("unknown pack")?;
-            if !downloads.is_installed(id) {
+            // The files on disk as verified (possibly an older version than the catalog's).
+            let files = downloads.installed_files(id);
+            if files.is_empty() {
                 return Err(format!("{} is not installed", pack.title.en));
             }
-            for f in &pack.files {
+            for f in &files {
                 let src = downloads.library_dir().join(&f.path);
                 if !src.is_file() {
                     return Err(format!("{} cannot be copied", pack.title.en));

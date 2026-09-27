@@ -12,7 +12,7 @@ use futures_util::StreamExt;
 use serde::Serialize;
 use tokio::process::{Child, Command};
 use tracing::{info, warn};
-use zaklon_core::catalog::{Category, PackStatus};
+use zaklon_core::catalog::Category;
 use zaklon_core::translit;
 
 use crate::downloads::Downloads;
@@ -39,6 +39,9 @@ pub struct Book {
     pub home: String,
     #[serde(skip)]
     pub file: PathBuf,
+    /// The file's path inside the library ("zim/x.zim").
+    #[serde(skip)]
+    pub rel: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -97,7 +100,7 @@ pub struct Library {
 
 impl Library {
     pub fn new(downloads: Arc<Downloads>) -> Arc<Self> {
-        let engine_dir = downloads.library_dir().join("bin").join("kiwix");
+        let engine_dir = ENGINE_DIR.iter().fold(downloads.library_dir().to_path_buf(), |p, c| p.join(c));
         Arc::new(Self {
             downloads,
             engine_dir,
@@ -140,16 +143,17 @@ impl Library {
         self.engine_dir.join(name)
     }
 
-    /// Installed knowledge packs, in catalog order.
+    /// Installed knowledge packs, in catalog order. Their verified files on
+    /// disk count, so a pack keeps its older version while a newer one downloads.
     pub fn books(&self) -> Vec<Book> {
         let library = self.downloads.library_dir().to_path_buf();
         self.downloads
             .snapshot()
             .into_iter()
-            .filter(|v| v.pack.category == Category::Knowledge && v.state.status == PackStatus::Installed)
+            .filter(|v| v.pack.category == Category::Knowledge)
             .flat_map(|v| {
                 let library = library.clone();
-                v.pack.files.clone().into_iter().filter_map(move |f| {
+                v.state.files.into_iter().filter_map(move |f| {
                     let file = library.join(&f.path);
                     let name = Path::new(&f.path).file_stem()?.to_string_lossy().to_string();
                     file.is_file().then(|| Book {
@@ -160,6 +164,7 @@ impl Library {
                         title_sr: v.pack.title.sr.clone(),
                         languages: v.pack.languages.clone(),
                         file,
+                        rel: f.path,
                     })
                 })
             })
@@ -224,6 +229,13 @@ impl Library {
                     self.set_state(EngineState::Running);
                     *self.failures.lock().unwrap_or_else(|p| p.into_inner()) = 0;
                     info!(books = wanted.len(), "library engine ready");
+                    // It skips files it cannot open (--skipInvalid); have those checked again.
+                    if let Some(served) = self.served_books().await {
+                        for b in books.iter().filter(|b| !served.contains(&b.name)) {
+                            warn!(book = %b.name, "the library engine could not open this book; checking its file");
+                            self.downloads.recheck(&b.pack_id);
+                        }
+                    }
                 }
                 return;
             } else {
@@ -265,7 +277,9 @@ impl Library {
             .arg(format!("--port={port}"))
             .arg(format!("--urlRootLocation={ROOT}"))
             .arg("--nosearchbar")
-            .args(books.iter().map(|b| native_path(&b.file)))
+            // One damaged or unreadable file must not take every book down.
+            .arg("--skipInvalid")
+            .args(books.iter().map(|b| engine_relative(&b.rel)))
             .current_dir(&self.engine_dir)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
@@ -293,6 +307,15 @@ impl Library {
                 self.set_state(EngineState::Failed);
             }
         }
+    }
+
+    /// Names of the books kiwix-serve actually serves, from its catalog.
+    async fn served_books(&self) -> Option<std::collections::HashSet<String>> {
+        let res = self.http.get(format!("{}{ROOT}/catalog/v2/entries?count=-1", self.base())).send().await.ok()?;
+        if !res.status().is_success() {
+            return None;
+        }
+        Some(parse_served_books(&res.text().await.ok()?))
     }
 
     async fn ping(&self) -> bool {
@@ -514,13 +537,33 @@ fn round_robin<T>(lists: Vec<Vec<T>>) -> Vec<T> {
     }
 }
 
-/// kiwix-serve on Windows refuses paths written with forward slashes.
-fn native_path(p: &Path) -> std::ffi::OsString {
+/// Where kiwix-serve lives inside the library; it runs from that folder.
+const ENGINE_DIR: [&str; 2] = ["bin", "kiwix"];
+
+/// A library file as kiwix-serve finds it from its own folder
+/// (`..\..\zim\x.zim`). kiwix-serve reads its command line in the ANSI code
+/// page, so an absolute path under a folder like `C:\Users\Đorđe` arrives
+/// broken and the engine exits; library paths are ASCII. On Windows it also
+/// refuses forward slashes.
+fn engine_relative(rel: &str) -> std::ffi::OsString {
+    let path = format!("{}{rel}", "../".repeat(ENGINE_DIR.len()));
     if cfg!(windows) {
-        p.to_string_lossy().replace('/', "\\").into()
+        path.replace('/', "\\").into()
     } else {
-        p.as_os_str().to_owned()
+        path.into()
     }
+}
+
+/// Book names in kiwix-serve's catalog feed: each entry links its content
+/// as `href="/kiwix/content/<name>"`.
+fn parse_served_books(xml: &str) -> std::collections::HashSet<String> {
+    let marker = format!("href=\"{ROOT}/content/");
+    xml.split(marker.as_str())
+        .skip(1)
+        .filter_map(|rest| rest.split(['"', '/']).next())
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// Percent-encode an article path for a URL, keeping `/`.
@@ -615,6 +658,34 @@ mod tests {
     #[test]
     fn interleaves() {
         assert_eq!(round_robin(vec![vec![1, 2, 3], vec![10], vec![20, 21]]), vec![1, 10, 20, 2, 21, 3]);
+    }
+
+    #[test]
+    fn engine_finds_books_under_a_non_ascii_folder() {
+        // Windows accounts named like this are common for our users.
+        let root = std::env::temp_dir().join(format!("zaklon-Ђорђе-Ćirović-{}", std::process::id()));
+        let engine = ENGINE_DIR.iter().fold(root.clone(), |p, c| p.join(c));
+        std::fs::create_dir_all(&engine).unwrap();
+        std::fs::create_dir_all(root.join("zim")).unwrap();
+        std::fs::write(root.join("zim").join("w_2026-01.zim"), b"zim").unwrap();
+        let arg = engine_relative("zim/w_2026-01.zim");
+        let text = arg.to_str().unwrap();
+        assert!(text.is_ascii(), "the command line stays ASCII: {text}");
+        assert!(!text.contains(if cfg!(windows) { '/' } else { '\\' }), "{text}");
+        assert!(engine.join(&arg).is_file(), "kiwix-serve finds the file from its own folder");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn reads_served_books() {
+        let feed = r#"<feed><entry><name>zimgit-water_en</name>
+            <link type="text/html" href="/kiwix/content/zimgit-water_en_2024-08" /></entry>
+            <entry><link type="text/html" href="/kiwix/content/wikibooks_sr_all_nopic_2026-07/" /></entry></feed>"#;
+        let served = parse_served_books(feed);
+        assert_eq!(served.len(), 2);
+        assert!(served.contains("zimgit-water_en_2024-08"));
+        assert!(served.contains("wikibooks_sr_all_nopic_2026-07"));
+        assert!(parse_served_books("<feed></feed>").is_empty());
     }
 
     #[test]

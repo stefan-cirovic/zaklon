@@ -11,7 +11,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 type T = (k: Key) => string;
 type Status = "not_installed" | "queued" | "downloading" | "paused" | "verifying" | "installed" | "failed";
-type Region = { id: string; name: string; name_sr: string; size: number; status: Status; bytes_done: number; error?: string };
+type Region = { id: string; name: string; name_sr: string; size: number; status: Status; bytes_done: number; error?: string; update?: boolean };
 type Country = { id: string; name: string; name_sr: string; size: number; regions: Region[] };
 type MapsReply = {
   version: number;
@@ -38,7 +38,9 @@ function countryState(c: Country) {
   const busy = c.regions.some((r) => ["queued", "downloading", "verifying"].includes(r.status));
   const failed = c.regions.some((r) => r.status === "failed");
   const done = c.regions.reduce((s, r) => s + (r.status === "installed" ? r.size : Math.min(r.bytes_done, r.size)), 0);
-  return { installed, all: installed === c.regions.length, some: installed > 0, busy, failed, done };
+  // Pieces of an older map version: they keep working until updated.
+  const update = c.regions.some((r) => r.status === "installed" && r.update);
+  return { installed, all: installed === c.regions.length, some: installed > 0, busy, failed, done, update };
 }
 
 /** Clipboard, with a fallback for web views that do not allow it. */
@@ -194,13 +196,13 @@ export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: bool
                   </div>
                 </div>
                 <div className="row">
-                  {s.all ? (
+                  {s.all && !s.update ? (
                     <span className="ok">{t("installed")}</span>
                   ) : s.busy ? (
                     <span className="muted">{pct}%</span>
                   ) : (
                     <button className="btn small" onClick={() => act(api(`/api/maps/${encodeURIComponent(c.id)}/download`, { method: "POST" }))}>
-                      {s.some || s.failed ? t("resume") : t("download")}
+                      {s.update ? t("packUpdate") : s.some || s.failed ? t("resume") : t("download")}
                     </button>
                   )}
                   {(s.some || s.failed) && !s.busy && (

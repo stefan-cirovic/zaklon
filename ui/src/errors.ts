@@ -17,6 +17,8 @@ const KNOWN: [RegExp, Key][] = [
   [/not enough free disk space/i, "errDisk"],
   [/battery below/i, "batteryRule"],
   [/checksum mismatch/i, "errChecksum"],
+  [/damaged or another version/i, "errFileMismatch"],
+  [/connect it and import again/i, "errImportGone"],
   [/expiry must be a date/i, "errBadDate"],
   [/name is required/i, "errNameRequired"],
   [/text is required/i, "errTextRequired"],

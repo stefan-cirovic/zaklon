@@ -25,7 +25,7 @@ type Pack = {
   license: string;
   attribution: string;
   recommended_for: string[];
-  state: { status: PackStatus; bytes_done: number; bytes_total: number; error?: string; speed: number };
+  state: { status: PackStatus; bytes_done: number; bytes_total: number; error?: string; speed: number; update_available?: boolean };
 };
 type CatalogReply = {
   packs: Pack[];
@@ -78,8 +78,9 @@ export default function Addons({ t, lang, isHub }: Props) {
     setErr(null);
     setImporting(true);
     try {
-      const r = await api<{ imported: string[] }>("/api/packs/import", { json: { dir: importDir } });
-      setNote(r.imported.length ? `${t("imported")}: ${r.imported.length}` : t("nothingToImport"));
+      // The hub copies them in the background; each pack shows its progress below.
+      const r = await api<{ importing: string[] }>("/api/packs/import", { json: { dir: importDir } });
+      setNote(r.importing.length ? `${t("importing")}: ${r.importing.length}` : t("nothingToImport"));
       load();
     } catch (e) {
       setErr(errText(t, e));
@@ -156,7 +157,7 @@ export default function Addons({ t, lang, isHub }: Props) {
           <DrivePicker t={t} value={importDir} onChange={setImportDir} label={t("importTitle")} />
           <div>
             <button className="btn secondary" onClick={doImport} disabled={!importDir.trim() || importing}>
-              {importing ? t("verifying") : t("importBtn")}
+              {importing ? `${t("importing")}…` : t("importBtn")}
             </button>
           </div>
           {note && <p className="ok">{note}</p>}
@@ -194,7 +195,14 @@ function PackRow({ p, t, lang, title, act }: { p: Pack; t: T; lang: Lang; title:
           )}
           {s.status === "installed" && (
             <>
-              <span className="ok">{t("installed")}</span>
+              {s.update_available ? (
+                <>
+                  <span className="warn">{t("packUpdateAvailable")}</span>
+                  <button className="btn" onClick={() => act(`/api/packs/${p.id}/download`)}>{t("packUpdate")}</button>
+                </>
+              ) : (
+                <span className="ok">{t("installed")}</span>
+              )}
               <ConfirmButton label={t("remove")} confirmLabel={t("yesRemove")} cancelLabel={t("cancel")} onConfirm={() => act(`/api/packs/${p.id}`, "DELETE")} />
             </>
           )}

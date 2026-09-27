@@ -45,8 +45,18 @@ pub fn hardware() -> Hardware {
 
 /// The drive that holds `path`, if it is one of ours.
 pub fn drive_of(path: &Path) -> Option<Drive> {
-    let p = path.to_string_lossy().to_uppercase();
-    drives().into_iter().filter(|d| p.starts_with(&d.path.to_uppercase())).max_by_key(|d| d.path.len())
+    let p = drive_key(path);
+    drives().into_iter().filter(|d| p.starts_with(&drive_key(Path::new(&d.path)))).max_by_key(|d| d.path.len())
+}
+
+/// A path in the form drive roots are compared in: upper case, backslashes,
+/// ending in one ("E:" and "e:/x" become "E:\" and "E:\X\").
+fn drive_key(path: &Path) -> String {
+    let mut p = path.to_string_lossy().to_uppercase().replace('/', "\\");
+    if !p.ends_with('\\') {
+        p.push('\\');
+    }
+    p
 }
 
 #[cfg(windows)]
@@ -196,6 +206,16 @@ mod tests {
             let d = drives();
             assert!(d.iter().any(|d| d.system), "the system drive is listed: {d:?}");
         }
+    }
+
+    #[test]
+    fn a_typed_drive_letter_matches_its_root() {
+        let root = drive_key(Path::new("E:\\"));
+        assert_eq!(root, "E:\\");
+        for typed in ["E:", "e:", "E:\\", "e:/packs", "E:\\Packs\\"] {
+            assert!(drive_key(Path::new(typed)).starts_with(&root), "{typed}");
+        }
+        assert!(!drive_key(Path::new("F:")).starts_with(&root));
     }
 
     #[test]

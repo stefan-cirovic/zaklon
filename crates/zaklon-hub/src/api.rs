@@ -748,17 +748,17 @@ async fn system(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<J
 async fn pack_download(State(state): State<Arc<HubState>>, _caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
     // Knowledge packs need the library engine; queue it first if it is missing.
     if let Some(pack) = state.downloads.catalog().pack(&id) {
-        if pack.category == zaklon_core::catalog::Category::Knowledge && !state.downloads.is_installed("kiwix-tools") {
+        if pack.category == zaklon_core::catalog::Category::Knowledge && state.downloads.needs_download("kiwix-tools") {
             let _ = state.downloads.enqueue("kiwix-tools");
         }
         // AI models need the AI engine.
-        if pack.category == zaklon_core::catalog::Category::Model && !state.downloads.is_installed("llama-cpp") {
+        if pack.category == zaklon_core::catalog::Category::Model && state.downloads.needs_download("llama-cpp") {
             let _ = state.downloads.enqueue("llama-cpp");
         }
         // A map piece: CoMaps needs the world overview first, phones need the app.
         if pack.category == zaklon_core::catalog::Category::Maps {
             for dep in zaklon_core::maps::BASE_IDS.into_iter().chain([zaklon_core::maps::COMAPS_APK_ID]) {
-                if dep != id && !state.downloads.is_installed(dep) {
+                if dep != id && state.downloads.needs_download(dep) {
                     let _ = state.downloads.enqueue(dep);
                 }
             }
@@ -775,9 +775,12 @@ async fn pack_pause(State(state): State<Arc<HubState>>, _caller: Caller, Path(id
 
 async fn pack_remove(State(state): State<Arc<HubState>>, caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
     tracing::info!(by = %caller.actor(), pack = %id, "pack removed");
-    // The library engine keeps knowledge packs (and its own files) open;
-    // stop it so Windows lets us delete them. It restarts by itself.
-    state.library.stop_for(Duration::from_secs(10)).await;
+    // The library engine keeps knowledge packs (and its own files) open, the
+    // AI engine its model and its own files; stop the one concerned so
+    // Windows lets us delete them. It starts again by itself.
+    if let Some(pack) = state.downloads.catalog().pack(&id).cloned() {
+        state.downloads.release(&pack).await;
+    }
     let d = state.downloads.clone();
     blocking(move || d.remove(&id)).await?.map_err(|e| bad(&e))?;
     Ok(StatusCode::NO_CONTENT)
@@ -793,9 +796,10 @@ async fn packs_import(State(state): State<Arc<HubState>>, _: Local, Json(body): 
     if !dir.is_dir() {
         return Err(bad("that folder does not exist"));
     }
+    // Only finds and queues the packs; they are copied in the background with progress.
     let d = state.downloads.clone();
-    let imported = blocking(move || d.import_from_dir(&dir)).await?.map_err(|e| bad(&e))?;
-    Ok(Json(serde_json::json!({ "imported": imported })))
+    let importing = blocking(move || d.import_from_dir(&dir)).await?.map_err(|e| bad(&e))?;
+    Ok(Json(serde_json::json!({ "importing": importing })))
 }
 
 #[derive(Deserialize)]
@@ -1157,18 +1161,16 @@ struct ModelInfo {
     sha256: String,
 }
 
-/// Installed AI models a phone can copy from the hub.
+/// Installed AI models a phone can copy from the hub. What is on disk counts
+/// (with its own checksum), which may be an older version than the catalog's.
 async fn models_list(State(state): State<Arc<HubState>>, _caller: Caller) -> Json<Vec<ModelInfo>> {
     let models = state
         .downloads
         .snapshot()
         .into_iter()
-        .filter(|v| {
-            v.pack.category == zaklon_core::catalog::Category::Model
-                && v.state.status == zaklon_core::catalog::PackStatus::Installed
-        })
+        .filter(|v| v.pack.category == zaklon_core::catalog::Category::Model)
         .filter_map(|v| {
-            let f = v.pack.files.first()?.clone();
+            let f = v.state.files.first()?.clone();
             Some(ModelInfo {
                 id: v.pack.id.clone(),
                 title_en: v.pack.title.en.clone(),
@@ -1191,11 +1193,12 @@ async fn model_file(
     headers: axum::http::HeaderMap,
 ) -> Result<Response, ApiError> {
     let pack = state.downloads.catalog().pack(&id).cloned().ok_or_else(|| not_found("no such model"))?;
-    if pack.category != zaklon_core::catalog::Category::Model || !state.downloads.is_installed(&id) {
+    let files = state.downloads.installed_files(&id);
+    if pack.category != zaklon_core::catalog::Category::Model || files.is_empty() {
         return Err(not_found("model is not installed on the hub"));
     }
-    let f = pack.files.first().ok_or_else(|| not_found("no file"))?;
-    stream_library_file(&state, f, &headers, "application/octet-stream").await
+    // The file on disk, with its own checksum (the catalog may list a newer one).
+    stream_library_file(&state, &files[0], &headers, "application/octet-stream").await
 }
 
 /// The CoMaps app for a paired phone, over the pinned TLS connection with
@@ -1203,19 +1206,19 @@ async fn model_file(
 /// (the plain-HTTP install page is only for phones that are not paired).
 async fn maps_app_file(State(state): State<Arc<HubState>>, _caller: Caller, headers: axum::http::HeaderMap) -> Result<Response, ApiError> {
     let id = zaklon_core::maps::COMAPS_APK_ID;
-    let pack = state.downloads.catalog().pack(id).cloned().ok_or_else(|| not_found("no such app"))?;
     if !state.downloads.is_installed(id) {
         return Err(not_found("the map app is not on the hub yet"));
     }
-    let f = pack.files.first().filter(|f| !f.sha256.is_empty()).ok_or_else(|| not_found("no file"))?;
+    let files = state.downloads.installed_files(id);
+    let f = files.first().filter(|f| !f.sha256.is_empty()).ok_or_else(|| not_found("no file"))?;
     stream_library_file(&state, f, &headers, "application/vnd.android.package-archive").await
 }
 
-/// Stream a verified file from the library with its SHA-256 (from the
-/// catalog) and `Range: bytes=N-` support.
+/// Stream a verified file from the library with its SHA-256 (of the file
+/// on disk) and `Range: bytes=N-` support.
 async fn stream_library_file(
     state: &HubState,
-    f: &zaklon_core::catalog::PackFile,
+    f: &crate::downloads::InstalledFile,
     headers: &axum::http::HeaderMap,
     content_type: &str,
 ) -> Result<Response, ApiError> {
@@ -1283,6 +1286,9 @@ struct MapRegionView {
     bytes_done: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    /// An older map version is on the hub.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    update: bool,
 }
 
 #[derive(Serialize)]
@@ -1340,6 +1346,7 @@ async fn maps_overview(State(state): State<Arc<HubState>>, _caller: Caller) -> R
                         status: st.status,
                         bytes_done: st.bytes_done,
                         error: st.error,
+                        update: st.update_available,
                     }
                 })
                 .collect(),
@@ -1372,13 +1379,14 @@ fn country_regions(country: &str) -> Option<Vec<String>> {
 async fn maps_country_download(State(state): State<Arc<HubState>>, _caller: Caller, Path(country): Path<String>) -> Result<StatusCode, ApiError> {
     let ids = country_regions(&country).ok_or_else(|| not_found("no such country"))?;
     // CoMaps needs the world overview first, and phones need the app.
+    // Pieces of an older map version are downloaded again too.
     for dep in zaklon_core::maps::BASE_IDS.into_iter().chain([zaklon_core::maps::COMAPS_APK_ID]) {
-        if !state.downloads.is_installed(dep) {
+        if state.downloads.needs_download(dep) {
             let _ = state.downloads.enqueue(dep);
         }
     }
     for id in ids {
-        if !state.downloads.is_installed(&id) {
+        if state.downloads.needs_download(&id) {
             state.downloads.enqueue(&id).map_err(|e| bad(&e))?;
         }
     }

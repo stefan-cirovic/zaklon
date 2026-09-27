@@ -3,7 +3,7 @@
 //! at `<root>/catalog/catalog.json` (fetched later from the project's signed
 //! catalog endpoint or imported from USB).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -102,11 +102,89 @@ pub struct PackState {
     /// Bytes per second over the last few seconds while downloading.
     #[serde(default)]
     pub speed: u64,
+    /// The pack's files on disk, as they were verified. The library, phones
+    /// and USB copies use these, so an older version keeps working until a
+    /// newer one has been verified.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<InstalledFile>,
+    /// The catalog now has another version than the one on disk.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub update_available: bool,
+    /// Old files and folders (relative to the library) still to be deleted;
+    /// they were in use when they were replaced or removed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stale: Vec<String>,
+    /// For each partial download (by library path): how many bytes are known
+    /// to be on the disk. After a power cut the download continues from there.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub synced: BTreeMap<String, u64>,
+    /// The folder a USB import copies from, so a paused import continues from it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub import_from: Option<String>,
 }
 
 impl PackState {
     pub fn not_installed(total: u64) -> Self {
-        Self { status: PackStatus::NotInstalled, bytes_done: 0, bytes_total: total, error: None, installed_version: None, speed: 0 }
+        Self {
+            status: PackStatus::NotInstalled,
+            bytes_done: 0,
+            bytes_total: total,
+            error: None,
+            installed_version: None,
+            speed: 0,
+            files: Vec::new(),
+            update_available: false,
+            stale: Vec::new(),
+            synced: BTreeMap::new(),
+            import_from: None,
+        }
+    }
+
+    /// Nothing worth remembering: not installed, nothing on disk, nothing pending.
+    pub fn is_blank(&self) -> bool {
+        self.status == PackStatus::NotInstalled
+            && self.error.is_none()
+            && self.files.is_empty()
+            && self.stale.is_empty()
+            && self.synced.is_empty()
+            && self.import_from.is_none()
+    }
+
+    /// The files on disk are exactly what the catalog lists for `pack`.
+    pub fn matches(&self, pack: &Pack) -> bool {
+        self.installed_version.as_deref() == Some(pack.version.as_str())
+            && self.files.len() == pack.files.len()
+            && pack.files.iter().all(|f| self.files.iter().any(|i| i.is(f)))
+    }
+}
+
+/// One verified file of an installed pack: where it is and what it is.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InstalledFile {
+    pub path: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha1_base64: Option<String>,
+    pub size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unpack_to: Option<String>,
+}
+
+impl InstalledFile {
+    /// Same place and same content as the catalog file `f`.
+    pub fn is(&self, f: &PackFile) -> bool {
+        self.path == f.path
+            && self.size == f.size
+            && self.sha256.eq_ignore_ascii_case(&f.sha256)
+            && self.sha1_base64 == f.sha1_base64
+            && self.unpack_to == f.unpack_to
+    }
+}
+
+impl From<&PackFile> for InstalledFile {
+    fn from(f: &PackFile) -> Self {
+        Self { path: f.path.clone(), sha256: f.sha256.clone(), sha1_base64: f.sha1_base64.clone(), size: f.size, unpack_to: f.unpack_to.clone() }
     }
 }
 
@@ -131,9 +209,14 @@ impl Pack {
             (f.sha256.len() == 64 && f.sha256.chars().all(|c| c.is_ascii_hexdigit()))
                 || (f.sha256.is_empty() && f.sha1_base64.as_deref().is_some_and(|h| h.len() == 28))
         };
-        id_ok
-            && !self.files.is_empty()
-            && self.files.iter().all(|f| is_safe_relative(&f.path) && f.unpack_to.as_deref().is_none_or(is_safe_relative) && hash_ok(f))
+        // A (zip) archive says where it unpacks to; a default folder could wipe
+        // other programs. Only archives have such a folder.
+        let unpack_ok = |f: &PackFile| match (f.unpack.as_deref(), &f.unpack_to) {
+            (Some("zip"), Some(dir)) => is_safe_relative(dir),
+            (None, None) => true,
+            _ => false,
+        };
+        id_ok && !self.files.is_empty() && self.files.iter().all(|f| is_safe_relative(&f.path) && unpack_ok(f) && hash_ok(f))
     }
 }
 
@@ -200,12 +283,52 @@ mod tests {
                 let encoded = name.replace(' ', "%20");
                 for u in &f.urls {
                     assert!(u.starts_with("https://"), "{u}");
+                    // A branch can be re-uploaded under the same name; a commit cannot.
+                    assert!(!u.contains("/resolve/main/"), "pin Hugging Face files to a commit: {u}");
                     let file_part = u.rsplit('/').next().unwrap();
                     assert!(file_part == name || file_part.replace("%20", " ") == name || u.ends_with(&encoded) || p.id.starts_with("map:") || p.id == "comaps-app",
                         "mirror URL must point at the file: {u}");
                 }
             }
         }
+    }
+
+    #[test]
+    fn installed_files_are_compared_with_the_catalog() {
+        let c = Catalog::bundled();
+        let pack = c.pack("kiwix-tools").unwrap().clone();
+        let mut st = PackState::not_installed(pack.size);
+        assert!(st.is_blank());
+        assert!(!st.matches(&pack), "nothing on disk");
+        st.installed_version = Some(pack.version.clone());
+        st.files = pack.files.iter().map(InstalledFile::from).collect();
+        assert!(st.matches(&pack));
+        assert!(!st.is_blank());
+        // A new version with a new file name.
+        let mut newer = pack.clone();
+        newer.version = "9.9.9".into();
+        newer.files[0].path = "bin/kiwix-tools-9.9.9.zip".into();
+        assert!(!st.matches(&newer));
+        // The same file name republished with other content.
+        let mut republished = pack.clone();
+        republished.files[0].sha256 = "0".repeat(64);
+        assert!(!st.matches(&republished));
+        // Old state files (without these fields) still load.
+        let old: PackState = serde_json::from_str(r#"{"status":"installed","bytes_done":1,"bytes_total":1,"installed_version":"1"}"#).unwrap();
+        assert!(old.files.is_empty() && !old.update_available && old.synced.is_empty());
+    }
+
+    #[test]
+    fn archives_must_name_their_folder() {
+        let c = Catalog::bundled();
+        let mut pack = c.pack("kiwix-tools").unwrap().clone();
+        assert!(pack.is_safe());
+        pack.files[0].unpack_to = None;
+        assert!(!pack.is_safe(), "unpacking into a default folder could wipe other programs");
+        pack.files[0].unpack = None;
+        assert!(pack.is_safe(), "a plain file");
+        pack.files[0].unpack_to = Some("bin/x".into());
+        assert!(!pack.is_safe(), "a folder only for archives");
     }
 
     #[test]

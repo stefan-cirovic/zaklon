@@ -26,6 +26,12 @@ export type CopyItem = { key: string; label: string; ids: string[]; size: number
 
 const FAT_LIMIT = 4294967295;
 
+/** A path in the form drive roots are compared in, so "E:" typed by hand is the drive "E:\". */
+function rootKey(p: string) {
+  const k = p.toUpperCase().replace(/\//g, "\\");
+  return k.endsWith("\\") ? k : `${k}\\`;
+}
+
 function driveLabel(t: T, d: Drive) {
   const name = d.label ? `${d.label} (${d.path.replace(/\\$/, "")})` : d.path;
   const tags = [d.kind === "removable" ? t("driveRemovable") : null, d.system ? t("driveSystem") : null, d.file_system].filter(Boolean);
@@ -93,7 +99,7 @@ export function CopyToUsb({ t, items }: { t: T; lang: Lang; items: CopyItem[] })
   const apps = job?.apps ?? [];
   const appsOn = withApps && apps.length > 0;
   const size = chosen.reduce((s, i) => s + i.size, 0) + (appsOn ? apps.reduce((s, [, n]) => s + n, 0) : 0);
-  const drive = useMemo(() => drives.filter((d) => dir.toUpperCase().startsWith(d.path.toUpperCase())).sort((a, b) => b.path.length - a.path.length)[0], [drives, dir]);
+  const drive = useMemo(() => drives.filter((d) => rootKey(dir).startsWith(rootKey(d.path))).sort((a, b) => b.path.length - a.path.length)[0], [drives, dir]);
   const tooBig = drive && size > drive.free;
   const fat = drive && drive.file_system.toUpperCase().startsWith("FAT") && drive.file_system.toUpperCase() !== "EXFAT";
   const fatProblem = fat && chosen.some((i) => i.size > FAT_LIMIT && i.ids.length === 1);
