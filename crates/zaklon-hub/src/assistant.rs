@@ -452,7 +452,10 @@ impl Assistant {
         self.update(id, |a| a.status = AnswerStatus::Starting);
         let port = self.ensure_running().await?;
         self.update(id, |a| a.status = AnswerStatus::Searching);
-        let plan = self.plan(port, question, language).await;
+        let mut plan = self.plan(port, question, language).await;
+        if plan.kind == "library" && mentions_supplies(question) {
+            plan.kind = "supplies_question".into();
+        }
 
         // 2a. A change to the supplies: propose it, change nothing.
         if plan.kind == "supplies_change" {
@@ -596,7 +599,7 @@ quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; categor
                 ("Koliko dugo traje hleb?", r#"{"kind":"library","terms":["hleb","rok trajanja"]}"#),
                 ("Kako da izlečim prehladu kod deteta?", r#"{"kind":"library","terms":["prehlada","lečenje","dete"]}"#),
                 ("Koliko imam brašna?", r#"{"kind":"supplies_question","terms":["brašno"]}"#),
-                ("Šta mi uskoro ističe?", r#"{"kind":"supplies_question","terms":[]}"#),
+                ("Šta imam u zalihama?", r#"{"kind":"supplies_question","terms":[]}"#),
                 ("Dodaj 2 litra mleka", r#"{"kind":"supplies_change","terms":["mleko"],"change":{"action":"add","name":"mleko","quantity":2,"unit":"l","category":"drink"}}"#),
                 ("Potrošili smo 3 konzerve pasulja", r#"{"kind":"supplies_change","terms":["pasulj"],"change":{"action":"use","name":"pasulj","quantity":3,"unit":"pcs","category":"food"}}"#),
             ]
@@ -605,7 +608,7 @@ quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; categor
                 ("How long does bread last?", r#"{"kind":"library","terms":["bread","shelf life"]}"#),
                 ("How do I treat a cold in a child?", r#"{"kind":"library","terms":["common cold","treatment","child"]}"#),
                 ("How much flour do we have?", r#"{"kind":"supplies_question","terms":["flour"]}"#),
-                ("What expires soon?", r#"{"kind":"supplies_question","terms":[]}"#),
+                ("What do we have in the supplies?", r#"{"kind":"supplies_question","terms":[]}"#),
                 ("Add 2 liters of milk", r#"{"kind":"supplies_change","terms":["milk"],"change":{"action":"add","name":"milk","quantity":2,"unit":"l","category":"drink"}}"#),
                 ("We used 3 cans of beans", r#"{"kind":"supplies_change","terms":["beans"],"change":{"action":"use","name":"beans","quantity":3,"unit":"pcs","category":"food"}}"#),
             ]
@@ -679,7 +682,20 @@ quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; categor
                 passage_stems.push(f);
             }
         }
-        let queries: Vec<String> = terms.iter().take(6).cloned().collect();
+        let mut queries: Vec<String> = terms.iter().take(4).cloned().collect();
+        // "ubod pčele" is also looked up as "ubod" and "pčel(a)".
+        for t in terms.iter().take(4) {
+            let words: Vec<&str> = t.split_whitespace().collect();
+            if words.len() > 1 {
+                for w in words {
+                    let st = stem(w);
+                    if st.chars().count() >= 4 && !queries.contains(&st) {
+                        queries.push(st);
+                    }
+                }
+            }
+        }
+        queries.truncate(8);
 
         // (score, order found, result)
         let mut found: Vec<(i32, usize, crate::kiwix::SearchResult)> = Vec::new();
@@ -702,9 +718,18 @@ quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; categor
                         score += 1;
                     }
                 }
-                // Disambiguation and list pages rarely help.
+                // Disambiguation and list pages rarely help, and a dictionary
+                // entry only explains the word.
                 if title.contains("вишезначн") || title.contains("списак") {
                     score -= 3;
+                }
+                let book = r.book.to_lowercase();
+                if book.contains("wiktionary") || book.contains("dictionary") {
+                    score -= 3;
+                }
+                // The same title from another book adds nothing.
+                if found.iter().any(|(_, _, f)| zaklon_core::translit::fold(&f.title) == title) {
+                    continue;
                 }
                 let order = found.len();
                 found.push((score, order, r));
@@ -802,6 +827,18 @@ pub fn parse_plan(text: &str) -> Plan {
         }
         Err(_) => Plan { kind: "library".into(), terms: parse_keywords(text), change: None },
     }
+}
+
+/// Questions that are clearly about the household's own supplies, whatever
+/// the model thought ("Šta imam u zalihama?", "What do we have?").
+pub fn mentions_supplies(question: &str) -> bool {
+    let q = plain(question);
+    const MARKS: &[&str] = &[
+        "zalih", "u kuci imam", "sta imam", "koliko imam", "imamo li", "da li imam", "sta imamo", "koliko imamo", "istice", "isticu", "istekl",
+        "lista za kupovinu", "listu za kupovinu", "listi za kupovinu", "ponestaje", "supplies", "pantry", "do we have", "do i have", "how much do we",
+        "shopping list", "expire", "running low",
+    ];
+    MARKS.iter().any(|m| q.contains(m))
 }
 
 /// The stored item a spoken name most likely means ("mleka" -> "Mleko 2,8%").
@@ -1352,6 +1389,15 @@ mod tests {
             "updated_at": "2026-09-28T00:00:00Z", "updated_by": null, "batches": []
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn supply_words_are_recognised() {
+        assert!(mentions_supplies("Šta imam u zalihama?"));
+        assert!(mentions_supplies("sta mi istice ove nedelje"));
+        assert!(mentions_supplies("What's on the shopping list?"));
+        assert!(!mentions_supplies("Kako se leči ubod pčele?"));
+        assert!(!mentions_supplies("How do I treat a burn?"));
     }
 
     #[test]
