@@ -37,3 +37,6 @@ apps/zaklon/src-tauri/gen/android/app/src/main/llama-libs/
 
 # Phone app bundled into the Windows installer by scripts/build-all.sh
 apps/zaklon/src-tauri/windows/zaklon.apk
+
+# Temporary copies used by parallel agents
+.claude/worktrees/
