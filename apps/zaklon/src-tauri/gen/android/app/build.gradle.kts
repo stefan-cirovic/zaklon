@@ -19,7 +19,7 @@ android {
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
         applicationId = "com.zaklon.app"
-        // Android 9: the minimum agreed for Zaklon, and what llama.cpp is built for.
+        // Android 9: the minimum Android version Zaklon supports, and what llama.cpp is built for.
         minSdk = 28
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()

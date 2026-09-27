@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-28",
+  "generated": "2026-09-27",
   "packs": [
     {
       "id": "wikipedia-sr-maxi",
@@ -22,7 +22,7 @@
         "sr"
       ],
       "license": "CC BY-SA 4.0",
-      "attribution": "Wikipedia contributors",
+      "attribution": "Wikipedia contributors, sr.wikipedia.org (images keep their own licenses); ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -54,7 +54,7 @@
       ],
       "recommended_for": [],
       "license": "CC BY-SA 4.0",
-      "attribution": "Wikipedia contributors",
+      "attribution": "Wikipedia contributors, sr.wikipedia.org; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -75,7 +75,7 @@
         "sr": "Vikipedija na srpskom (sažeci)"
       },
       "description": {
-        "en": "Introductions of every Serbian Wikipedia article. Small and fast.",
+        "en": "The introduction of every Serbian Wikipedia article. Small and fast.",
         "sr": "Uvodi svih članaka srpske Vikipedije. Malo i brzo."
       },
       "category": "knowledge",
@@ -86,7 +86,7 @@
       ],
       "recommended_for": [],
       "license": "CC BY-SA 4.0",
-      "attribution": "Wikipedia contributors",
+      "attribution": "Wikipedia contributors, sr.wikipedia.org; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -120,7 +120,7 @@
         "sr"
       ],
       "license": "CC BY-SA 4.0",
-      "attribution": "Wiktionary contributors",
+      "attribution": "Wiktionary contributors, sr.wiktionary.org; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -155,7 +155,7 @@
         "en"
       ],
       "license": "CC BY-SA 4.0",
-      "attribution": "Wikipedia contributors",
+      "attribution": "Wikipedia contributors and WikiProject Medicine, en.wikipedia.org (images keep their own licenses); ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -190,7 +190,7 @@
         "en"
       ],
       "license": "CC BY-NC-SA 3.0",
-      "attribution": "iFixit",
+      "attribution": "iFixit and its contributors, ifixit.com; non-commercial use only, copies must not be sold; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -211,7 +211,7 @@
         "sr": "Vikipedija na engleskom (sažeci)"
       },
       "description": {
-        "en": "Introductions of every English Wikipedia article.",
+        "en": "The introduction of every English Wikipedia article.",
         "sr": "Uvodi svih članaka engleske Vikipedije."
       },
       "category": "knowledge",
@@ -224,7 +224,7 @@
         "en"
       ],
       "license": "CC BY-SA 4.0",
-      "attribution": "Wikipedia contributors",
+      "attribution": "Wikipedia contributors, en.wikipedia.org; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -256,7 +256,7 @@
       ],
       "recommended_for": [],
       "license": "CC BY-SA 4.0",
-      "attribution": "Wikipedia contributors",
+      "attribution": "Wikipedia contributors, en.wikipedia.org; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -290,8 +290,8 @@
         "sr",
         "en"
       ],
-      "license": "Various (redistributed as published)",
-      "attribution": "Various authors, collected by Kiwix",
+      "license": "Various; see each document",
+      "attribution": "Various authors, collected by Kiwix; each document keeps its own author and terms",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -325,8 +325,8 @@
         "sr",
         "en"
       ],
-      "license": "Various (redistributed as published)",
-      "attribution": "Various authors, collected by Kiwix",
+      "license": "Various; see each document",
+      "attribution": "Various authors, collected by Kiwix; each document keeps its own author and terms",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -360,8 +360,8 @@
         "sr",
         "en"
       ],
-      "license": "Various (redistributed as published)",
-      "attribution": "Various authors, collected by Kiwix",
+      "license": "Various; see each document",
+      "attribution": "Various authors, collected by Kiwix; each document keeps its own author and terms",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -382,7 +382,7 @@
         "sr": "Medicinska Vikipedija (engleski, sažeci)"
       },
       "description": {
-        "en": "Introductions of all medical articles from English Wikipedia. Small and fast.",
+        "en": "The introductions of all medical articles from English Wikipedia. Small and fast.",
         "sr": "Uvodi svih medicinskih članaka engleske Vikipedije. Malo i brzo."
       },
       "category": "knowledge",
@@ -396,7 +396,7 @@
         "en"
       ],
       "license": "CC BY-SA 4.0",
-      "attribution": "Wikipedia contributors",
+      "attribution": "Wikipedia contributors and WikiProject Medicine, en.wikipedia.org; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -413,11 +413,11 @@
     {
       "id": "nhs-medicines-en",
       "title": {
-        "en": "Medicines A-Z from the NHS (English)",
+        "en": "Medicines A to Z from the NHS (English)",
         "sr": "Lekovi od A do Š, NHS (engleski)"
       },
       "description": {
-        "en": "What common medicines are for, how to take them and their side effects, from the UK health service.",
+        "en": "What common medicines are for, how to take them and their side effects, from the UK's National Health Service (NHS).",
         "sr": "Čemu služe uobičajeni lekovi, kako se piju i koja su neželjena dejstva, od britanske zdravstvene službe."
       },
       "category": "knowledge",
@@ -431,7 +431,7 @@
         "en"
       ],
       "license": "Open Government Licence v3.0",
-      "attribution": "NHS (nhs.uk)",
+      "attribution": "Contains public sector information licensed under the Open Government Licence v3.0 (NHS website, nhs.uk)",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -465,7 +465,7 @@
         "sr"
       ],
       "license": "CC BY-SA 4.0",
-      "attribution": "Wikibooks contributors",
+      "attribution": "Wikibooks contributors, sr.wikibooks.org; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -496,8 +496,8 @@
         "eng"
       ],
       "recommended_for": [],
-      "license": "CC BY-SA 4.0",
-      "attribution": "Stack Exchange contributors",
+      "license": "CC BY-SA (2.5, 3.0 or 4.0, by post date)",
+      "attribution": "Stack Exchange contributors, gardening.stackexchange.com; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -528,8 +528,8 @@
         "eng"
       ],
       "recommended_for": [],
-      "license": "CC BY-SA 4.0",
-      "attribution": "Stack Exchange contributors",
+      "license": "CC BY-SA (2.5, 3.0 or 4.0, by post date)",
+      "attribution": "Stack Exchange contributors, sustainability.stackexchange.com; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -561,7 +561,7 @@
       ],
       "recommended_for": [],
       "license": "CC BY-SA 3.0",
-      "attribution": "Gardenology.org contributors",
+      "attribution": "Gardenology.org contributors, gardenology.org; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -593,7 +593,7 @@
       ],
       "recommended_for": [],
       "license": "Public domain (U.S. government work)",
-      "attribution": "U.S. Department of Agriculture",
+      "attribution": "U.S. Department of Agriculture, Complete Guide to Home Canning; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
       "files": [
         {
@@ -623,7 +623,7 @@
       "languages": [],
       "recommended_for": [],
       "license": "GPL-3.0-or-later",
-      "attribution": "Kiwix",
+      "attribution": "Kiwix (kiwix.org)",
       "source": "https://kiwix.org",
       "files": [
         {
@@ -654,7 +654,7 @@
       "languages": [],
       "recommended_for": [],
       "license": "MIT",
-      "attribution": "llama.cpp contributors",
+      "attribution": "llama.cpp contributors (ggml-org)",
       "source": "https://github.com/ggml-org/llama.cpp",
       "files": [
         {
@@ -685,7 +685,7 @@
       "languages": [],
       "recommended_for": [],
       "license": "Apache-2.0",
-      "attribution": "Qwen team, Alibaba Cloud",
+      "attribution": "Qwen team, Alibaba Cloud (model); GGUF conversion by ggml-org",
       "source": "https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF",
       "files": [
         {
@@ -714,7 +714,7 @@
       "languages": [],
       "recommended_for": [],
       "license": "Apache-2.0",
-      "attribution": "Qwen team, Alibaba Cloud",
+      "attribution": "Qwen team, Alibaba Cloud (model); GGUF conversion by Unsloth",
       "source": "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF",
       "files": [
         {
@@ -734,7 +734,7 @@
         "sr": "AI model za laptopove (Qwen3.5 4B)"
       },
       "description": {
-        "en": "Recommended for laptops with 12 GB of memory. Clearly better answers.",
+        "en": "Recommended for laptops with 12 GB of memory. Noticeably better answers than the smaller models.",
         "sr": "Preporučen za laptopove sa 12 GB memorije. Znatno bolji odgovori."
       },
       "category": "model",
@@ -743,7 +743,7 @@
       "languages": [],
       "recommended_for": [],
       "license": "Apache-2.0",
-      "attribution": "Qwen team, Alibaba Cloud",
+      "attribution": "Qwen team, Alibaba Cloud (model); GGUF conversion by Unsloth",
       "source": "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF",
       "files": [
         {
@@ -772,7 +772,7 @@
       "languages": [],
       "recommended_for": [],
       "license": "Apache-2.0",
-      "attribution": "Qwen team, Alibaba Cloud",
+      "attribution": "Qwen team, Alibaba Cloud (model); GGUF conversion by Unsloth",
       "source": "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF",
       "files": [
         {

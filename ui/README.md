@@ -1,32 +1,14 @@
-# React + TypeScript + Vite
+# Zaklon interface
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+The React interface (TypeScript, Vite) shared by the desktop window and the Android app. The hub serves the built files from `ui/dist` (a debug hub reads them from disk, a release build embeds them), so the usual loop is: change the code, run `pnpm --filter ui build`, reload the page.
 
-Currently, two official plugins are available:
+Run from the repository root:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+| Command | What it does |
+|---|---|
+| `pnpm --filter ui dev` | Vite development server with live reload, for layout work (the interface expects the hub on the same address, so screens show no data) |
+| `pnpm --filter ui build` | Type check and production build into `ui/dist` |
+| `pnpm --filter ui lint` | Lint with oxlint |
+| `pnpm --filter ui e2e` | Playwright end-to-end tests against a real hub (build it first with `cargo build -p zaklon-hub`) |
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Translations live in `src/i18n.ts` (English and Serbian). Tests and their setup are described in [docs/TESTING.md](../docs/TESTING.md); building the whole app is described in [CONTRIBUTING.md](../CONTRIBUTING.md#building-from-source).

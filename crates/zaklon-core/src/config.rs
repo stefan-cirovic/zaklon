@@ -37,7 +37,7 @@ pub struct Config {
     pub hub_id: String,
     /// UI language ("en" or "sr").
     pub language: String,
-    /// Whether to check for app updates automatically (asked at install).
+    /// Whether to check for app updates once a day (on by default; switched in Household).
     pub auto_update_check: bool,
 }
 

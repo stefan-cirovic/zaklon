@@ -91,7 +91,7 @@ impl Drop for LocalAi {
 }
 
 /// Clears the loading flag when the `start` call that set it ends (also
-/// when that call is cancelled), but never a flag set by another call.
+/// when that call is canceled), but never a flag set by another call.
 struct StartingGuard<'a> {
     starting: &'a Mutex<Option<u64>>,
     id: u64,

@@ -17,7 +17,7 @@ pub const MINIMIZED_ARG: &str = "--minimized";
 /// Where the household's data lives.
 /// - `ZAKLON_ROOT` if set (tests, a second hub on one machine);
 /// - `<install folder>\data` for an installed copy (the folder chosen in the
-///   installer), so program and data sit together as agreed;
+///   installer), so program and data sit together;
 /// - otherwise the default (`%LOCALAPPDATA%\Zaklon`), e.g. for development builds.
 pub fn data_root() -> PathBuf {
     if let Ok(p) = std::env::var("ZAKLON_ROOT") {

@@ -1,6 +1,8 @@
 # Zaklon 1.0 — Product and Technical Specification
 
-Status: draft for approval · Last updated: 2026-09-25
+Status: working draft · Last updated: 2026-09-27
+
+> This spec describes the 1.0 target. Where the current build differs, [the roadmap](roadmap.md) and the code are current. Notes marked *Current build* describe what exists today.
 
 Zaklon (Serbian for "shelter") is a free, open-source, offline-first home base. A laptop runs the hub; the household's Android phones connect to it over local Wi-Fi, with or without internet. It keeps the family's knowledge library, maps, supplies and a local AI assistant working when everything else is down, and it is just as useful on an ordinary day.
 
@@ -9,7 +11,7 @@ Zaklon (Serbian for "shelter") is a free, open-source, offline-first home base. 
 1. **Works offline by default.** Internet is an optional convenience, never a requirement.
 2. **Local only.** No accounts, no telemetry, no cloud. The household owns its data as plain files in one folder.
 3. **Free forever.** GPL-3.0-or-later. Donations are optional and never unlock features.
-4. **Transparent.** Public repository from the first commit; every outbound network call is documented and user-initiated.
+4. **Transparent.** Public repository from the first commit; every outbound network call is documented in `docs/network.md`. All of them are started by the user, except a daily update check that is on by default and can be switched off.
 5. **Light.** Small installer, low idle memory, no animations, runs on a mid-range laptop on battery.
 6. **Trust inside the household.** No admin role; anyone with the household password has equal rights.
 
@@ -50,9 +52,9 @@ Performance targets: installer under 100 MB without content; hub idle under 200 
 ```
 ┌──────────────── Laptop (hub) ─────────────────┐      ┌──── Phone ────┐
 │ Tauri 2 desktop shell (React UI, system WebView)│      │ Tauri 2 app   │
-│ zaklon-hub (Rust daemon, tray service)          │◄TLS─►│ React UI      │
-│  ├ HTTP/JSON API + static UI                    │      │ SQLite cache  │
-│  ├ SQLite (household, profiles, catalog)        │      │ llama.cpp     │
+│ zaklon-hub (Rust, runs inside the app)          │◄TLS─►│ React UI      │
+│  ├ HTTP/JSON API + static UI                    │      │ offline copy  │
+│  ├ SQLite (household data)                      │      │ llama.cpp     │
 │  ├ mDNS/DNS-SD advert + UDP beacon              │      │ (small model) │
 │  ├ Hotspot control (Windows Mobile Hotspot)     │      │ camera/barcode│
 │  ├ sidecar: kiwix-serve (library)               │      └───────────────┘
@@ -60,30 +62,30 @@ Performance targets: installer under 100 MB without content; hub idle under 200 
 └─────────────────────────────────────────────────┘
 ```
 
-- **Hub daemon** (`zaklon-hub`, Rust): axum HTTP server, SQLite via sqlx/rusqlite, embedded React build, DNS-SD advertisement, download manager, backup, sidecar supervision. Runs as a tray application started at login; the desktop window is a Tauri 2 shell over the same UI the phone uses.
+- **Hub** (`zaklon-hub`, Rust): axum HTTP server, SQLite via rusqlite, embedded React build, DNS-SD advertisement, download manager, backup, sidecar supervision. It runs inside the desktop app's process (Tauri 2), which starts at login and keeps running in the tray when its window is closed; the window shows the same UI the phone uses. For testing, the hub also runs on its own (`zaklon-hub --root <folder>`).
 - **Sidecars** are separate processes and separate programs (GPL "mere aggregation"): `kiwix-serve` (GPLv3+) serves ZIM files and its search API; `llama-server` from llama.cpp (MIT) exposes an OpenAI-compatible API bound to localhost only. The hub proxies both to authenticated clients.
-- **Phone app** (Tauri 2 Android): same React UI, Rust core shared with the hub for models and sync, Kotlin plugins for camera/barcode, on-device inference (llama.cpp via JNI) and foreground download service.
-- **Single install folder** chosen at install time (default `C:\Zaklon`):
+- **Phone app** (Tauri 2 Android): same React UI and a small Rust layer (pinned-TLS client, read-only proxy for library articles, on-device AI). Barcode scanning uses the Tauri barcode scanner plugin, which is built on Google ML Kit (Google Play services). On-device AI runs llama.cpp's `llama-server`, bundled in the app, as a separate process on 127.0.0.1; models are copied from the hub over Wi-Fi while the screen is kept on.
+- **Single install folder** chosen at install time. The installer is per-user (its default folder is under `%LOCALAPPDATA%`); the program files sit in the chosen folder and the household's data in its `data` subfolder:
 
 ```
-Zaklon/
-  app/          program files (managed by the installer)
-  library/      packs: zim/, maps/, models/, apk/
-  household/    household.db, photos/, history
-  profiles/     <profile-id>/profile.db (+ encrypted if a personal password is set)
-  catalog/      catalog.json, signatures, download state
-  backups/      default target for backup archives
-  logs/
+Zaklon/            program files (managed by the installer)
+  data/
+    household/    household.db, hub.json, tls/
+    library/      packs: zim/, maps/, models/, apk/; bin/ (library and AI engines); installer/
+    profiles/     <profile-id>/profile.db (+ encrypted if a personal password is set; profiles are planned)
+    catalog/      download state; an optional newer catalog.json
+    backups/      daily backups and backups made by hand
+    logs/
 ```
 
-Everything under `Zaklon/` except `app/` is user data. Moving the folder to another disk and pointing the app at it must work.
+Everything under `data/` is user data, and uninstalling keeps it. Moving the folder to another disk and pointing the app at it must work.
 
 ### 4.1 Networking and pairing
 - The hub listens on TCP 8484 with TLS (self-signed certificate generated on first run) for phones, on 127.0.0.1:8481 without TLS for the desktop window, and on TCP 8480 without TLS for the "install the app" page and APK files only.
-- Discovery: DNS-SD `_zaklon._tcp` plus a UDP beacon on 8485 for networks that block mDNS; the pairing QR embeds `{host, port, certSha256, token}` so discovery is never required.
-- **Pairing flow**: Household → Add device → QR appears on the laptop. On the phone: install the app from `http://<hub>:8480/get` (the address is shown next to the QR), scan the QR, enter the household password. The phone pins the certificate fingerprint and receives a long-lived device token. All later traffic is TLS with the pinned certificate; the household password is never stored on the phone.
-- **Laptop as access point**: Household → "Create Wi-Fi network" toggles Windows Mobile Hotspot (SSID `Zaklon`, password shown on screen). Phones join it like any Wi-Fi network.
-- Devices are listed with name, platform, last seen; any paired member can rename or remove a device.
+- Discovery: DNS-SD `_zaklon._tcp` plus a UDP beacon on 8485 for networks that block mDNS; the pairing QR carries the hub's addresses, port, certificate fingerprint, a 6-digit pairing code, the hub name and the install-page port, so discovery is never required.
+- **Pairing flow**: Household → Add a phone → QR appears on the laptop. On the phone: install the app from `http://<hub>:8480/get` (the address is shown next to the QR), scan the QR, enter the household password. The phone pins the certificate fingerprint and receives a long-lived device token. All later traffic is TLS with the pinned certificate; the household password is never stored on the phone.
+- **Laptop as access point**: Household → "Wi-Fi network from this laptop" switches on the Mobile hotspot built into Windows (SSID `Zaklon`, password and a QR code to join shown on screen). Phones join it like any Wi-Fi network.
+- Devices are listed with name, platform and last seen. The laptop can rename or remove any phone; a phone can rename or remove only itself.
 
 ### 4.2 Security model
 - One household password (minimum 8 characters, no other rules) set at install; changeable by anyone at the laptop; reset from the laptop requires no proof (physical access is trust).
@@ -95,6 +97,7 @@ Everything under `Zaklon/` except `app/` is user data. Moving the folder to anot
 - Hub SQLite is the source of truth. Every row carries a hybrid logical clock and the device id of the last writer.
 - Phones keep a local SQLite copy of the household data and an outbox of operations; sync exchanges operations since the last cursor. Conflicts on supplies resolve per field, last writer wins; history is append-only, so nothing is silently lost.
 - Phones can work offline against the cache and reconcile when the hub is reachable. Private profile data syncs the same way but only to devices unlocked for that profile.
+- *Current build:* there is no per-row clock yet. A phone keeps its last copy of the supplies for reading, and an outbox of shopping-list changes that the hub applies when the phone is back; the hub recognizes a repeated change by its id. Other changes need the hub.
 
 ## 5. Data model
 
@@ -121,7 +124,7 @@ Hub status (reachable, battery level and charging state, disk free), device coun
 Installed packs, unified full-text search across packs (via kiwix-serve), reader view, "Open in assistant" from any article. Packs are served from the hub; a phone can optionally download a pack for use away from the hub.
 
 ### Maps
-Explains and launches CoMaps. The hub serves the CoMaps APK and map files in the layout CoMaps expects as a custom map server, so phones download maps without internet. A "Balkans" and a "World base" pack are offered by default; other regions via the catalog.
+Explains and launches CoMaps. The hub serves the CoMaps APK and map files in the layout CoMaps expects as a custom map server, so phones download maps without internet. The whole world is offered in pieces (countries, and regions of large countries) exactly as CoMaps publishes them; the Serbia map is part of the Serbian starter set.
 
 ### Supplies
 List and grid views, filters by category/place/expiry, search. Add item manually or by scanning a barcode with the phone camera; unknown barcodes are named once and remembered locally. Consume/add quantity with one tap; running-low and shopping lists; history view; CSV export.
@@ -132,34 +135,33 @@ Chat per profile. Capabilities in 1.0:
 - Searches the library and cites sources as links to the article.
 - Answers questions about supplies from the household database.
 - Edits supplies on request ("add 2 kg flour", "we used the oil") with an explicit confirmation card before writing.
-- Simple memory: proposes facts to remember; saved only on confirmation; visible and editable in profile settings.
-- Online research: off by default; a per-conversation "Online" switch, a visible indicator while on, and a log of every request. Default search: DuckDuckGo (no key); optional user-provided Brave Search key in settings. Findings can be saved to the library with one click.
+- Simple memory: proposes facts to remember; saved only on confirmation; visible and editable in profile settings. *Current build:* until profiles exist, the notes are shared by the household and listed on the Assistant screen ("What the assistant remembers").
+- Online research: off by default; a per-conversation switch and a visible indicator while on. The pages it read are listed as sources. Search: DuckDuckGo (no key). *Not in the current build:* an optional Brave Search key and saving findings to the library.
 - Declines medical dosing advice and does not invent sources; says when it does not know.
-- Model lifecycle: loaded on first question, unloaded after 5 minutes idle; warns when battery is below 20%.
+- Model lifecycle: loaded when the Assistant screen opens or on the first question, stopped after 20 minutes without questions, and can be stopped at once to free the memory. There is no low-battery warning yet.
 
 ### Add-ons
-Catalog screen with recommended packs by UI language ("English essentials" ≈ 17 GB: Medical Wikipedia + English Wikipedia mini; "Serbia core" ≈ 21 GB: Serbian Wikipedia, Medical Wikipedia, Serbian Wiktionary, iFixit, selected Stack Exchange sites), maps, and AI models with a "recommended for this computer" badge. Downloads require at least 50% battery (or charger) and enough free space; they resume after interruption and verify hashes and signatures. "Export to USB" and "Import from USB" move packs between hubs without internet.
+Catalog screen with a starter set by UI language, downloaded with one button together with the AI model that fits the computer ("Basic pack for Serbia": Serbian Wikipedia with pictures, Serbian Wiktionary, Medical Wikipedia, iFixit, the safe water and first-aid guides and the Serbia map; "English essentials": English Wikipedia summaries, Medical Wikipedia, iFixit and the same guides), maps, and AI models with a "recommended for this computer" badge. Downloads require at least 50% battery (or the charger) and enough free space; they resume after interruption and verify hashes (and signatures, once the catalog is signed). "Export to USB" and "Import from USB" move packs between hubs without internet.
 
 ### Household
-Devices, profiles, backup/restore, hub status and hardware summary, "Create Wi-Fi network", updates (check now; automatic check on/off, default on as chosen at install), language, accent color, install folder, licenses and attribution, privacy statement.
+Devices, profiles, backup/restore, hub status and hardware summary, "Wi-Fi network from this laptop", updates (check now; automatic daily check on/off, on by default), language, accent color, data folder, licenses and attribution, privacy statement.
 
 ## 7. AI
 
-**Models offered in 1.0** (all Apache-2.0, GGUF via llama.cpp):
+**Models offered in 1.0** (all Apache-2.0, GGUF files converted by ggml-org and Unsloth, run by llama.cpp):
 
 | Model | Download | Runs on | Notes |
 |---|---|---|---|
-| Qwen3.5-0.8B | ~0.6 GB | phones with 4 GB | fallback when the hub is unreachable |
-| Qwen3.5-2B | ~2 GB | 8 GB laptops, phones with 6 GB+ | fast, reads images |
-| Qwen3.5-4B | ~3.5 GB | 12–16 GB laptops (recommended) | best balance on CPU |
-| Gemma 4 E4B | ~6 GB | 16 GB laptops | adds audio; slower on CPU |
-| Qwen3.5-9B | ~6 GB | GPU with 8 GB VRAM or 32 GB RAM | best answers |
+| Qwen3.5-0.8B (Q8_0) | 0.83 GB | phones with 4 GB | fastest, basic answers; fallback when the hub is unreachable |
+| Qwen3.5-2B (Q4_K_M) | 1.28 GB | phones with 6 GB or more, older laptops | good balance, understands Serbian |
+| Qwen3.5-4B (Q4_K_M) | 2.74 GB | laptops with 12 GB (recommended) | noticeably better answers |
+| Qwen3.5-9B (Q4_K_M) | 5.68 GB | computers with 16 GB or more | best answers, slower |
 
 The list ships in the catalog and can change without an app release.
 
-**Selection**: on first run and on demand the app reads RAM, CPU, GPU/VRAM, free disk and battery, and marks one model "recommended" with size, expected speed (slow / fine / fast) and abilities (text, images, audio). The user may install several and switch the active one at any time. The phone has its own list and recommendation.
+**Selection**: on first run and on demand the app reads RAM, CPU, GPU/VRAM, free disk and battery, and marks one model "recommended" with size, expected speed (slow / fine / fast) and what it is good for. The user may install several and switch the active one at any time. The phone has its own list and recommendation.
 
-**Default model** is chosen by a fixed test: ten identical questions in Serbian (Latin script) and English per model, rated by the founder. The test set lives in `docs/ai-eval.md`.
+**Default model** is chosen by a fixed test: ten identical questions in Serbian (Latin script) and English per model, rated by a native speaker. The test set lives in `docs/ai-eval.md`.
 
 **Retrieval**: no vector database in 1.0. Library search uses the full-text index inside ZIM files through kiwix-serve; supplies are queried from SQLite; notes by text search. The model calls these as tools.
 
@@ -167,11 +169,11 @@ The list ships in the catalog and can change without an app release.
 
 ## 8. Add-on catalog and updates
 
-- `catalog.json` is signed with minisign; the public key is embedded in the app and published in the repository.
-- Each entry: id, title (i18n), category (knowledge | maps | model | app), version, size, files (URL list with mirrors, SHA-256, optional BLAKE3 chunk hashes), license, attribution text, minimum app version.
-- Large third-party files are not mirrored: knowledge packs point to Kiwix, maps to CoMaps, models to Hugging Face. Zaklon's own packs live on Cloudflare R2.
+- `catalog.json` is built into the app. Planned: a catalog signed with minisign, with the public key embedded in the app and published in the repository. *Not in the current build:* signing and fetching a newer catalog.
+- Each entry: id, title and description (i18n), category (knowledge | maps | model | app), version, size, files (URL list with mirrors, SHA-256, or the SHA-1 CoMaps publishes for map files), license, attribution text, source link, languages and the UI languages it is recommended for.
+- Large third-party files are not mirrored: knowledge packs point to Kiwix, maps to CoMaps, models to Hugging Face. Zaklon's own packs will live on Cloudflare R2 (planned).
 - Downloads use HTTP range requests with per-file verification; the hub can serve any installed pack to phones.
-- App updates: signed releases on GitHub; the app checks on demand or automatically (user's choice at install). Updates are never applied silently.
+- App updates: releases on GitHub (signed releases are planned; see `SECURITY.md`). The hub checks once a day (on by default; switch under Household → About → New versions) and on demand, and only tells: "Open the download page" opens the release page in the browser. The app never downloads or applies an update itself.
 
 ## 9. Localization
 
@@ -180,19 +182,19 @@ English is the default UI language; Serbian (Latin script) is selectable per pro
 ## 10. Design: "instrument panel"
 
 - Dark theme only in 1.0: near-black background (pure black optional for OLED), white text, one user-selected accent color (green, white, purple, blue, amber) used sparingly for the active tab, primary button and status. Red is reserved for warnings (expiry, running low, low battery).
-- One typeface everywhere (Inter or system sans-serif); no monospace.
+- The system sans-serif typeface everywhere, and Sora Light for the "ZAKLON" wordmark only; no monospace.
 - Thin dividers, no shadows, no gradients, no animations; state changes are instant.
 - Phone: bottom tabs (Home, Library, Maps, Supplies, Assistant, More). Laptop: left sidebar with all seven sections.
 - Large tap targets and readable default text size; no separate "large text" mode.
 - Section names in Serbian are plain: Početna, Biblioteka, Mape, Zalihe, Asistent, Dodaci, Domaćinstvo.
-- Logo: three proposals during the spike; must work as a 16 px icon.
+- Logo: done (see `logo/README.md`); it works as a 16 px icon.
 
 ## 11. Trust, licensing and distribution
 
-- License: GPL-3.0-or-later for the hub and apps. Third-party components stay separate programs with their own licenses; a Licenses screen and `THIRD_PARTY.md` list every component and content pack with license and attribution (Wikipedia CC BY-SA 4.0, OpenStreetMap ODbL, Kiwix GPLv3+, llama.cpp MIT, CoMaps Apache-2.0, model licenses).
+- License: GPL-3.0-or-later for the hub and apps. Third-party components stay separate programs with their own licenses; `THIRD_PARTY.md` lists every component and content pack with license and attribution (Wikipedia CC BY-SA 4.0, OpenStreetMap ODbL, Kiwix GPLv3+, llama.cpp MIT, CoMaps Apache-2.0, model licenses, and the proprietary Google ML Kit used for barcode scanning on Android); the Licenses screen in the app lists the main ones.
 - Repository public from the first commit with `LICENSE`, `README.md`, `SECURITY.md`, `CONTRIBUTING.md`, `THIRD_PARTY.md`, a public roadmap and this spec. Everything public is in English.
-- Releases are built by GitHub Actions only, with SHA-256 checksums, SBOM and a VirusTotal link; SignPath Foundation code signing after the first release; Microsoft Store and winget next; Android via GitHub Releases, IzzyOnDroid and F-Droid. Google Play developer verification will be completed through a registered association before the 2027 global rollout.
-- Privacy statement (plain language): no accounts, no telemetry, no crash upload. The app talks to the network only for (1) update checks if enabled, (2) downloads the user starts, (3) online research the user turns on. The complete list of hosts is published in `docs/network.md`.
+- Releases are built by GitHub Actions only, with SHA-256 checksums. Planned: an SBOM and a VirusTotal link; SignPath Foundation code signing after the first release; Microsoft Store and winget next; Android via GitHub Releases, IzzyOnDroid and F-Droid (F-Droid needs the Google ML Kit barcode scanner replaced by an open one first). Google Play developer verification will be completed through a registered association before the 2027 global rollout.
+- Privacy statement (plain language): no accounts, no telemetry, no crash upload. The app talks to the network only for (1) the daily update check, on by default and switchable off, (2) downloads the user starts, (3) online research the user turns on. The exception is Google ML Kit, used for barcode scanning on Android, which downloads its model once and sends usage metrics to Google. The complete list of hosts is published in `docs/network.md`.
 - Third-party names appear as plain text ("uses Kiwix", "map data © OpenStreetMap contributors") with no logos.
 - Donations: GitHub Sponsors, Open Collective (public ledger) and published BTC/ETH addresses; a public finances page. No feature is ever paywalled.
 
@@ -216,8 +218,8 @@ Exit criteria: all four work on the reference laptop and at least two family pho
 5. Assistant on the hub, then on the phone; online research last.
 6. Profiles and personal passwords; polish; release 1.0.
 
-Each step ends with a build the founder can install and test.
+Each step ends with a build that can be installed and tested.
 
-## 14. Defaults confirmed for 1.0
+## 14. Defaults for 1.0
 
-Single install folder chosen at install · Android 9 minimum · 64-bit Windows 10/11 only · household password ≥ 8 characters · Home content as in §6 · unknown barcodes named once and remembered · expiry reminders as an in-app list only · backup/restore included · "English essentials" / "Serbia core" recommended by language · three logo proposals during the spike · no deadline; work proceeds in risk order.
+Single install folder chosen at install · Android 9 minimum · 64-bit Windows 10/11 only · household password ≥ 8 characters · Home content as in §6 · unknown barcodes named once and remembered · expiry reminders as an in-app list only · backup/restore included · "Basic pack for Serbia" / "English essentials" recommended by language · logo done · no deadline; work proceeds in risk order.

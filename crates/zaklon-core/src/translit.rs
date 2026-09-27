@@ -305,7 +305,7 @@ mod tests {
 
     #[test]
     fn foreign_words_keep_letters_without_a_serbian_counterpart() {
-        // Current behaviour: letters with a Serbian counterpart are converted,
+        // Current behavior: letters with a Serbian counterpart are converted,
         // w/q/x/y are kept, so English words come out mixed. That is fine for
         // search folding (both sides fold the same way) but not for display.
         assert_eq!(latin_to_cyrillic("Wi-Fi mreža"), "Wи-Фи мрежа");

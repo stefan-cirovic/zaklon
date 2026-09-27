@@ -278,8 +278,6 @@ impl ClientState {
         Err(last_err)
     }
 
-    /// Download a (large) file from the hub into `dest`, resuming from
-    /// `dest.part`, checking the SHA-256 the hub reports, then renaming.
     /// Download from the hub into `dest`, resuming a `.part` file left by an
     /// earlier try, checking the SHA-256 the hub sends. The checksum is
     /// computed while data arrives, so there is no long wait at the end.

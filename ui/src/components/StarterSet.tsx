@@ -8,7 +8,7 @@ type T = (k: Key) => string;
 type Pack = { id: string; title: { en: string; sr: string }; size: number; state: { status: string } };
 type MapCountry = { id: string; name: string; name_sr: string; size: number; regions: { status: string }[] };
 
-/** The packs a household starts with, by language ("Srbija osnovni" / "English essentials"). */
+/** The packs a household starts with, by language ("Basic pack for Serbia" / "English essentials"). */
 const KNOWLEDGE: Record<Lang, string[]> = {
   sr: ["wikipedia-sr-maxi", "wiktionary-sr", "wikimed-en", "ifixit-en", "zimgit-water-en", "zimgit-medicine-en"],
   en: ["wikipedia-en-mini", "wikimed-en", "ifixit-en", "zimgit-water-en", "zimgit-medicine-en"],

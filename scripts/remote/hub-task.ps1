@@ -1,6 +1,6 @@
 # Runs ON the Windows test machine. Registers (or refreshes) a scheduled task
 # that starts the Zaklon hub at logon, fixes the firewall rules, and starts it now.
-#   powershell -NoProfile -ExecutionPolicy Bypass -File hub-task.ps1 -Root E:\zaklon
+#   powershell -NoProfile -ExecutionPolicy Bypass -File hub-task.ps1 -Root C:\Zaklon
 param([Parameter(Mandatory = $true)][string]$Root)
 
 $ErrorActionPreference = 'Continue'

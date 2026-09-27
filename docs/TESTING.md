@@ -6,7 +6,7 @@ One command runs everything:
 bash scripts/test-all.sh
 ```
 
-The same checks run on GitHub Actions (Windows) for every push and pull request, see `.github/workflows/ci.yml`.
+GitHub Actions (Windows) runs most of these checks on every push to `main` and every pull request (see `.github/workflows/ci.yml`). The phone offline-logic check and clippy/tests of the app crate (`zaklon-app`) run only in `scripts/test-all.sh`; CI only checks that the app crate compiles.
 
 ## What is covered
 
@@ -14,12 +14,13 @@ The same checks run on GitHub Actions (Windows) for every push and pull request,
 |---|---|---|
 | Unit tests | `crates/*/src/**` (`#[cfg(test)]`) | Password hashing, tokens, catalog sanity, Serbian transliteration, supplies rules (quantities never below zero, expiry buckets, running low, barcodes, places, shopping list, history), download hashing, search result parsing. |
 | Hub end-to-end | `crates/zaklon-hub/tests/e2e.rs` | A real hub in a fresh folder on free ports, driven like the desktop window and a paired phone: setup, TLS pinning (a wrong fingerprint is refused), public vs private status, CSRF and DNS-rebinding protection, pairing with attempt limits, device-only vs laptop-only permissions, supplies from a phone with history, verified downloads, checksum failure, resume of a partial download, USB export/import, install page and path traversal, discovery beacon, device revocation, password change, and that test port overrides are never saved. |
+| Phone offline logic | `ui/e2e/unit/offline.check.mts` (plain Node, 23.6 or newer) | The phone's cached copy of the supplies and the shopping-list outbox that waits for the hub. |
 | Interface end-to-end | `ui/e2e/*.spec.ts` (Playwright) | Clicking through the real interface at laptop and phone size: first-run setup, pairing screen (two QR codes and a code), supplies add/adjust/running low/shopping/history/Home, expired items and delete, language switch, library empty state and add-ons catalog, no screen wider than the device, tab kept in the address. |
 
 ## Not covered automatically (yet)
 
 - The Android app itself (camera, barcode scanner, on-device pinned TLS, content proxy) is tested by hand on a real phone.
-- The library engine with real knowledge packs (large downloads) is tested by hand on the test hub.
+- The library engine with real knowledge packs (large downloads) is tested by hand on a test hub.
 
 ## Useful environment variables
 
@@ -27,5 +28,6 @@ The same checks run on GitHub Actions (Windows) for every push and pull request,
 |---|---|
 | `ZAKLON_ROOT` | Data folder for the hub or desktop app. |
 | `ZAKLON_TLS_PORT`, `ZAKLON_LOCAL_PORT`, `ZAKLON_INSTALL_PORT`, `ZAKLON_BEACON_PORT` | Run on other ports (never saved to the configuration). |
+| `ZAKLON_LOOPBACK_ONLY=1` | Tests and development: listen on 127.0.0.1 only and skip DNS-SD, so nothing listens on the network and Windows does not ask about its firewall (never saved). The hub end-to-end test and the interface tests set it. |
 | `ZAKLON_IGNORE_BATTERY=1` | Tests only: allow downloads on a laptop below 50% battery. |
 | `PW_CHANNEL` | Browser for interface tests: `msedge` (default on Windows) or `chrome`. |

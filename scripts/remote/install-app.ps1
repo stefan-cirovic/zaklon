@@ -1,7 +1,7 @@
 # Runs ON the Windows test machine. Replaces the standalone hub (scheduled
 # task) with the installed Zaklon app, in the same folder so it keeps the
 # existing data (<Root>\data), and starts it hidden in the tray.
-#   powershell -NoProfile -ExecutionPolicy Bypass -File install-app.ps1 -Root E:\zaklon -Installer E:\zaklon\Zaklon-setup.exe
+#   powershell -NoProfile -ExecutionPolicy Bypass -File install-app.ps1 -Root C:\Zaklon -Installer C:\Zaklon\Zaklon-setup.exe
 param([Parameter(Mandatory = $true)][string]$Root, [Parameter(Mandatory = $true)][string]$Installer)
 $ErrorActionPreference = 'Continue'
 

@@ -166,7 +166,7 @@ async function flushOnce(send: (method: string, path: string, body: string | nul
     if (item.path === "/api/shopping" && body) {
       const b = JSON.parse(body) as Record<string, unknown>;
       offlineId = typeof b.offline_id === "string" ? b.offline_id : null;
-      // The hub recognises a repeated add by this id, so a reply lost on the
+      // The hub recognizes a repeated add by this id, so a reply lost on the
       // way back never makes a second entry.
       if (offlineId) b.client_id = offlineId;
       delete b.offline_id;

@@ -4,12 +4,12 @@
 #
 #   scripts/deploy-hub.sh <ssh-host> <remote-dir> [apk-file]
 #
-# Example: scripts/deploy-hub.sh fly 'E:\zaklon' path/to/app-universal-debug.apk
+# Example: scripts/deploy-hub.sh test-pc 'C:\Zaklon' path/to/app-universal-debug.apk
 # Remote layout: <remote-dir>\bin\zaklon-hub.exe and <remote-dir>\data (the hub's root folder).
 set -euo pipefail
 
 host="${1:?ssh host}"
-remote="${2:?remote dir, e.g. E:\zaklon}"
+remote="${2:?remote dir, e.g. C:\Zaklon}"
 apk="${3:-}"
 exe="target/release/zaklon-hub.exe"
 here="$(cd "$(dirname "$0")" && pwd)"

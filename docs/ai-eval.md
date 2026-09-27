@@ -19,7 +19,7 @@ Used to pick the default model for each hardware tier. The same ten prompts are 
 
 | Model | Size | tok/s | Avg SR | Avg EN | Notes |
 |---|---|---|---|---|---|
-| Qwen3.5-2B Q4 | | | | | |
-| Qwen3.5-4B Q4 | | | | | |
-| Gemma 4 E4B Q4 | | | | | |
-| Qwen3.5-9B Q4 (desktop, GPU) | | | | | |
+| Qwen3.5-0.8B Q8_0 | | | | | |
+| Qwen3.5-2B Q4_K_M | | | | | |
+| Qwen3.5-4B Q4_K_M | | | | | |
+| Qwen3.5-9B Q4_K_M | | | | | |

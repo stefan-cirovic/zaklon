@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Run every automated check: formatting-independent lint, unit tests, the hub
-# end-to-end test and the interface end-to-end tests (Edge or Chrome).
+# Run every automated check: lint (clippy), unit tests, the phone offline-logic
+# check, the hub end-to-end test and the interface end-to-end tests (Edge or
+# Chrome).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.cargo/bin:$PATH"
