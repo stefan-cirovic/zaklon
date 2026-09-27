@@ -28,7 +28,12 @@ use crate::kiwix::Library;
 
 /// Stop the engine after this long without questions, to give the memory back.
 const IDLE_STOP: Duration = Duration::from_secs(20 * 60);
+/// How long the engine may take to answer at all after it was started.
 const START_TIMEOUT: Duration = Duration::from_secs(180);
+/// While the engine answers "still loading the model", it is making progress:
+/// a large model read from a hard disk on a busy computer can take many
+/// minutes, so wait up to this long in that case.
+const LOADING_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// Database setting that remembers the chosen model.
 pub const SETTING_MODEL: &str = "assistant_model";
 /// Characters of each source passage given to the model.
@@ -417,8 +422,10 @@ impl Assistant {
         *running = Some(Running { child, model });
         self.port.store(port, Ordering::Relaxed);
 
-        // Loading a model takes from seconds to a minute or two.
-        let deadline = Instant::now() + START_TIMEOUT;
+        // Loading a model takes from seconds to a minute or two, longer for a
+        // large model on a hard disk: the engine answers 503 while it loads.
+        let started = Instant::now();
+        let mut loading_seen = false;
         self.cancel_load.store(false, Ordering::SeqCst);
         loop {
             if self.cancel_load.load(Ordering::SeqCst) {
@@ -435,19 +442,24 @@ impl Assistant {
                     return Err("the AI engine stopped while loading the model (not enough memory?)".into());
                 }
             }
-            let ok = self
+            let health = self
                 .http
                 .get(format!("http://127.0.0.1:{port}/health"))
                 .timeout(Duration::from_secs(3))
                 .send()
                 .await
-                .is_ok_and(|r| r.status().is_success());
-            if ok {
-                self.set_state(EngineState::Ready);
-                info!("AI engine ready");
-                return Ok(port);
+                .map(|r| r.status());
+            match health {
+                Ok(s) if s.is_success() => {
+                    self.set_state(EngineState::Ready);
+                    info!(seconds = started.elapsed().as_secs(), "AI engine ready");
+                    return Ok(port);
+                }
+                Ok(s) if s == reqwest::StatusCode::SERVICE_UNAVAILABLE => loading_seen = true,
+                _ => {}
             }
-            if Instant::now() > deadline {
+            let limit = if loading_seen { LOADING_TIMEOUT } else { START_TIMEOUT };
+            if started.elapsed() > limit {
                 if let Some(mut r) = running.take() {
                     let _ = r.child.kill().await;
                 }
