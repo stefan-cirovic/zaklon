@@ -83,10 +83,21 @@ assert.equal(off.offlineState().waiting, 1, "kept after 503");
 await off.flush(async () => ({ status: 404, body: "" }));
 assert.equal(off.offlineState().waiting, 0, "dropped after 404");
 
-// Leaving the hub forgets its data.
+// Leaving the hub forgets its data, but sets waiting changes aside for it.
 off.remember("/api/items", "[]");
 off.queue("POST", "/api/shopping/z/dismiss", null);
-off.clearOffline();
+assert.equal(off.clearOffline("hub-1"), 1, "one change set aside");
 assert.equal(off.recall("/api/items"), null);
+assert.equal(off.offlineState().waiting, 0);
+assert.equal(off.parkedFor("hub-1"), 1);
+// Pairing with another hub does not send them there.
+assert.equal(off.adoptParked("hub-2"), 0);
+assert.equal(off.offlineState().waiting, 0);
+// Pairing with the same hub again: they wait to be sent.
+assert.equal(off.adoptParked("hub-1"), 1);
+assert.equal(off.offlineState().waiting, 1);
+assert.equal(off.parkedFor("hub-1"), 0);
+// Without a known hub nothing can be set aside.
+assert.equal(off.clearOffline(null), 0);
 assert.equal(off.offlineState().waiting, 0);
 console.log("offline: all checks passed");

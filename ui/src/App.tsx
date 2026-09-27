@@ -46,6 +46,8 @@ export default function App() {
   const [tab, setTabState] = useState(tabFromHash);
   const [mode, setMode] = useState<AppMode | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
+  // When the hub last answered; the status shown after that is marked as old.
+  const [statusAt, setStatusAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Until the hub says otherwise: the device's own language (sr, hr, bs -> Serbian).
   const [lang, setLangState] = useState<Lang>(() => {
@@ -81,6 +83,8 @@ export default function App() {
   };
   const [link, setLink] = useState<LinkSummary | null>(null);
   const [notice, setNotice] = useState<Key | null>(null);
+  // Shopping list changes set aside when this phone was unlinked.
+  const [parked, setParked] = useState(0);
   const connected = useRef(false);
   setFormatLang(lang);
   // Stable between renders so screens can safely depend on it.
@@ -109,9 +113,10 @@ export default function App() {
 
   /** This phone was removed on the hub: drop the link and say why. */
   const unlinked = useCallback(async (why: Key) => {
-    await clientForget().catch(() => {});
+    setParked(await clientForget().catch(() => 0));
     setLink(await clientState().catch(() => null));
     setStatus(null);
+    setStatusAt(null);
     setNotice(why);
   }, []);
 
@@ -119,6 +124,7 @@ export default function App() {
     try {
       const s = await api<Status>("/api/status");
       setStatus(s);
+      setStatusAt(Date.now());
       setError(null);
       connected.current = true;
       // Back in reach: send what waited on this phone.
@@ -202,9 +208,12 @@ export default function App() {
   }, [needsSetup]);
 
   const forget = async () => {
-    await clientForget().catch(() => {});
+    const n = await clientForget().catch(() => 0);
     setLink(await clientState());
     setStatus(null);
+    setStatusAt(null);
+    setNotice(null);
+    setParked(n);
   };
 
   const isHub = mode?.mode !== "client";
@@ -214,9 +223,12 @@ export default function App() {
       <main className="center-screen">
         <Connect
           t={t}
-          notice={notice ? t(notice) : null}
+          notice={
+            [notice ? t(notice) : "", parked > 0 ? `${t("outboxParked")} ${parked}. ${t("outboxParkedAfter")}` : ""].filter(Boolean).join(" ") || null
+          }
           onLinked={async () => {
             setNotice(null);
+            setParked(0);
             setLink(await clientState());
             refresh();
           }}
@@ -229,7 +241,7 @@ export default function App() {
     <div className="shell">
       <main className="content">
         {!isHub && <OfflineBanner t={t} />}
-        {tab === "home" && <Home status={status} error={error ? errText(t, new Error(error)) : null} t={t} go={setTab} />}
+        {tab === "home" && <Home status={status} statusAt={statusAt} error={error ? errText(t, new Error(error)) : null} t={t} go={setTab} phone={!isHub} />}
         {tab === "household" && (
           <div className="stack">
             {link?.linked && (

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { clearOffline, flush, fromCache, isCacheable, isQueueable, markOnline, queue, remember } from "./offline";
+import { adoptParked, clearOffline, flush, fromCache, isCacheable, isQueueable, markOnline, queue, remember } from "./offline";
 
 export type AppMode = {
   mode: "hub" | "client";
@@ -145,14 +145,25 @@ export function clientState(): Promise<LinkSummary> {
   return invoke<LinkSummary>("client_state");
 }
 
-export function clientPair(payload: PairPayload, password: string, deviceName: string): Promise<LinkSummary> {
-  return invoke<LinkSummary>("client_pair", { payload, password, deviceName });
+export async function clientPair(payload: PairPayload, password: string, deviceName: string): Promise<LinkSummary> {
+  const link = await invoke<LinkSummary>("client_pair", { payload, password, deviceName });
+  // Back with the hub it left: shopping list changes set aside then are sent now.
+  adoptParked(link.hub_id);
+  return link;
 }
 
-export function clientForget(): Promise<void> {
-  // A phone that leaves its hub keeps nothing of it.
-  clearOffline();
-  return invoke("client_forget");
+/**
+ * Unlink this phone. It keeps nothing of the hub except shopping list changes
+ * that still wait, which are set aside for that hub (see clearOffline).
+ * Resolves to how many changes were set aside.
+ */
+export async function clientForget(): Promise<number> {
+  const hubId = await clientState()
+    .then((s) => s.hub_id)
+    .catch(() => null);
+  const parked = clearOffline(hubId);
+  await invoke("client_forget");
+  return parked;
 }
 
 export function clientDiscover(): Promise<DiscoveredHub[]> {

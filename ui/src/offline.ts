@@ -6,6 +6,8 @@
 
 const CACHE = "zaklon.cache:";
 const OUTBOX = "zaklon.outbox";
+/** Changes that were still waiting when the phone was unlinked, kept for that hub. */
+const PARKED = "zaklon.outbox.parked";
 const OFFLINE_EVENT = "zaklon-offline";
 
 /** GET answers kept for when the hub is out of reach. */
@@ -13,6 +15,7 @@ const CACHED = [/^\/api\/items$/, /^\/api\/shopping$/, /^\/api\/put-away$/, /^\/
 
 type Queued = { method: string; path: string; body: string | null; at: number };
 type Cached = { at: number; body: string };
+type Parked = { hub_id: string; items: Queued[] };
 type ShoppingEntry = { id: string; item_id: string | null; text: string; quantity: number | null; unit: string | null; status: string; source: string };
 
 let offlineSince: number | null = null;
@@ -197,8 +200,23 @@ async function flushOnce(send: (method: string, path: string, body: string | nul
   window.dispatchEvent(new CustomEvent(OFFLINE_EVENT));
 }
 
-/** Forget everything kept for this hub (the phone was unlinked). */
-export function clearOffline() {
+/**
+ * Forget the copy kept for this hub (the phone was unlinked). Shopping list
+ * changes that still wait are not thrown away: they are set aside for this
+ * hub (`hubId`) and sent if the phone is paired with the same hub again (for
+ * example after the hub was restored from an older backup). Returns how many
+ * changes were set aside.
+ */
+export function clearOffline(hubId?: string | null): number {
+  const waiting = outbox();
+  let parked = 0;
+  if (waiting.length > 0 && hubId) {
+    const before = read<Parked>(PARKED);
+    // Earlier set-aside changes for the same hub go first.
+    const items = before && before.hub_id === hubId ? [...before.items, ...waiting] : waiting;
+    write(PARKED, { hub_id: hubId, items } satisfies Parked);
+    parked = items.length;
+  }
   try {
     const keys: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -211,4 +229,25 @@ export function clearOffline() {
   }
   offlineSince = null;
   window.dispatchEvent(new CustomEvent(OFFLINE_EVENT));
+  return parked;
+}
+
+/** Changes set aside when the phone left `hubId`; 0 when none. */
+export function parkedFor(hubId: string | null | undefined): number {
+  const p = read<Parked>(PARKED);
+  return p && hubId && p.hub_id === hubId ? p.items.length : 0;
+}
+
+/** The phone was paired: if it is the hub the set-aside changes were for, they wait to be sent again. */
+export function adoptParked(hubId: string | null | undefined): number {
+  const p = read<Parked>(PARKED);
+  if (!p || !hubId || p.hub_id !== hubId) return 0;
+  write(OUTBOX, [...p.items, ...outbox()]);
+  try {
+    localStorage.removeItem(PARKED);
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(new CustomEvent(OFFLINE_EVENT));
+  return p.items.length;
 }

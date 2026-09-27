@@ -2,12 +2,21 @@ import { UpdateBanner } from "../components/Updates";
 import { useEffect, useState } from "react";
 import { api, type Status } from "../api";
 import ExpiryBadge from "../components/ExpiryBadge";
-import { fmtQty } from "../format";
+import { fmtDateTime, fmtQty } from "../format";
 import type { Key } from "../i18n";
 import type { Item } from "./Supplies";
 
 type T = (k: Key) => string;
-type Props = { status: Status | null; error: string | null; t: T; go: (tab: string) => void };
+type Props = {
+  status: Status | null;
+  /** When the hub last answered (ms); the values shown are from then. */
+  statusAt: number | null;
+  error: string | null;
+  t: T;
+  go: (tab: string) => void;
+  /** A phone: it has a copy of the supplies even while the hub is out of reach. */
+  phone: boolean;
+};
 type Summary = { total_items: number; expired: Item[]; expiring_soon: Item[]; running_low: Item[] };
 
 const SUMMARY_EVERY = 30_000;
@@ -40,9 +49,11 @@ function MiniList({ items, t, kind }: { items: Item[]; t: T; kind: "expiry" | "l
   );
 }
 
-export default function Home({ status, error, t, go }: Props) {
+export default function Home({ status, statusAt, error, t, go, phone }: Props) {
   const up = !!status && !error;
-  const setUp = !!status?.set_up;
+  // A phone loads the summary even before (or without) an answer from the hub:
+  // away from home api() serves the copy it kept.
+  const canLoad = !!status?.set_up || phone;
   const [sum, setSum] = useState<Summary | null>(null);
   const [sys, setSys] = useState<{ battery_percent: number | null; plugged_in: boolean } | null>(null);
   const [sumFailed, setSumFailed] = useState(false);
@@ -50,7 +61,7 @@ export default function Home({ status, error, t, go }: Props) {
   // Refresh the supplies summary on its own slow schedule; keep the last good
   // data when a refresh fails, and say that it is unavailable.
   useEffect(() => {
-    if (!setUp) return;
+    if (!canLoad) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const load = async () => {
@@ -71,9 +82,12 @@ export default function Home({ status, error, t, go }: Props) {
       alive = false;
       if (timer) clearTimeout(timer);
     };
-  }, [setUp]);
+  }, [canLoad]);
 
-  const unavailable = sum === null && sumFailed;
+  // No data at all: say so instead of "nothing yet", which would read as "nothing expires".
+  const unavailable = sum === null && (sumFailed || (!canLoad && !!error));
+  // The hub stopped answering: the numbers below are the last ones it gave.
+  const stale = !!error && (status !== null || sys !== null);
   const power = sys;
   return (
     <div className="stack">
@@ -85,7 +99,7 @@ export default function Home({ status, error, t, go }: Props) {
         {error && <p className="error" role="alert">{error}</p>}
       </div>
       <UpdateBanner t={t} />
-      <div className="grid">
+      <div className="grid" style={stale ? { opacity: 0.55 } : undefined} aria-describedby={stale ? "status-as-of" : undefined}>
         <div className="panel">
           <div className="label">{t("devices")}</div>
           <div className="value">{status?.devices ?? "–"}</div>
@@ -110,6 +124,11 @@ export default function Home({ status, error, t, go }: Props) {
           <div className="value" style={{ fontSize: 16 }}>{status?.addresses?.join(", ") || "–"}</div>
         </div>
       </div>
+      {stale && (
+        <p id="status-as-of" className="muted" style={{ fontSize: 13, marginTop: -8 }}>
+          {statusAt !== null ? `${t("asOf")} ${fmtDateTime(new Date(statusAt).toISOString())}` : t("showingLastKnown")}
+        </p>
+      )}
       <div className="grid">
         <div className="panel panel-list">
           <div className="label">{t("expiringSoon")}</div>
