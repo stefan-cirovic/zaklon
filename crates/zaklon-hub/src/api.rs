@@ -123,21 +123,23 @@ impl IntoResponse for ApiError {
 const ERROR_CODES: &[(&str, &str)] = &[
     ("wrong household password", "wrong_password"),
     ("pairing code is invalid or expired", "code_expired"),
+    ("too many wrong attempts from this device", "device_blocked"),
     ("too many attempts", "too_many_attempts"),
     ("password must be at least", "password_too_short"),
     ("set a household password first", "not_set_up"),
     ("already set up", "already_set_up"),
     ("only the laptop can do this", "laptop_only"),
-    ("request from another website", "laptop_only"),
+    ("request from another website", "cross_site"),
     ("not enough free disk space", "no_disk_space"),
-    ("not enough space", "no_disk_space"),
+    ("not enough space", "drive_full"),
     ("formatted as FAT32", "fat32"),
     ("battery below", "battery_low"),
     ("checksum mismatch", "checksum"),
     ("expiry must be a date", "bad_date"),
     ("must be a date", "bad_date"),
     ("name is required", "name_required"),
-    ("text is required", "name_required"),
+    ("text is required", "text_required"),
+    ("that name is reserved", "name_reserved"),
     ("that folder does not exist", "no_folder"),
     ("that file does not exist", "no_file"),
     ("pause the download first", "pause_first"),
@@ -160,6 +162,7 @@ const ERROR_CODES: &[(&str, &str)] = &[
     ("ask something first", "question_empty"),
     ("note is too long", "note_too_long"),
     ("remembers too much", "notes_full"),
+    ("model is not installed on the hub", "model_not_on_hub"),
     ("is not installed", "not_installed"),
     ("cannot be copied", "cannot_copy"),
     ("delta must be", "bad_quantity"),
@@ -169,7 +172,6 @@ const ERROR_CODES: &[(&str, &str)] = &[
     ("bad barcode", "bad_barcode"),
     ("no such", "not_found"),
     ("no file", "not_found"),
-    ("model is not installed on the hub", "not_found"),
     ("unauthorized", "unauthorized"),
     ("internal error", "internal"),
 ];
@@ -622,7 +624,7 @@ async fn pair_complete(
     }
     let token = pairing::random_token(32);
     let mut name: String = body.device_name.trim().chars().take(60).collect();
-    if name.is_empty() {
+    if name.is_empty() || reserved_device_name(&name) {
         name = "Phone".to_string();
     }
     let device = Device {
@@ -663,15 +665,32 @@ struct RenameBody {
     name: String,
 }
 
+/// A phone may rename or remove only itself; the laptop manages every phone.
+fn own_device_or_laptop(caller: &Caller, id: &str) -> Result<(), ApiError> {
+    match caller {
+        Caller::Device(d) if d.id != id => Err(forbidden("only the laptop can do this")),
+        _ => Ok(()),
+    }
+}
+
+/// History names the laptop "laptop"; a phone must not look like it.
+fn reserved_device_name(name: &str) -> bool {
+    name.trim().eq_ignore_ascii_case("laptop")
+}
+
 async fn rename_device(
     State(state): State<Arc<HubState>>,
-    _caller: Caller,
+    caller: Caller,
     Path(id): Path<String>,
     Json(body): Json<RenameBody>,
 ) -> Result<StatusCode, ApiError> {
+    own_device_or_laptop(&caller, &id)?;
     let name: String = body.name.trim().chars().take(60).collect();
     if name.is_empty() {
         return Err(bad("name is required"));
+    }
+    if reserved_device_name(&name) {
+        return Err(bad("that name is reserved"));
     }
     if state.db.rename_device(&id, &name)? {
         Ok(StatusCode::NO_CONTENT)
@@ -685,6 +704,7 @@ async fn delete_device(
     caller: Caller,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
+    own_device_or_laptop(&caller, &id)?;
     tracing::info!(by = %caller.actor(), device = %id, "device removed");
     if state.db.delete_device(&id)? {
         Ok(StatusCode::NO_CONTENT)
@@ -1646,7 +1666,21 @@ mod error_code_tests {
         for (status, msg) in messages {
             assert_ne!(error_code(status, msg), "other", "{msg}");
         }
-        assert_eq!(error_code(StatusCode::BAD_REQUEST, "not enough space: 1 bytes"), "no_disk_space");
+        // Specific messages must not be caught by a more general entry.
+        let exact = [
+            (StatusCode::BAD_REQUEST, "not enough space: 1 bytes", "drive_full"),
+            (StatusCode::BAD_REQUEST, "not enough free disk space for this pack", "no_disk_space"),
+            (StatusCode::TOO_MANY_REQUESTS, "too many wrong attempts from this device; try again in a few minutes", "device_blocked"),
+            (StatusCode::FORBIDDEN, "request from another website", "cross_site"),
+            (StatusCode::BAD_REQUEST, "text is required", "text_required"),
+            (StatusCode::NOT_FOUND, "model is not installed on the hub", "model_not_on_hub"),
+            (StatusCode::BAD_REQUEST, "AI engine is not installed", "no_ai_engine"),
+            (StatusCode::FORBIDDEN, "only the laptop can do this", "laptop_only"),
+            (StatusCode::BAD_REQUEST, "that name is reserved", "name_reserved"),
+        ];
+        for (status, msg, code) in exact {
+            assert_eq!(error_code(status, msg), code, "{msg}");
+        }
         assert_eq!(error_code(StatusCode::NOT_FOUND, "no such note"), "not_found");
         assert_eq!(error_code(StatusCode::BAD_REQUEST, "something new"), "other");
     }

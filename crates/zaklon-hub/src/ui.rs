@@ -21,7 +21,14 @@ pub async fn serve(uri: Uri) -> Response {
             let mime = mime_guess::from_path(served).first_or_octet_stream();
             let cache = if served == "index.html" { "no-cache" } else { "public, max-age=31536000, immutable" };
             (
-                [(header::CONTENT_TYPE, mime.as_ref().to_string()), (header::CACHE_CONTROL, cache.to_string())],
+                [
+                    (header::CONTENT_TYPE, mime.as_ref().to_string()),
+                    (header::CACHE_CONTROL, cache.to_string()),
+                    // Another website must not show this page in a frame and
+                    // steer clicks onto it (laptop-only actions pass there).
+                    (header::X_FRAME_OPTIONS, "DENY".to_string()),
+                    (header::CONTENT_SECURITY_POLICY, "frame-ancestors 'none'".to_string()),
+                ],
                 Body::from(file.data.into_owned()),
             )
                 .into_response()

@@ -264,7 +264,7 @@ function Devices({ t, status, lang, setLang, isHub, ownDeviceId }: DevicesProps)
                       {d.platform} · {t("lastSeen")}: {d.last_seen ? fmtDateTime(d.last_seen) : t("never")}
                     </div>
                   </div>
-                  {!own && (
+                  {!own && isHub && (
                     <ConfirmButton label={t("remove")} confirmLabel={t("yesRemove")} cancelLabel={t("cancel")} onConfirm={() => remove(d)} />
                   )}
                 </div>
