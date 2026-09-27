@@ -1,7 +1,24 @@
 {
   "$schema": "https://schema.tauri.app/config/2/capability",
   "identifier": "default",
-  "description": "Permissions for the main Zaklon window",
+  "description": "Permissions for the main Zaklon window when it shows the bundled interface (phones)",
   "windows": ["main"],
-  "permissions": ["core:default", "opener:default"]
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "allow-app-mode",
+    "allow-app-restart",
+    "allow-client-state",
+    "allow-client-pair",
+    "allow-client-request",
+    "allow-client-forget",
+    "allow-client-discover",
+    "allow-client-content-base",
+    "allow-local-ai-status",
+    "allow-local-ai-copy",
+    "allow-local-ai-start",
+    "allow-local-ai-stop",
+    "allow-local-ai-delete",
+    "allow-local-ai-ask"
+  ]
 }

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-client-forget"
+description = "Enables the client_forget command without any pre-configured scope."
+commands.allow = ["client_forget"]
+
+[[permission]]
+identifier = "deny-client-forget"
+description = "Denies the client_forget command without any pre-configured scope."
+commands.deny = ["client_forget"]

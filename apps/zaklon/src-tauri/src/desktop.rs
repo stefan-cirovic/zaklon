@@ -4,6 +4,7 @@
 //! runs at a time.
 
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -47,23 +48,127 @@ pub fn init_logging(root: &Path) -> Option<tracing_appender::non_blocking::Worke
     Some(guard)
 }
 
+/// How long the hub keeps trying to start while its ports or files are still
+/// held (e.g. by the copy that is ending during a restart).
+const HUB_START_RETRY: Duration = Duration::from_secs(20);
+
 pub fn start_hub(root: PathBuf) {
     std::thread::Builder::new()
         .name("zaklon-hub".into())
         .spawn(move || {
-            let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("tokio runtime");
-            rt.block_on(async {
-                match zaklon_hub::Hub::open(&root) {
-                    Ok(hub) => {
-                        if let Err(e) = hub.run().await {
-                            tracing::error!("hub stopped: {e:#}");
-                        }
-                    }
-                    Err(e) => tracing::error!("hub failed to open {}: {e:#}", root.display()),
+            let deadline = Instant::now() + HUB_START_RETRY;
+            let mut attempt = 1u32;
+            loop {
+                // A fresh runtime per attempt: whatever a failed attempt
+                // started (downloads, discovery, ...) ends with it.
+                let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("tokio runtime");
+                let result = rt.block_on(async {
+                    let hub = zaklon_hub::Hub::open(&root)
+                        .map_err(|e| e.context(format!("opening the hub at {}", root.display())))?;
+                    hub.run().await
+                });
+                rt.shutdown_timeout(Duration::from_secs(2));
+                let Err(e) = result else { return };
+                if Instant::now() >= deadline {
+                    tracing::error!("hub stopped (attempt {attempt}, giving up): {e:#}");
+                    return;
                 }
-            });
+                tracing::warn!("hub could not start (attempt {attempt}), trying again: {e:#}");
+                attempt += 1;
+                std::thread::sleep(Duration::from_secs(1));
+            }
         })
         .expect("spawn hub thread");
+}
+
+/// Set for the copy started by [`restart`]: it opens its window even if the
+/// previous copy was started hidden with Windows.
+const RESTARTED_ENV: &str = "ZAKLON_RESTARTED";
+/// The process id of the copy that is ending; the new copy waits for it.
+const WAIT_PID_ENV: &str = "ZAKLON_WAIT_PID";
+
+/// Start a fresh copy of Zaklon and end this one (after choosing a backup to
+/// restore, which is swapped in when the hub opens). The new copy waits for
+/// this one to be gone, so the one-copy guard and the hub's ports are free.
+pub fn restart(app: &AppHandle) {
+    let exe = match std::env::current_exe() {
+        Ok(exe) => exe,
+        Err(e) => {
+            tracing::error!("cannot restart, the program path is unknown: {e}");
+            return;
+        }
+    };
+    let args: Vec<String> = std::env::args().skip(1).filter(|a| a != MINIMIZED_ARG).collect();
+    match std::process::Command::new(&exe)
+        .args(&args)
+        .env(RESTARTED_ENV, "1")
+        .env(WAIT_PID_ENV, std::process::id().to_string())
+        .spawn()
+    {
+        Ok(child) => {
+            tracing::info!("restarting: started {} (pid {}), ending this copy", exe.display(), child.id());
+            app.exit(0);
+        }
+        Err(e) => tracing::error!("cannot restart, starting {} failed: {e}", exe.display()),
+    }
+}
+
+/// Called first thing at start: if this copy was started by [`restart`], wait
+/// (up to 10 s) until the previous copy has ended.
+pub fn wait_for_previous_copy() {
+    let Some(pid) = std::env::var(WAIT_PID_ENV).ok().and_then(|v| v.trim().parse::<u32>().ok()) else {
+        return;
+    };
+    std::env::remove_var(WAIT_PID_ENV);
+    if pid == std::process::id() {
+        return;
+    }
+    let started = Instant::now();
+    let ended = wait_for_pid(pid, Duration::from_secs(10));
+    // Logging is not set up yet; keep the outcome for later.
+    PREVIOUS_WAIT.get_or_init(|| (pid, ended, started.elapsed()));
+}
+
+static PREVIOUS_WAIT: std::sync::OnceLock<(u32, bool, Duration)> = std::sync::OnceLock::new();
+
+/// Log what [`wait_for_previous_copy`] saw, once logging is set up.
+pub fn log_restart() {
+    if let Some((pid, ended, took)) = PREVIOUS_WAIT.get() {
+        if *ended {
+            tracing::info!("restarted; the previous copy (pid {pid}) ended after {} ms", took.as_millis());
+        } else {
+            tracing::warn!("restarted; the previous copy (pid {pid}) was still running after {} ms", took.as_millis());
+        }
+    }
+}
+
+/// True once the process has ended (or cannot be found), false on timeout.
+#[cfg(windows)]
+fn wait_for_pid(pid: u32, timeout: Duration) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, WAIT_TIMEOUT};
+    use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE};
+    // SAFETY: plain Win32 calls; the handle is checked and closed here.
+    unsafe {
+        let handle = OpenProcess(PROCESS_SYNCHRONIZE, 0, pid);
+        if handle.is_null() {
+            return true; // already gone
+        }
+        let r = WaitForSingleObject(handle, timeout.as_millis() as u32);
+        CloseHandle(handle);
+        r != WAIT_TIMEOUT
+    }
+}
+
+#[cfg(not(windows))]
+fn wait_for_pid(pid: u32, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    while Path::new(&format!("/proc/{pid}")).exists() {
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    true
 }
 
 /// Tray and menu texts follow the language chosen in the app.
@@ -113,8 +218,9 @@ pub fn setup(app: &mut tauri::App, root: &Path) -> Result<(), Box<dyn std::error
     }
 
     // Started with Windows: only the tray icon; the window (and the memory a
-    // web view takes) comes when someone opens it.
-    let start_hidden = std::env::args().any(|a| a == MINIMIZED_ARG);
+    // web view takes) comes when someone opens it. A restart always shows it.
+    let start_hidden =
+        std::env::args().any(|a| a == MINIMIZED_ARG) && std::env::var_os(RESTARTED_ENV).is_none();
     if !start_hidden {
         open_hub_window(app.handle(), true)?;
     }
@@ -128,13 +234,14 @@ pub fn setup(app: &mut tauri::App, root: &Path) -> Result<(), Box<dyn std::error
 /// a new window.
 fn open_hub_window(app: &AppHandle, visible: bool) -> Result<(), Box<dyn std::error::Error>> {
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], local_port()));
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
-    while std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(300)).is_err() {
-        if std::time::Instant::now() > deadline {
+    // Covers the hub's own start retries.
+    let deadline = Instant::now() + HUB_START_RETRY + Duration::from_secs(5);
+    while std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_err() {
+        if Instant::now() > deadline {
             tracing::error!("hub did not start listening on {addr}");
             break;
         }
-        std::thread::sleep(std::time::Duration::from_millis(150));
+        std::thread::sleep(Duration::from_millis(150));
     }
     let url: tauri::Url = format!("http://{addr}/").parse()?;
     let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))

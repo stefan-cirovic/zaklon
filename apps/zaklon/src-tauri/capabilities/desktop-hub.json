@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.tauri.app/config/2/capability",
+  "identifier": "desktop-hub",
+  "description": "The desktop window shows the interface served by the in-process hub on 127.0.0.1 (a remote origin to Tauri); only the commands that page uses are allowed",
+  "platforms": ["windows", "linux", "macOS"],
+  "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:*", "http://localhost:*"]
+  },
+  "permissions": ["core:default", "opener:default", "allow-app-mode", "allow-app-restart"]
+}

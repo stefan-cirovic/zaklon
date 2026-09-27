@@ -27,6 +27,11 @@ struct AppMode {
 /// Start the app again (the laptop, after choosing a backup to restore).
 #[tauri::command]
 fn app_restart(app: tauri::AppHandle) {
+    // Desktop: a fresh copy that waits for this one to end and always shows
+    // its window (even if this copy was started hidden with Windows).
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    desktop::restart(&app);
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     app.restart();
 }
 
@@ -133,10 +138,15 @@ async fn client_discover() -> Result<Vec<DiscoveredHub>, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // After a restart, before the one-copy guard: wait for the old copy to end.
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    desktop::wait_for_previous_copy();
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let root = desktop::data_root();
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let _log_guard = desktop::init_logging(&root);
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    desktop::log_restart();
     #[cfg(any(target_os = "android", target_os = "ios"))]
     let _ = tracing_subscriber::fmt()
         .with_env_filter(

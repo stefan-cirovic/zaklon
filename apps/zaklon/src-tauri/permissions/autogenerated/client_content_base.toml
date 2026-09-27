@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-client-content-base"
+description = "Enables the client_content_base command without any pre-configured scope."
+commands.allow = ["client_content_base"]
+
+[[permission]]
+identifier = "deny-client-content-base"
+description = "Denies the client_content_base command without any pre-configured scope."
+commands.deny = ["client_content_base"]

@@ -36,5 +36,9 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"
 tracing-appender.workspace = true
 
+# Waiting for the previous copy to end when Zaklon restarts itself.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_System_Threading"] }
+
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 tauri-plugin-barcode-scanner = "2"
