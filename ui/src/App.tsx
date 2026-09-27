@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, ApiError, clientForget, clientState, getMode, type AppMode, type LinkSummary, type Status } from "./api";
+import { api, ApiError, clientForget, flushOutbox, clientState, getMode, type AppMode, type LinkSummary, type Status } from "./api";
 import { makeT, type Key, type Lang } from "./i18n";
 import { setFormatLang } from "./format";
 import { errText } from "./errors";
@@ -12,6 +12,7 @@ import Library from "./screens/Library";
 import Supplies from "./screens/Supplies";
 import Maps from "./screens/Maps";
 import Assistant from "./screens/Assistant";
+import OfflineBanner from "./components/OfflineBanner";
 import { ACCENTS, type Accent, type Look } from "./screens/HouseholdMore";
 
 const TABS: { id: string; key: Key; ico: string }[] = [
@@ -114,6 +115,8 @@ export default function App() {
       setStatus(s);
       setError(null);
       connected.current = true;
+      // Back in reach: send what waited on this phone.
+      flushOutbox().catch(() => {});
       if (!readPref("zaklon.lang", "")) setLangState(s.language);
     } catch (e) {
       connected.current = false;
@@ -188,6 +191,7 @@ export default function App() {
   return (
     <div className="shell">
       <main className="content">
+        {!isHub && <OfflineBanner t={t} />}
         {tab === "home" && <Home status={status} error={error ? errText(t, new Error(error)) : null} t={t} go={setTab} />}
         {tab === "household" && (
           <div className="stack">

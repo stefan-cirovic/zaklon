@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { flush, fromCache, isCacheable, isQueueable, markOnline, queue, remember } from "./offline";
 
 export type AppMode = {
   mode: "hub" | "client";
@@ -96,7 +97,24 @@ export async function api<T = unknown>(path: string, init: { method?: string; js
   const body = init.json !== undefined ? JSON.stringify(init.json) : undefined;
 
   if (mode.mode === "client") {
-    const res = await invoke<{ status: number; body: string }>("client_request", { method, path, body: body ?? null });
+    let res: { status: number; body: string };
+    try {
+      res = await invoke<{ status: number; body: string }>("client_request", { method, path, body: body ?? null });
+    } catch (e) {
+      // The hub is out of reach (the phone is not at home): use the last copy,
+      // and let shopping list changes wait for the hub.
+      if (isCacheable(method, path)) {
+        const cached = fromCache(path);
+        if (cached !== null) return JSON.parse(cached) as T;
+      }
+      if (isQueueable(method, path)) {
+        const answer = queue(method, path, body ?? null);
+        return (answer ? JSON.parse(answer) : undefined) as T;
+      }
+      throw e;
+    }
+    markOnline();
+    if (res.status < 300 && res.body && isCacheable(method, path)) remember(path, res.body);
     if (res.status >= 400) throw errorFromBody(res.status, res.body, `hub replied ${res.status}`);
     if (!res.body || !res.body.trim()) return undefined as T;
     return JSON.parse(res.body) as T;
@@ -138,4 +156,11 @@ export async function contentBase(): Promise<string> {
   const mode = await getMode();
   if (mode.mode === "client") return invoke<string>("client_content_base");
   return mode.api_base ?? "";
+}
+
+/** Phones: send shopping list changes made while away from the hub. */
+export async function flushOutbox(): Promise<void> {
+  const mode = await getMode();
+  if (mode.mode !== "client") return;
+  await flush((method, path, body) => invoke<{ status: number; body: string }>("client_request", { method, path, body }));
 }
