@@ -8,6 +8,7 @@ import Qr from "../components/Qr";
 import Backups from "../components/Backups";
 import Hotspot from "../components/Hotspot";
 import Firewall from "../components/Firewall";
+import { Brand } from "../components/Brand";
 import { About, Appearance, ChangePassword, ThisHub, type Look } from "./HouseholdMore";
 
 type T = (k: Key) => string;
@@ -79,7 +80,10 @@ function Setup({ t, lang, setLang, onDone, defaultName }: SetupProps) {
 
   return (
     <form className="stack form" onSubmit={submit}>
-      <div className="page-head">
+      <div className="page-head centered">
+        <div className="brand-hero">
+          <Brand size={64} layout="column" />
+        </div>
         <h1>{t("setupTitle")}</h1>
         <p className="muted">{t("setupIntro")}</p>
       </div>

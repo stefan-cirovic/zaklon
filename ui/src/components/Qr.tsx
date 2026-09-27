@@ -4,7 +4,7 @@ import QRCode from "qrcode";
 export default function Qr({ value, size = 220, label }: { value: string; size?: number; label: string }) {
   const [url, setUrl] = useState<string>("");
   useEffect(() => {
-    QRCode.toDataURL(value, { width: size, margin: 0, color: { dark: "#0b0d10", light: "#ffffff" } })
+    QRCode.toDataURL(value, { width: size, margin: 0, color: { dark: "#0b0d12", light: "#ffffff" } })
       .then(setUrl)
       .catch(() => setUrl(""));
   }, [value, size]);

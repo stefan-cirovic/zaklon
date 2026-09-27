@@ -105,14 +105,18 @@ async fn page(axum::extract::State(state): axum::extract::State<Arc<HubState>>) 
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title}</title>
 <style>
-body{{margin:0;background:#0b0d10;color:#f2f4f7;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5}}
-main{{max-width:520px;margin:0 auto;padding:32px 20px}}
-h1{{font-size:28px;margin:0 0 4px}} h2{{font-size:18px;margin:32px 0 4px}} .muted{{color:#9aa3ad}}
-.btn{{display:block;text-align:center;margin:12px 0;padding:14px 18px;border:1px solid #2a2f36;border-radius:10px;color:#f2f4f7;text-decoration:none;font-weight:600}}
-.btn:hover{{border-color:#4ade80}} .btn.primary{{background:#4ade80;border-color:#4ade80;color:#0b0d10}}
+body{{margin:0;background:#0b0d12;color:#ece7dd;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5}}
+main{{max-width:520px;margin:0 auto;padding:48px 20px}}
+header{{text-align:center;margin-bottom:32px}} header svg{{display:block;margin:0 auto 14px}}
+.wordmark{{margin:0 -0.32em 0 0;line-height:1;font-size:20px;font-weight:300;letter-spacing:.32em;text-transform:uppercase}}
+h2{{font-size:18px;font-weight:600;margin:32px 0 4px}} .muted{{color:#a7adb8}}
+header .muted{{margin:10px 0 0}}
+.btn{{display:block;text-align:center;margin:12px 0;padding:14px 18px;background:#151923;border:1px solid #2a303c;border-radius:12px;color:#ece7dd;text-decoration:none;font-weight:600}}
+.btn:hover,.btn:focus-visible{{border-color:#f2b366}} .btn:focus-visible{{outline:2px solid #f2b366;outline-offset:2px}}
+.btn.primary{{background:#f2b366;border-color:#f2b366;color:#0b0d12}}
 ol{{padding-left:20px}} li{{margin:8px 0}}
 </style></head><body><main>
-<h1>Zaklon</h1><p class="muted">{name}</p>
+<header>{mark}<h1 class="wordmark">Zaklon</h1><p class="muted">{name}</p></header>
 <ol>
 <li>{step1}</li>
 <li>{step2}</li>
@@ -130,8 +134,12 @@ ol{{padding-left:20px}} li{{margin:8px 0}}
             "Otvori Zaklon, skeniraj QR kod sa laptopa i upiši lozinku domaćinstva."
         ),
         name = html_escape(&cfg.hub_name),
+        mark = MARK,
     ))
 }
+
+/// The Zaklon mark (logo/zaklon-mark.svg), drawn inline so the page needs no other files.
+const MARK: &str = r##"<svg width="72" height="72" viewBox="0 0 64 64" aria-hidden="true"><g transform="translate(32 32) scale(1.14) translate(-32 -36)" stroke-linecap="round"><path d="M12 40 A20 20 0 0 1 52 40" fill="none" stroke="#ECE7DD" stroke-width="2.2"/><line x1="12" y1="40" x2="52" y2="40" stroke="#ECE7DD" stroke-width="2.2"/><line x1="18" y1="45.5" x2="46" y2="45.5" stroke="#8C8983" stroke-width="1.8"/><line x1="24" y1="50.5" x2="40" y2="50.5" stroke="#F2B366" stroke-width="1.6"/><circle cx="13" cy="21" r="1.0" fill="#8C8983"/><circle cx="51" cy="25" r="0.8" fill="#8C8983"/><circle cx="32" cy="31" r="3.0" fill="#F2B366"/></g></svg>"##;
 
 fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;")

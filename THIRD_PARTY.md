@@ -10,6 +10,12 @@ Zaklon runs several independent open-source programs as separate processes and o
 | llama.cpp (llama-server) | Runs local AI models | MIT | https://github.com/ggml-org/llama.cpp |
 | CoMaps | Offline maps app (Android APK served by the hub) | Apache-2.0 | https://codeberg.org/comaps/comaps |
 
+## Fonts
+
+| Font | Role | License | Source |
+|---|---|---|---|
+| Sora (Light 300, Latin subset, bundled with the interface via `@fontsource/sora`) | The "ZAKLON" wordmark | SIL Open Font License 1.1 | https://github.com/sora-xor/sora-font |
+
 ## Content packs (downloaded on request)
 
 | Pack | License | Attribution |

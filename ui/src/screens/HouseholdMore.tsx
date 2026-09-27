@@ -4,10 +4,12 @@ import type { Key } from "../i18n";
 import { errText } from "../errors";
 import { fmtBytes } from "../format";
 import { UpdateSettings } from "../components/Updates";
+import { Brand } from "../components/Brand";
 
 type T = (k: Key) => string;
 
-export const ACCENTS = ["green", "white", "purple", "blue", "amber"] as const;
+/** Amber is the Zaklon color and the default. */
+export const ACCENTS = ["amber", "green", "white", "purple", "blue"] as const;
 export type Accent = (typeof ACCENTS)[number];
 const ACCENT_KEY: Record<Accent, Key> = {
   green: "accentGreen",
@@ -143,13 +145,17 @@ const THIRD_PARTY: { name: string; role: Key; license: string }[] = [
   { name: "Wikipedia, Wiktionary", role: "tpWikipedia", license: "CC BY-SA 4.0" },
   { name: "Qwen, Gemma", role: "tpModels", license: "Apache-2.0" },
   { name: "Tauri, React, Rust", role: "tpFrameworks", license: "MIT / Apache-2.0" },
+  { name: "Sora", role: "tpFont", license: "OFL-1.1" },
 ];
 
 /** Version, license, privacy and the other projects Zaklon builds on. */
 export function About({ t, status, isHub }: { t: T; status: Status; isHub: boolean }) {
   return (
     <div className="panel stack left">
-      <h2>{t("about")}</h2>
+      <div className="row between wrap">
+        <h2>{t("about")}</h2>
+        <Brand size={24} className="about-brand" />
+      </div>
       <p style={{ margin: 0 }}>Zaklon {status.version} · {t("aboutFree")}</p>
       <p className="muted" style={{ fontSize: 14, margin: 0 }}>{t("aboutSource")} github.com/stefan-cirovic/zaklon · zaklon.com</p>
       <UpdateSettings t={t} isHub={isHub} />

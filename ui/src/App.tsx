@@ -13,6 +13,7 @@ import Supplies from "./screens/Supplies";
 import Maps from "./screens/Maps";
 import Assistant from "./screens/Assistant";
 import OfflineBanner from "./components/OfflineBanner";
+import { Brand } from "./components/Brand";
 import { ACCENTS, type Accent, type Look } from "./screens/HouseholdMore";
 
 const TABS: { id: string; key: Key; ico: string }[] = [
@@ -57,8 +58,8 @@ export default function App() {
     return /^(sr|hr|bs|sh|cnr)/.test(device) ? "sr" : "en";
   });
   const [accent, setAccentState] = useState<Accent>(() => {
-    const a = readPref("zaklon.accent", "green") as Accent;
-    return ACCENTS.includes(a) ? a : "green";
+    const a = readPref("zaklon.accent", "amber") as Accent;
+    return ACCENTS.includes(a) ? a : "amber";
   });
   const [oled, setOledState] = useState(() => readPref("zaklon.oled", "0") === "1");
   const look: Look = {
@@ -266,7 +267,7 @@ export default function App() {
         {status?.version && <p className="muted footer-note">Zaklon {status.version}</p>}
       </main>
       <nav className="nav" aria-label="Zaklon">
-        <div className="brand">Zaklon</div>
+        <Brand size={28} className="brand" />
         {TABS.map((x) => (
           <button key={x.id} className={tab === x.id ? "active" : ""} aria-current={tab === x.id ? "page" : undefined} onClick={() => setTab(x.id)}>
             <span className="ico" aria-hidden="true">{x.ico}</span>

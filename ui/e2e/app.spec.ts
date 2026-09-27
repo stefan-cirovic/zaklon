@@ -320,7 +320,7 @@ test("household: accent color is remembered, password can be changed, hub facts 
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-accent", "blue");
   await expect(page.getByRole("radio", { name: "Blue" })).toHaveAttribute("aria-checked", "true");
-  await page.getByRole("radio", { name: "Green" }).click();
+  await page.getByRole("radio", { name: "Amber" }).click();
   await page.getByLabel(/Pure black background/).uncheck();
 
   const form = page.locator("form").filter({ has: page.getByRole("heading", { name: "Household password" }) });

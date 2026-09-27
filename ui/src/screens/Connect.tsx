@@ -4,6 +4,7 @@ import type { Key } from "../i18n";
 import { errText } from "../errors";
 import { securityCode } from "../format";
 import { scanCode } from "../scan";
+import { Brand } from "../components/Brand";
 
 type T = (k: Key) => string;
 type Props = { t: T; onLinked: () => void; notice: string | null };
@@ -85,6 +86,9 @@ export default function Connect({ t, onLinked, notice }: Props) {
   return (
     <div className="stack">
       <div>
+        <div className="brand-hero">
+          <Brand size={72} layout="column" />
+        </div>
         <h1>{t("connectTitle")}</h1>
         <p className="muted">{t("connectIntro")}</p>
       </div>
