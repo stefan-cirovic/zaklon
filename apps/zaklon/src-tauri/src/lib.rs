@@ -2,6 +2,8 @@
 //! window talks to it over 127.0.0.1; on Android the app is a client of a
 //! hub on the network.
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod autostart;
 mod client;
 mod local_ai;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -41,7 +43,8 @@ fn app_mode() -> AppMode {
     {
         AppMode {
             mode: "hub",
-            api_base: Some(format!("http://127.0.0.1:{}", zaklon_hub::LOCAL_PORT)),
+            // The port the window's page really comes from (it can be changed for a second hub).
+            api_base: Some(format!("http://127.0.0.1:{}", desktop::local_port())),
             platform: std::env::consts::OS,
             version: env!("CARGO_PKG_VERSION"),
         }
@@ -158,14 +161,12 @@ pub fn run() {
     let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
     #[cfg(any(target_os = "android", target_os = "ios"))]
     let builder = builder.plugin(tauri_plugin_barcode_scanner::init());
-    // Desktop: one copy only (a second start just shows the window), and start with Windows.
+    // Desktop: one copy only (a second start just shows the window), and the
+    // page the window shows until the hub answers.
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let builder = builder
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| desktop::show_main(app)))
-        .plugin(tauri_plugin_autostart::init(
-            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec![desktop::MINIMIZED_ARG]),
-        ));
+        .register_uri_scheme_protocol(desktop::WAITING_SCHEME, |_ctx, _request| desktop::waiting_page());
 
     builder
         .setup(move |app| {
@@ -174,8 +175,8 @@ pub fn run() {
             app.manage(Arc::new(ClientState::load(dir)));
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
-                desktop::start_hub(root.clone());
-                desktop::setup(app, &root)?;
+                desktop::start_hub(app.handle().clone(), root.clone());
+                desktop::setup(app)?;
             }
             #[cfg(any(target_os = "android", target_os = "ios"))]
             {

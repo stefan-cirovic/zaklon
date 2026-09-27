@@ -33,12 +33,12 @@ tauri-plugin-opener = "2"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 zaklon-hub = { path = "../../../crates/zaklon-hub" }
 tauri-plugin-single-instance = "2"
-tauri-plugin-autostart = "2"
 tracing-appender.workspace = true
 
-# Waiting for the previous copy to end when Zaklon restarts itself.
+# Waiting for the previous copy to end when Zaklon restarts itself, and the
+# "Start with Windows" entry in the registry.
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_System_Threading"] }
+windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_Registry", "Win32_Security"] }
 
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 tauri-plugin-barcode-scanner = "2"
