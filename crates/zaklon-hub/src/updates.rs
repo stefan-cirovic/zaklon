@@ -120,14 +120,15 @@ impl Updates {
         st.clone()
     }
 
-    /// Check once a day while enabled.
-    pub fn start(self: &Arc<Self>, _state: Arc<HubState>) {
+    /// Check once a day while enabled, and only after setup, where the
+    /// household is asked whether it wants this.
+    pub fn start(self: &Arc<Self>, state: Arc<HubState>) {
         let me = self.clone();
         tokio::spawn(async move {
             // Let the hub settle first.
             tokio::time::sleep(Duration::from_secs(60)).await;
             loop {
-                if me.state().enabled {
+                if me.state().enabled && state.db.is_set_up().unwrap_or(false) {
                     me.check().await;
                 }
                 tokio::time::sleep(EVERY).await;

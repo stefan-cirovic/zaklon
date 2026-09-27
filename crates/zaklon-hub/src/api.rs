@@ -412,6 +412,9 @@ struct SetupBody {
     hub_name: Option<String>,
     #[serde(default)]
     language: Option<String>,
+    /// The answer to "check once a day for a newer Zaklon?" (asked at setup).
+    #[serde(default)]
+    check_updates: Option<bool>,
 }
 
 async fn setup(
@@ -437,9 +440,16 @@ async fn setup(
         cfg.language = l;
         changed = true;
     }
+    if let Some(on) = body.check_updates {
+        cfg.auto_update_check = on;
+        changed = true;
+    }
     if changed {
         cfg.save()?;
     }
+    let updates_on = cfg.auto_update_check;
+    drop(cfg);
+    state.updates.set_enabled(updates_on);
     Ok(StatusCode::NO_CONTENT)
 }
 

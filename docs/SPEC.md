@@ -11,7 +11,7 @@ Zaklon (Serbian for "shelter") is a free, open-source, offline-first home base. 
 1. **Works offline by default.** Internet is an optional convenience, never a requirement.
 2. **Local only.** No accounts, no telemetry, no cloud. The household owns its data as plain files in one folder.
 3. **Free forever.** GPL-3.0-or-later. Donations are optional and never unlock features.
-4. **Transparent.** Public repository from the first commit; every outbound network call is documented in `docs/network.md`. All of them are started by the user, except a daily update check that is on by default and can be switched off.
+4. **Transparent.** Public repository from the first commit; every outbound network call is documented in `docs/network.md`. All of them are started by the user, except a daily update check that the household is asked about at setup (the box starts ticked) and can switch off at any time.
 5. **Light.** Small installer, low idle memory, no animations, runs on a mid-range laptop on battery.
 6. **Trust inside the household.** No admin role; anyone with the household password has equal rights.
 
@@ -194,7 +194,7 @@ English is the default UI language; Serbian (Latin script) is selectable per pro
 - License: GPL-3.0-or-later for the hub and apps. Third-party components stay separate programs with their own licenses; `THIRD_PARTY.md` lists every component and content pack with license and attribution (Wikipedia CC BY-SA 4.0, OpenStreetMap ODbL, Kiwix GPLv3+, llama.cpp MIT, CoMaps Apache-2.0, model licenses, and the proprietary Google ML Kit used for barcode scanning on Android); the Licenses screen in the app lists the main ones.
 - Repository public from the first commit with `LICENSE`, `README.md`, `SECURITY.md`, `CONTRIBUTING.md`, `THIRD_PARTY.md`, a public roadmap and this spec. Everything public is in English.
 - Releases are built by GitHub Actions only, with SHA-256 checksums. Planned: an SBOM and a VirusTotal link; SignPath Foundation code signing after the first release; Microsoft Store and winget next; Android via GitHub Releases, IzzyOnDroid and F-Droid (F-Droid needs the Google ML Kit barcode scanner replaced by an open one first). Google Play developer verification will be completed through a registered association before the 2027 global rollout.
-- Privacy statement (plain language): no accounts, no telemetry, no crash upload. The app talks to the network only for (1) the daily update check, on by default and switchable off, (2) downloads the user starts, (3) online research the user turns on. The exception is Google ML Kit, used for barcode scanning on Android, which downloads its model once and sends usage metrics to Google. The complete list of hosts is published in `docs/network.md`.
+- Privacy statement (plain language): no accounts, no telemetry, no crash upload. The app talks to the network only for (1) the daily update check, asked about at setup and switchable off, (2) downloads the user starts, (3) online research the user turns on. The exception is Google ML Kit, used for barcode scanning on Android, which downloads its model once and sends usage metrics to Google. The complete list of hosts is published in `docs/network.md`.
 - Third-party names appear as plain text ("uses Kiwix", "map data © OpenStreetMap contributors") with no logos.
 - Donations: GitHub Sponsors, Open Collective (public ledger) and published BTC/ETH addresses; a public finances page. No feature is ever paywalled.
 

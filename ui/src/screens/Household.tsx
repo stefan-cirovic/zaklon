@@ -56,6 +56,7 @@ function Setup({ t, lang, setLang, onDone, defaultName }: SetupProps) {
   const setName = (v: string) => setTyped(v);
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
+  const [checkUpdates, setCheckUpdates] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -68,7 +69,7 @@ function Setup({ t, lang, setLang, onDone, defaultName }: SetupProps) {
     setBusy(true);
     setErr(null);
     try {
-      await api("/api/setup", { json: { password: pw, hub_name: name, language: lang } });
+      await api("/api/setup", { json: { password: pw, hub_name: name, language: lang, check_updates: checkUpdates } });
       onDone();
     } catch (ex) {
       setErr(errText(t, ex));
@@ -106,6 +107,13 @@ function Setup({ t, lang, setLang, onDone, defaultName }: SetupProps) {
         <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} minLength={8} required autoComplete="new-password" />
       </label>
       <p className="muted" style={{ fontSize: 14 }}>{t("passwordRule")}</p>
+      <label className="check-line">
+        <input type="checkbox" checked={checkUpdates} onChange={(e) => setCheckUpdates(e.target.checked)} />
+        <span>
+          {t("updateSwitch")}
+          <span className="muted" style={{ display: "block", fontSize: 14 }}>{t("setupUpdatesHint")}</span>
+        </span>
+      </label>
       {err && <p className="error" role="alert">{err}</p>}
       <button className="btn" disabled={busy || pw.length < 8}>{t("finish")}</button>
     </form>

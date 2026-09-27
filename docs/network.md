@@ -1,10 +1,10 @@
 # Network activity
 
-Zaklon goes online only for the connections below. All of them are started by the user, except the update check, which runs once a day while it is switched on (it is on by default; the switch is under Household → About → New versions on the laptop). There is no activity log in the app yet; this page is the complete list.
+Zaklon goes online only for the connections below. All of them are started by the user, except the update check, which runs once a day while it is switched on. The household is asked about it in the first-run setup (the box starts ticked); the switch is also under Household → About → New versions on the laptop. There is no activity log in the app yet; this page is the complete list.
 
 | When | Host | Purpose |
 |---|---|---|
-| Update check: about a minute after Zaklon starts and then every 24 hours while the switch is on (also before the first-run setup is finished), and whenever someone presses "Check now" | `api.github.com` | Reads the version number of the latest published release. The request carries only the app version (`User-Agent: Zaklon/<version>`), nothing about the household. "Open the download page" opens `github.com` in the browser; Zaklon itself downloads and installs nothing. |
+| Update check: about a minute after Zaklon starts and then every 24 hours while the switch is on (never before the first-run setup is finished), and whenever someone presses "Check now" | `api.github.com` | Reads the version number of the latest published release. The request carries only the app version (`User-Agent: Zaklon/<version>`), nothing about the household. "Open the download page" opens `github.com` in the browser; Zaklon itself downloads and installs nothing. |
 | Knowledge pack download (user starts it) | `lb.download.kiwix.org` (which redirects to a nearby Kiwix mirror), then `mirror.accum.se` if that fails | Knowledge packs (ZIM), verified with SHA-256 |
 | First knowledge pack download | `download.kiwix.org` | The library engine (Kiwix tools for Windows), verified with SHA-256 |
 | First AI model download | `github.com` (release files are served from `release-assets.githubusercontent.com`) | The AI engine (llama.cpp for Windows), verified with SHA-256 |
