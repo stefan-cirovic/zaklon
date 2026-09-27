@@ -531,8 +531,11 @@ impl Db {
             params![id, after.name, after.unit, after.category, after.place, after.barcode, after.min_quantity, after.notes],
         )?;
         // Quantity and expiry act on batches.
-        if let Some(e) = input.expiry {
-            let e = checked_date(e)?;
+        let new_expiry = match input.expiry {
+            Some(e) => Some(checked_date(e)?),
+            None => None,
+        };
+        if let Some(e) = new_expiry.clone() {
             match before.batches.len() {
                 0 => {}
                 1 => {
@@ -549,7 +552,10 @@ impl Db {
             let target = clamp_qty(q);
             let diff = target - before.quantity;
             if diff > 0.0 {
-                add_batch_tx(&tx, id, diff, None)?;
+                // A date given in the same save belongs to the added amount too
+                // (restocking an item that had run out, or one with a single batch).
+                let dated = if before.batches.len() <= 1 { new_expiry.clone().flatten() } else { None };
+                add_batch_tx(&tx, id, diff, dated)?;
             } else if diff < 0.0 {
                 consume_tx(&tx, id, -diff)?;
             }
@@ -858,7 +864,25 @@ impl Db {
     pub fn mark_bought(&self, id: &str, actor: &str) -> Result<bool> {
         if let Some(item) = self.low_item(id)? {
             let missing = (item.min_quantity.unwrap_or(0.0) - item.quantity).max(0.0);
-            self.insert_shopping(&item.name, Some(missing), Some(item.unit.clone()), Some(item.id.clone()), "bought", actor)?;
+            // Check and insert under one lock: a repeated "bought" (a retried
+            // request, two phones) must not put the same thing away twice.
+            let conn = self.lock();
+            let already: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM shopping WHERE item_id = ?1 AND status IN ('open', 'bought', 'putting'))",
+                    params![item.id],
+                    |r| r.get(0),
+                )?;
+            if already {
+                return Ok(false);
+            }
+            let now = now_rfc3339();
+            let quantity = Some(missing).filter(|q| *q > 0.0).map(clamp_qty);
+            conn.execute(
+                "INSERT INTO shopping (id, item_id, text, quantity, unit, done, status, created_at, updated_at, updated_by)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 0, 'bought', ?6, ?6, ?7)",
+                params![uuid::Uuid::new_v4().to_string(), item.id, item.name, quantity, item.unit, now, actor],
+            )?;
             return Ok(true);
         }
         let conn = self.lock();
@@ -882,16 +906,42 @@ impl Db {
     /// Put a bought thing away: add a batch to the item (or create the item),
     /// then remove the entry. Returns the item.
     pub fn put_away(&self, id: &str, input: PutAwayInput, actor: &str) -> Result<Option<Item>> {
+        // Claim the entry first, in one step: a double tap or two phones
+        // putting the same thing away must add it once.
         let entry: Option<(Option<String>, String, Option<String>)> = {
             let conn = self.lock();
-            conn.query_row(
-                "SELECT item_id, text, unit FROM shopping WHERE id = ?1 AND status = 'bought'",
-                params![id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-            )
-            .optional()?
+            let claimed = conn.execute("UPDATE shopping SET status = 'putting' WHERE id = ?1 AND status = 'bought'", params![id])?;
+            if claimed == 0 {
+                None
+            } else {
+                conn.query_row("SELECT item_id, text, unit FROM shopping WHERE id = ?1", params![id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                    .optional()?
+            }
         };
         let Some((entry_item, text, entry_unit)) = entry else { return Ok(None) };
+        let result = self.put_away_claimed(id, input, actor, entry_item, text, entry_unit);
+        let conn = self.lock();
+        match &result {
+            Ok(_) => {
+                conn.execute("DELETE FROM shopping WHERE id = ?1", params![id])?;
+            }
+            Err(_) => {
+                // Nothing was stored: give the entry back to the put-away list.
+                conn.execute("UPDATE shopping SET status = 'bought' WHERE id = ?1 AND status = 'putting'", params![id])?;
+            }
+        }
+        result.map(Some)
+    }
+
+    fn put_away_claimed(
+        &self,
+        _id: &str,
+        input: PutAwayInput,
+        actor: &str,
+        entry_item: Option<String>,
+        text: String,
+        entry_unit: Option<String>,
+    ) -> Result<Item> {
         let quantity = clamp_qty(input.quantity);
         if quantity <= 0.0 {
             bail!("quantity must be more than zero");
@@ -925,9 +975,7 @@ impl Db {
                 actor,
             )?,
         };
-        let conn = self.lock();
-        conn.execute("DELETE FROM shopping WHERE id = ?1", params![id])?;
-        Ok(Some(item))
+        Ok(item)
     }
 
     // ---- history --------------------------------------------------------
@@ -1219,5 +1267,60 @@ mod tests {
         assert_eq!(db.get_item("a").unwrap().unwrap().batches.len(), 1);
         drop(db);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod review_fixes {
+    use super::*;
+
+    fn pa(q: f64) -> PutAwayInput {
+        PutAwayInput { quantity: q, expiry: None, place: None, item_id: None, name: None, unit: None, category: None, barcode: None }
+    }
+
+    #[test]
+    fn a_bought_thing_is_put_away_once() {
+        let db = Db::open_in_memory().unwrap();
+        let e = db.add_shopping("Sugar", Some(1.0), Some("kg".into()), None, "t").unwrap();
+        assert!(db.mark_bought(&e.id, "t").unwrap());
+        assert!(db.put_away(&e.id, pa(1.0), "t").unwrap().is_some());
+        assert!(db.put_away(&e.id, pa(1.0), "t").unwrap().is_none(), "second tap does nothing");
+        let sugar: Vec<Item> = db.list_items().unwrap().into_iter().filter(|i| i.name == "Sugar").collect();
+        assert_eq!(sugar.len(), 1);
+        assert_eq!(sugar[0].quantity, 1.0);
+    }
+
+    #[test]
+    fn a_failed_put_away_keeps_the_entry() {
+        let db = Db::open_in_memory().unwrap();
+        let e = db.add_shopping("Salt", None, None, None, "t").unwrap();
+        db.mark_bought(&e.id, "t").unwrap();
+        assert!(db.put_away(&e.id, pa(0.0), "t").is_err(), "zero is refused");
+        assert_eq!(db.to_put_away().unwrap().len(), 1, "still waiting to be put away");
+    }
+
+    #[test]
+    fn running_low_is_bought_once() {
+        let db = Db::open_in_memory().unwrap();
+        let milk = db
+            .create_item(ItemInput { name: Some("Milk".into()), quantity: Some(1.0), unit: Some("l".into()), min_quantity: Some(Some(3.0)), ..Default::default() }, "t")
+            .unwrap();
+        let low = format!("low:{}", milk.id);
+        assert!(db.mark_bought(&low, "t").unwrap());
+        assert!(!db.mark_bought(&low, "t").unwrap(), "a repeat does not add a second entry");
+        assert_eq!(db.to_put_away().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn restocking_from_zero_keeps_the_date() {
+        let db = Db::open_in_memory().unwrap();
+        let flour = db.create_item(ItemInput { name: Some("Flour".into()), quantity: Some(1.0), ..Default::default() }, "t").unwrap();
+        db.adjust_item(&flour.id, -1.0, "t").unwrap();
+        let after = db
+            .update_item(&flour.id, ItemInput { quantity: Some(3.0), expiry: Some(Some("2027-05-01".into())), ..Default::default() }, "t")
+            .unwrap()
+            .unwrap();
+        assert_eq!(after.quantity, 3.0);
+        assert_eq!(after.expiry.as_deref(), Some("2027-05-01"));
     }
 }
