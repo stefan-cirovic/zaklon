@@ -7,6 +7,7 @@ import ConfirmButton from "../components/ConfirmButton";
 import Qr from "../components/Qr";
 import Backups from "../components/Backups";
 import Hotspot from "../components/Hotspot";
+import Firewall from "../components/Firewall";
 import { About, Appearance, ChangePassword, ThisHub, type Look } from "./HouseholdMore";
 
 type T = (k: Key) => string;
@@ -30,6 +31,7 @@ export default function Household({ status, t, lang, setLang, refresh, isHub, ow
   }
   return (
     <div className="stack">
+      {isHub && <Firewall t={t} />}
       <Devices t={t} status={status} lang={lang} setLang={setLang} isHub={isHub} ownDeviceId={ownDeviceId} />
       <Appearance t={t} look={look} />
       {isHub && <ChangePassword t={t} />}

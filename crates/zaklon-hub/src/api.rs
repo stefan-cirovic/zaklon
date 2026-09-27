@@ -55,6 +55,8 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/export", get(export_status).post(export_start))
         .route("/api/export/cancel", post(export_cancel))
         .route("/api/drives", get(drives))
+        .route("/api/firewall", get(firewall_status))
+        .route("/api/firewall/allow", post(firewall_allow))
         .route("/api/hotspot", get(hotspot_status))
         .route("/api/hotspot/start", post(hotspot_start))
         .route("/api/hotspot/stop", post(hotspot_stop))
@@ -1510,4 +1512,25 @@ async fn hotspot_stop(_: Local) -> Result<Json<HotspotReply>, ApiError> {
     tracing::info!("stopping the Wi-Fi network");
     let s = tokio::task::spawn_blocking(crate::hotspot::stop).await.map_err(|e| anyhow::anyhow!(e))?;
     Ok(Json(hotspot_reply(s)))
+}
+
+// ---- Windows Firewall ---------------------------------------------------------------
+
+#[derive(Serialize)]
+struct FirewallReply {
+    #[serde(flatten)]
+    state: crate::firewall::FirewallState,
+    ok: bool,
+}
+
+async fn firewall_status(_: Local) -> Result<Json<FirewallReply>, ApiError> {
+    let state = tokio::task::spawn_blocking(crate::firewall::status).await.map_err(|e| anyhow::anyhow!(e))?;
+    Ok(Json(FirewallReply { ok: state.ok(), state }))
+}
+
+/// Laptop only: changes this computer's firewall (Windows asks for consent).
+async fn firewall_allow(_: Local) -> Result<Json<FirewallReply>, ApiError> {
+    tracing::info!("asking Windows to let phones in through the firewall");
+    let state = tokio::task::spawn_blocking(crate::firewall::allow).await.map_err(|e| anyhow::anyhow!(e))?;
+    Ok(Json(FirewallReply { ok: state.ok(), state }))
 }

@@ -588,3 +588,17 @@ test("add-ons: the starter set downloads the recommended packs in one go (reques
   expect(asked).toContain("/api/packs/wikimed-en/download");
   expect(asked.some((p) => /\/api\/packs\/qwen35-/.test(p))).toBe(true);
 });
+
+test("household: warns when Windows Firewall would keep phones out, and fixes it (simulated)", async ({ page }) => {
+  await ensureSetUp(page);
+  const bad = { checked: true, firewall_on: true, allowed: false, blocked: true, error: null, ok: false };
+  const good = { ...bad, allowed: true, blocked: false, ok: true };
+  await page.route("**/api/firewall", (r) => r.fulfill({ json: bad }));
+  await page.route("**/api/firewall/allow", (r) => r.fulfill({ json: good }));
+  await page.goto("/#household");
+  await page.reload();
+  const panel = page.locator(".firewall");
+  await expect(panel.getByText(/Windows Firewall is blocking Zaklon/)).toBeVisible();
+  await panel.getByRole("button", { name: "Let phones connect" }).click();
+  await expect(panel).toHaveCount(0);
+});
