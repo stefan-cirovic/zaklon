@@ -41,6 +41,33 @@ fn upper_first(c: char) -> char {
     c.to_uppercase().next().unwrap_or(c)
 }
 
+/// Words where "nj" or "dž" are two letters, not one (a prefix meets a root):
+/// the word's beginning and where in it the pair starts. "odžak" (оџак) is a
+/// real џ, so only whole known beginnings are listed.
+const SPLIT_PAIRS: &[(&str, usize)] = &[
+    ("injek", 1),
+    ("injun", 1),
+    ("konjug", 2),
+    ("konjunk", 2),
+    ("tanjug", 2),
+    ("nadživ", 2),
+    ("nadžnje", 2),
+    ("odžali", 1),
+    ("podžanr", 2),
+    ("podžup", 2),
+    ("predžel", 3),
+];
+
+/// Whether the pair starting at `i` must stay two letters.
+fn split_pair(chars: &[char], i: usize) -> bool {
+    let mut start = i;
+    while start > 0 && chars[start - 1].is_alphabetic() {
+        start -= 1;
+    }
+    let word: String = chars[start..].iter().take_while(|c| c.is_alphabetic()).flat_map(|c| c.to_lowercase()).collect();
+    SPLIT_PAIRS.iter().any(|(prefix, at)| i - start == *at && word.starts_with(prefix))
+}
+
 /// Convert Serbian Latin text to Cyrillic. Characters without a Serbian
 /// counterpart (q, w, x, y, digits, punctuation) are kept as they are.
 /// "dj" is treated as "đ", the common way to type it without diacritics.
@@ -63,7 +90,7 @@ pub fn latin_to_cyrillic(input: &str) -> String {
                 "dj" => Some('ђ'),
                 _ => None,
             };
-            if let Some(cyr) = digraph {
+            if let Some(cyr) = digraph.filter(|_| !split_pair(&chars, i)) {
                 out.push(if is_upper { upper_first(cyr) } else { cyr });
                 i += 2;
                 continue 'outer;
@@ -217,6 +244,17 @@ pub fn fold(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prefix_pairs_stay_two_letters() {
+        assert_eq!(latin_to_cyrillic("injekcija"), "инјекција");
+        assert_eq!(latin_to_cyrillic("Konjugacija"), "Конјугација");
+        assert_eq!(latin_to_cyrillic("nadživeti"), "надживети");
+        assert_eq!(latin_to_cyrillic("odžaliti"), "оджалити");
+        assert_eq!(latin_to_cyrillic("odžak"), "оџак", "a real џ");
+        assert_eq!(latin_to_cyrillic("konj"), "коњ");
+        assert_eq!(latin_to_cyrillic("Tanjug"), "Танјуг");
+    }
 
     #[test]
     fn latin_to_cyrillic_words() {
