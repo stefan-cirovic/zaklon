@@ -252,11 +252,24 @@ impl Downloads {
             if sources.len() != pack.files.len() {
                 continue;
             }
-            self.set(&pack.id, |s| {
-                s.status = PackStatus::Verifying;
-                s.bytes_done = 0;
-                s.error = None;
-            });
+            // Claim the pack in one step: a download started in the meantime
+            // must not write the same files (a queued download sees Verifying
+            // and waits).
+            let claimed = {
+                let mut states = self.states.lock().unwrap_or_else(|p| p.into_inner());
+                let st = states.entry(pack.id.clone()).or_insert_with(|| PackState::not_installed(pack.size));
+                if matches!(st.status, PackStatus::Installed | PackStatus::Queued | PackStatus::Downloading | PackStatus::Verifying) {
+                    false
+                } else {
+                    st.status = PackStatus::Verifying;
+                    st.bytes_done = 0;
+                    st.error = None;
+                    true
+                }
+            };
+            if !claimed {
+                continue;
+            }
             let mut ok = true;
             for (f, src) in &sources {
                 if let Err(e) = self.import_file(&pack.id, f, src) {
@@ -289,14 +302,26 @@ impl Downloads {
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        let tmp = part_path(&dest);
-        let copied = copy_with_hash(src, &tmp).map_err(|e| format!("copying {}: {e}", f.path))?;
-        if !copied.matches(f) {
+        // Its own temporary file: a paused download's ".part" (with its
+        // progress) is left alone, and a failed copy leaves nothing behind.
+        let mut tmp = dest.as_os_str().to_owned();
+        tmp.push(".import");
+        let tmp = PathBuf::from(tmp);
+        let result = (|| {
+            let copied = copy_with_hash(src, &tmp).map_err(|e| format!("copying {}: {e}", f.path))?;
+            if !copied.matches(f) {
+                return Err(format!("checksum mismatch for {}", f.path));
+            }
+            unpack(&self.library, f, &tmp)?;
+            rename_retry(&tmp, &dest).map_err(|e| format!("moving {} into place: {e}", f.path))
+        })();
+        if result.is_err() {
             let _ = std::fs::remove_file(&tmp);
-            return Err(format!("checksum mismatch for {}", f.path));
+        } else {
+            // The imported file replaces any partial download of it.
+            let _ = std::fs::remove_file(part_path(&dest));
         }
-        unpack(&self.library, f, &tmp)?;
-        rename_retry(&tmp, &dest).map_err(|e| format!("moving {} into place: {e}", f.path))
+        result
     }
 
     // ---- internals ----------------------------------------------------------
