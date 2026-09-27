@@ -74,6 +74,8 @@ pub struct Answer {
     pub status: AnswerStatus,
     pub text: String,
     pub sources: Vec<Source>,
+    /// What was looked up in the library.
+    pub searched: Vec<String>,
     /// False when no library passage was found and the model answered alone.
     pub grounded: bool,
     pub language: &'static str,
@@ -217,8 +219,7 @@ impl Assistant {
         let rec_rank = MODEL_ORDER.iter().position(|m| *m == rec).unwrap_or(0);
         installed
             .iter()
-            .filter(|m| MODEL_ORDER.iter().position(|x| x == m).unwrap_or(0) <= rec_rank)
-            .next_back()
+            .rfind(|m| MODEL_ORDER.iter().position(|x| x == m).unwrap_or(0) <= rec_rank)
             .or(installed.first())
             .cloned()
     }
@@ -396,6 +397,7 @@ impl Assistant {
                     status: AnswerStatus::Searching,
                     text: String::new(),
                     sources: Vec::new(),
+                    searched: Vec::new(),
                     grounded: false,
                     language,
                     tokens_per_second: 0.0,
@@ -422,18 +424,30 @@ impl Assistant {
     }
 
     async fn run(&self, id: &str, question: &str, language: &'static str, history: &[Turn]) -> Result<(), String> {
-        // 1. Find passages in the library.
-        let (sources, passages) = self.find_sources(question).await;
+        // 1. Make sure the engine runs (it also picks the search words).
+        self.update(id, |a| a.status = AnswerStatus::Starting);
+        let port = self.ensure_running().await?;
+
+        // 2. Find passages in the library, if there is one.
+        self.update(id, |a| a.status = AnswerStatus::Searching);
+        let (sources, passages) = if self.library.books().is_empty() {
+            (Vec::new(), Vec::new())
+        } else {
+            let mut terms = self.keywords(port, question, language).await;
+            if terms.is_empty() {
+                // The model gave nothing usable: fall back to the question's own words.
+                terms = search_words(question).iter().map(|w| stem(w)).collect();
+            }
+            let shown = terms.clone();
+            self.update(id, |a| a.searched = shown);
+            self.find_sources(&terms).await
+        };
         let grounded = !sources.is_empty();
         self.update(id, |a| {
             a.sources = sources.clone();
             a.grounded = grounded;
-            a.status = AnswerStatus::Starting;
+            a.status = AnswerStatus::Thinking;
         });
-
-        // 2. Make sure the engine runs.
-        let port = self.ensure_running().await?;
-        self.update(id, |a| a.status = AnswerStatus::Thinking);
 
         // 3. Ask, streaming the text as it comes.
         let messages = build_messages(question, language, &passages, history);
@@ -494,28 +508,116 @@ impl Assistant {
         Ok(())
     }
 
-    /// The best few library passages for a question.
-    async fn find_sources(&self, question: &str) -> (Vec<Source>, Vec<String>) {
-        let query = search_terms(question);
-        if query.is_empty() {
+    /// Encyclopedia search terms for a question, written by the model in
+    /// their basic form ("konzerva, pasulj, rok trajanja"). A library search
+    /// works on terms, not sentences, and the model knows which words matter.
+    async fn keywords(&self, port: u16, question: &str, language: &str) -> Vec<String> {
+        // A few examples work better with small models than a long explanation.
+        let (prompt, examples): (&str, [(&str, &str); 3]) = if language == "sr" {
+            (
+                "Za pitanje napiši 2 do 4 pojma za pretragu srpske enciklopedije: imenice u osnovnom obliku, na srpskom, latinicom, odvojene zarezom. Samo pojmove.",
+                [
+                    ("Koliko dugo traje hleb?", "hleb, rok trajanja"),
+                    ("Kako da izlečim prehladu kod deteta?", "prehlada, lečenje, dete"),
+                    ("Kako se pravi sapun kod kuće?", "sapun, saponifikacija"),
+                ],
+            )
+        } else {
+            (
+                "For the question, write 2 to 4 terms to search an encyclopedia: nouns in their basic form, separated by commas. Only the terms.",
+                [
+                    ("How long does bread last?", "bread, shelf life"),
+                    ("How do I treat a cold in a child?", "common cold, treatment, child"),
+                    ("How is soap made at home?", "soap, saponification"),
+                ],
+            )
+        };
+        let mut messages = vec![serde_json::json!({ "role": "system", "content": prompt })];
+        for (q, a) in examples {
+            messages.push(serde_json::json!({ "role": "user", "content": q }));
+            messages.push(serde_json::json!({ "role": "assistant", "content": a }));
+        }
+        messages.push(serde_json::json!({ "role": "user", "content": question }));
+        let body = serde_json::json!({
+            "messages": messages,
+            "max_tokens": 40,
+            "temperature": 0.1,
+            "chat_template_kwargs": { "enable_thinking": false },
+        });
+        let reply = self
+            .http
+            .post(format!("http://127.0.0.1:{port}/v1/chat/completions"))
+            .timeout(Duration::from_secs(60))
+            .json(&body)
+            .send()
+            .await;
+        let text = match reply {
+            Ok(r) => r.json::<serde_json::Value>().await.ok().and_then(|v| v["choices"][0]["message"]["content"].as_str().map(str::to_string)),
+            Err(_) => None,
+        }
+        .unwrap_or_default();
+        parse_keywords(&text)
+    }
+
+    /// The best few library passages for some search terms. Each term is
+    /// looked up on its own, and articles are ranked by how well their title
+    /// and text match the terms.
+    async fn find_sources(&self, terms: &[String]) -> (Vec<Source>, Vec<String>) {
+        if terms.is_empty() {
             return (Vec::new(), Vec::new());
         }
-        let results = self.library.search(&query, None, 8).await;
+        let stems: Vec<String> = terms
+            .iter()
+            .flat_map(|t| t.split_whitespace().map(|w| zaklon_core::translit::fold(&stem(w))).collect::<Vec<_>>())
+            .filter(|w| w.chars().count() >= 3)
+            .collect();
+        let whole: Vec<String> = terms.iter().map(|t| zaklon_core::translit::fold(t)).collect();
+        let queries: Vec<String> = terms.iter().take(6).cloned().collect();
+
+        // (score, order found, result)
+        let mut found: Vec<(i32, usize, crate::kiwix::SearchResult)> = Vec::new();
+        for q in &queries {
+            for r in self.library.search(q, None, 5).await {
+                if found.iter().any(|(_, _, f)| f.url == r.url) {
+                    continue;
+                }
+                let title = zaklon_core::translit::fold(&r.title);
+                let text = zaklon_core::translit::fold(&format!("{} {}", r.title, r.snippet));
+                let mut score = 0;
+                // The title is one of the terms: the article is about exactly this.
+                if whole.contains(&title) {
+                    score += 6;
+                }
+                for st in &stems {
+                    if title == *st || title.starts_with(st.as_str()) && title.chars().count() <= st.chars().count() + 3 {
+                        score += 4; // the article is about this word
+                    } else if text.contains(st.as_str()) {
+                        score += 1;
+                    }
+                }
+                // Disambiguation and list pages rarely help.
+                if title.contains("вишезначн") || title.contains("списак") {
+                    score -= 3;
+                }
+                let order = found.len();
+                found.push((score, order, r));
+            }
+        }
+        found.retain(|(score, _, _)| *score > 0);
+        found.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+
         let mut sources = Vec::new();
         let mut passages = Vec::new();
-        for r in results {
+        for (_, _, r) in found {
             if sources.len() >= MAX_SOURCES {
                 break;
-            }
-            if sources.iter().any(|s: &Source| s.url == r.url) {
-                continue;
             }
             let Ok(res) = self.library.fetch(&r.url).await else { continue };
             if !res.status().is_success() {
                 continue;
             }
             let Ok(html) = res.text().await else { continue };
-            let text = article_text(&html, SOURCE_CHARS);
+            let text = relevant_text(&html, &stems, SOURCE_CHARS);
             if text.chars().count() < 80 {
                 continue; // a redirect or an almost empty page
             }
@@ -526,6 +628,38 @@ impl Assistant {
         }
         (sources, passages)
     }
+}
+
+/// "konzerva, pasulj, rok trajanja" -> terms; tolerant of numbering, quotes and odd separators.
+pub fn parse_keywords(text: &str) -> Vec<String> {
+    text.split([',', ';', '\n'])
+        .map(|t| t.trim().trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == '-' || c == '*' || c == ' ').trim())
+        .map(|t| t.trim_matches(|c: char| c == '"' || c == '\'' || c == '„' || c == '“' || c == '.' || c == '*'))
+        .filter(|t| !t.is_empty() && t.chars().count() <= 40 && t.split_whitespace().count() <= 3)
+        .map(|t| zaklon_core::translit::cyrillic_to_latin(t).to_lowercase())
+        .fold(Vec::new(), |mut acc: Vec<String>, t| {
+            if !acc.contains(&t) {
+                acc.push(t);
+            }
+            acc
+        })
+        .into_iter()
+        .take(4)
+        .collect()
+}
+
+/// The basic form of a word, roughly: Serbian case endings and English plurals off.
+pub fn stem(word: &str) -> String {
+    let w = word.to_lowercase();
+    let n = w.chars().count();
+    const ENDINGS: [&str; 16] = ["ama", "ima", "ovi", "eve", "om", "em", "og", "ih", "im", "es", "a", "e", "i", "u", "o", "s"];
+    for e in ENDINGS {
+        let keep = if e.chars().count() == 1 { 3 } else { 4 };
+        if w.ends_with(e) && n - e.chars().count() >= keep {
+            return w[..w.len() - e.len()].to_string();
+        }
+    }
+    w
 }
 
 const STOP_SR: &[&str] = &[
@@ -540,6 +674,10 @@ const STOP_EN: &[&str] = &[
 
 /// The meaningful words of a question, for the library search.
 pub fn search_terms(question: &str) -> String {
+    search_words(question).join(" ")
+}
+
+pub fn search_words(question: &str) -> Vec<String> {
     question
         .split(|c: char| !c.is_alphanumeric())
         .filter(|w| w.chars().count() >= 3 || w.chars().all(|c| c.is_ascii_digit()) && !w.is_empty())
@@ -547,9 +685,9 @@ pub fn search_terms(question: &str) -> String {
             let l = w.to_lowercase();
             !STOP_SR.contains(&l.as_str()) && !STOP_EN.contains(&l.as_str())
         })
-        .take(8)
-        .collect::<Vec<_>>()
-        .join(" ")
+        .take(6)
+        .map(str::to_string)
+        .collect()
 }
 
 fn build_messages(question: &str, language: &str, passages: &[String], history: &[Turn]) -> Vec<serde_json::Value> {
@@ -567,11 +705,13 @@ and say so when you are not sure. For health and safety, advise checking with a 
     } else if sr {
         "Ti si Zaklon, pomoćnik za domaćinstvo koji radi bez interneta. Odgovaraj na srpskom jeziku, latinicom, kratko i jasno (najviše 6 rečenica). \
 Koristi samo činjenice iz izvora ispod. Posle rečenice koja koristi izvor napiši njegov broj u uglastim zagradama, npr. [1]. \
-Izvori koji nisu o pitanju se ne koriste. Ako izvori ne odgovaraju na pitanje, reci: „U biblioteci nisam našao pouzdan odgovor.“ i ne izmišljaj."
+Izvori koji nisu o pitanju se ne koriste. Ako izvori ne odgovaraju na pitanje, reci samo: „U biblioteci nisam našao pouzdan odgovor.“ \
+Ne izmišljaj i ne tvrdi da nešto ne postoji ili ne može samo zato što toga nema u izvorima."
     } else {
         "You are Zaklon, a household assistant that works without internet. Answer briefly and clearly (at most 6 sentences). \
 Use only facts from the sources below. After a sentence that uses a source, write its number in square brackets, like [1]. \
-Ignore sources that are not about the question. If the sources do not answer the question, say: \"I did not find a reliable answer in the library.\" and do not make things up."
+Ignore sources that are not about the question. If the sources do not answer the question, say only: \"I did not find a reliable answer in the library.\" \
+Do not make things up, and do not claim something is impossible or does not exist just because the sources do not mention it."
     };
     let mut messages = vec![serde_json::json!({ "role": "system", "content": system })];
     for t in history.iter().rev().take(2).rev() {
@@ -591,12 +731,65 @@ Ignore sources that are not about the question. If the sources do not answer the
 
 /// Serbian answers in Latin script, whatever the model wrote.
 fn finish_text(text: &str, language: &str) -> String {
-    let t = text.trim();
+    // Drop lines that are only citation marks ("[1]") left at the end.
+    let kept: Vec<&str> = text.lines().filter(|l| !l.trim().chars().all(|c| c == '[' || c == ']' || c == ',' || c == ' ' || c.is_ascii_digit()) || l.trim().is_empty()).collect();
+    let joined = kept.join("
+");
+    let t = joined.trim();
     if language == "sr" && zaklon_core::translit::has_cyrillic(t) {
         zaklon_core::translit::cyrillic_to_latin(t)
     } else {
         t.to_string()
     }
+}
+
+/// The parts of an article that matter for the search words: the first
+/// paragraph (what the thing is), then the paragraphs that mention the words
+/// most, in article order, up to `max` characters, in Latin script.
+pub fn relevant_text(html: &str, folded_stems: &[String], max: usize) -> String {
+    let paras = paragraphs(html);
+    if paras.is_empty() {
+        return String::new();
+    }
+    let hits = |p: &str| {
+        let f = zaklon_core::translit::fold(p);
+        folded_stems.iter().filter(|st| f.contains(st.as_str())).count()
+    };
+    let mut ranked: Vec<(usize, usize)> = paras.iter().enumerate().skip(1).map(|(i, p)| (hits(p), i)).filter(|(h, _)| *h > 0).collect();
+    ranked.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    let mut chosen = vec![0usize];
+    let mut len = paras[0].chars().count();
+    for (_, i) in ranked {
+        let l = paras[i].chars().count();
+        if len + l > max && chosen.len() > 1 {
+            continue;
+        }
+        chosen.push(i);
+        len += l;
+        if len >= max {
+            break;
+        }
+    }
+    chosen.sort_unstable();
+    let joined = chosen.iter().map(|i| paras[*i].as_str()).collect::<Vec<_>>().join("\n");
+    clip(&joined, max)
+}
+
+fn clip(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let cut: String = text.chars().take(max).collect();
+    match cut.rfind(['.', '!', '?']) {
+        Some(i) if i > max / 2 => cut[..=i].to_string(),
+        _ => format!("{cut}…"),
+    }
+}
+
+/// The paragraphs of an article as plain Latin text, without reference marks.
+fn paragraphs(html: &str) -> Vec<String> {
+    let text = article_text(html, usize::MAX);
+    text.lines().map(str::to_string).filter(|l| !l.is_empty()).collect()
 }
 
 /// Plain text of an article's paragraphs, in Latin script, up to `max` characters.
@@ -744,6 +937,27 @@ mod tests {
     }
 
     #[test]
+    fn keywords_are_parsed_from_what_the_model_writes() {
+        assert_eq!(parse_keywords("konzerva, pasulj, rok trajanja"), vec!["konzerva", "pasulj", "rok trajanja"]);
+        assert_eq!(parse_keywords("1. Voda\n2. Prečišćavanje vode\n"), vec!["voda", "prečišćavanje vode"]);
+        assert_eq!(parse_keywords("\"Вода\", \"филтер\"."), vec!["voda", "filter"]);
+        assert!(parse_keywords("").is_empty());
+        assert_eq!(parse_keywords("so, so, so"), vec!["so"]);
+        assert!(parse_keywords("This is a very long sentence that is not a keyword at all").is_empty());
+    }
+
+    #[test]
+    fn stems_find_the_basic_form() {
+        assert_eq!(stem("pasulja"), "pasulj");
+        assert_eq!(stem("konzerva"), "konzerv");
+        assert_eq!(stem("vodu"), "vod");
+        assert_eq!(stem("sol"), "sol"); // too short to cut
+        assert_eq!(stem("filtera"), "filter");
+        assert_eq!(stem("beans"), "bean");
+        assert_eq!(stem("water"), "water");
+    }
+
+    #[test]
     fn article_text_reads_paragraphs_in_latin() {
         let html = r#"<html><head><style>p{}</style></head><body><pre>code</pre>
 <p class="x">Пасуљ је <b>махунарка</b> богата протеинима.<sup>[1]</sup> Чува се на сувом.</p>
@@ -752,6 +966,17 @@ mod tests {
         assert_eq!(t, "Pasulj je mahunarka bogata proteinima. Čuva se na suvom.\nSecond & last paragraph with enough text in it.");
         let short = article_text(html, 40);
         assert!(short.chars().count() <= 41, "{short}");
+    }
+
+    #[test]
+    fn relevant_paragraphs_are_chosen() {
+        let html = "<p>Pasulj je biljka iz porodice mahunarki.</p><p>Istorija uzgoja pasulja u Americi je duga i zanimljiva.</p>\
+<p>Suvi pasulj se čuva godinama na suvom i tamnom mestu, a kuvan u frižideru nekoliko dana.</p><p>Poznate sorte su tetovac i gradištanac.</p>";
+        let stems = vec![zaklon_core::translit::fold("čuva"), zaklon_core::translit::fold("suv")];
+        let t = relevant_text(html, &stems, 140);
+        assert!(t.starts_with("Pasulj je biljka"), "{t}");
+        assert!(t.contains("čuva godinama"), "{t}");
+        assert!(!t.contains("Istorija"), "{t}");
     }
 
     #[test]
@@ -769,5 +994,9 @@ mod tests {
     fn serbian_answers_end_in_latin() {
         assert_eq!(finish_text(" Пасуљ траје дуго. ", "sr"), "Pasulj traje dugo.");
         assert_eq!(finish_text("Beans last long.", "en"), "Beans last long.");
+        assert_eq!(finish_text("Boil it [1].
+
+[1]
+", "en"), "Boil it [1].");
     }
 }
