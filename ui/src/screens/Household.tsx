@@ -5,6 +5,7 @@ import { errText } from "../errors";
 import { fmtDateTime, latinArticles, securityCode, setLatinArticles } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
 import Qr from "../components/Qr";
+import Backups from "../components/Backups";
 import { About, Appearance, ChangePassword, ThisHub, type Look } from "./HouseholdMore";
 
 type T = (k: Key) => string;
@@ -31,6 +32,7 @@ export default function Household({ status, t, lang, setLang, refresh, isHub, ow
       <Devices t={t} status={status} lang={lang} setLang={setLang} isHub={isHub} ownDeviceId={ownDeviceId} />
       <Appearance t={t} look={look} />
       {isHub && <ChangePassword t={t} />}
+      {isHub && <Backups t={t} />}
       <ThisHub t={t} status={status} isHub={isHub} />
       <About t={t} status={status} />
     </div>

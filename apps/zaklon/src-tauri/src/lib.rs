@@ -24,6 +24,12 @@ struct AppMode {
     version: &'static str,
 }
 
+/// Start the app again (the laptop, after choosing a backup to restore).
+#[tauri::command]
+fn app_restart(app: tauri::AppHandle) {
+    app.restart();
+}
+
 #[tauri::command]
 fn app_mode() -> AppMode {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -180,7 +186,8 @@ pub fn run() {
             local_ai_start,
             local_ai_stop,
             local_ai_delete,
-            local_ai_ask
+            local_ai_ask,
+            app_restart
         ])
         .run(tauri::generate_context!())
         .expect("error while running Zaklon");

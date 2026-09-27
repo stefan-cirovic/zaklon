@@ -450,3 +450,23 @@ test("assistant: a proposed supplies change happens only after confirming", asyn
   expect(item.quantity).toBe(2);
   expect(item.unit).toBe("l");
 });
+
+test("household: a backup can be made and a restore is prepared for the next start", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.goto("/#household");
+  await expect(page.getByRole("heading", { name: "Backups" })).toBeVisible();
+  await page.getByRole("button", { name: "Make a backup now" }).click();
+  await expect(page.getByText(/^Saved: .*zaklon-backup-.*\.zip$/)).toBeVisible();
+  const row = page.locator(".backup-row").first();
+  await expect(row).toContainText("saved by hand");
+  await row.getByRole("button", { name: "Restore" }).click();
+  await row.getByRole("button", { name: "Yes, restore" }).click();
+  await expect(page.getByText(/The backup is checked and ready/)).toBeVisible();
+  // A file that is not a backup is refused.
+  await page.getByRole("textbox", { name: "Restore from a backup file" }).fill("C:\\Windows\\win.ini");
+  const panel = page.locator(".panel").filter({ has: page.getByRole("heading", { name: "Backups" }) });
+  await panel.getByRole("button", { name: "Restore", exact: true }).last().click();
+  await panel.getByRole("button", { name: "Yes, restore" }).click();
+  await expect(page.getByText("This is not a Zaklon backup, or it is damaged.")).toBeVisible();
+  await noHorizontalScroll(page);
+});

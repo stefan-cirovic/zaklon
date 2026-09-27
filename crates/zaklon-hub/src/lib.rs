@@ -8,6 +8,7 @@
 
 pub mod api;
 pub mod assistant;
+pub mod backup;
 pub mod discovery;
 pub mod downloads;
 pub mod export;
@@ -91,6 +92,12 @@ pub fn default_root() -> PathBuf {
 
 impl Hub {
     pub fn open(root: &Path) -> Result<Self> {
+        // A restore chosen before the last restart is swapped in before anything opens the data.
+        match backup::finish_pending_restore(root) {
+            Ok(true) => info!("restored the household data from a backup"),
+            Ok(false) => {}
+            Err(e) => tracing::error!("could not finish the restore: {e}"),
+        }
         let config = Config::load_or_init(root).context("loading hub configuration")?;
         config.ensure_layout()?;
         let db = Db::open(&config.db_path()).context("opening household database")?;
@@ -162,6 +169,15 @@ impl Hub {
         state.downloads.start();
         state.library.start();
         state.assistant.start();
+        // A backup a day, checked every hour.
+        let st = state.clone();
+        tokio::spawn(async move {
+            loop {
+                let s2 = st.clone();
+                let _ = tokio::task::spawn_blocking(move || backup::auto_backup_if_due(&s2.config(), &s2.db)).await;
+                tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            }
+        });
 
         tokio::select! {
             r = tls_srv => r.context("tls server")?,

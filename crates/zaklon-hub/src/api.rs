@@ -57,6 +57,8 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/export", get(export_status).post(export_start))
         .route("/api/export/cancel", post(export_cancel))
         .route("/api/drives", get(drives))
+        .route("/api/backups", get(backups_list).post(backups_create))
+        .route("/api/backups/restore", post(backups_restore))
         .route("/api/hardware", get(hardware))
         .route("/api/supplies/summary", get(supplies_summary))
         .route("/api/items", get(items_list).post(items_create))
@@ -1259,4 +1261,68 @@ async fn assistant_answer(State(state): State<Arc<HubState>>, _caller: Caller, P
 async fn assistant_stop(State(state): State<Arc<HubState>>, _caller: Caller) -> StatusCode {
     state.assistant.stop().await;
     StatusCode::NO_CONTENT
+}
+
+// ---- backups ----------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct BackupsReply {
+    backups: Vec<crate::backup::BackupFile>,
+    /// A restore is waiting for the next start.
+    restore_pending: bool,
+    folder: String,
+}
+
+async fn backups_list(State(state): State<Arc<HubState>>, _: Local) -> Result<Json<BackupsReply>, ApiError> {
+    let cfg = state.config();
+    let root = cfg.root.clone();
+    let backups = tokio::task::spawn_blocking(move || crate::backup::list(&cfg)).await.map_err(|e| anyhow::anyhow!(e))?;
+    Ok(Json(BackupsReply { backups, restore_pending: crate::backup::restore_pending(&root), folder: state.config().backups_dir().display().to_string() }))
+}
+
+#[derive(Deserialize)]
+struct BackupBody {
+    /// Where to save it; the backups folder when empty.
+    #[serde(default)]
+    dir: String,
+}
+
+async fn backups_create(State(state): State<Arc<HubState>>, _: Local, Json(body): Json<BackupBody>) -> Result<Json<serde_json::Value>, ApiError> {
+    let cfg = state.config();
+    let dir = if body.dir.trim().is_empty() { cfg.backups_dir() } else { std::path::PathBuf::from(body.dir.trim()) };
+    if !dir.is_dir() {
+        return Err(bad("that folder does not exist"));
+    }
+    let st = state.clone();
+    let path = tokio::task::spawn_blocking(move || crate::backup::create(&cfg, &st.db, &dir, false))
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?
+        .map_err(|e| bad(&e))?;
+    Ok(Json(serde_json::json!({ "path": path.display().to_string() })))
+}
+
+#[derive(Deserialize)]
+struct RestoreBody {
+    path: String,
+}
+
+/// Check a backup and prepare it; it replaces the data on the next start.
+async fn backups_restore(State(state): State<Arc<HubState>>, _: Local, Json(body): Json<RestoreBody>) -> Result<Json<crate::backup::Manifest>, ApiError> {
+    let cfg = state.config();
+    let path = std::path::PathBuf::from(body.path.trim().trim_matches('"'));
+    if !path.is_file() {
+        return Err(bad("that file does not exist"));
+    }
+    // Keep today's data too, whatever happens next.
+    let st = state.clone();
+    let cfg2 = cfg.clone();
+    tokio::task::spawn_blocking(move || crate::backup::create(&cfg2, &st.db, &cfg2.backups_dir(), false))
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?
+        .map_err(|e| bad(&e))?;
+    let manifest = tokio::task::spawn_blocking(move || crate::backup::stage_restore(&cfg, &path))
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?
+        .map_err(|e| bad(&e))?;
+    Ok(Json(manifest))
 }

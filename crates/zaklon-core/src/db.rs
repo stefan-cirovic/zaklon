@@ -91,6 +91,14 @@ impl Db {
         Ok(Self { conn: Mutex::new(conn) })
     }
 
+    /// A consistent copy of the whole database into a new file, safe while in use.
+    pub fn snapshot_to(&self, path: &Path) -> Result<()> {
+        let _ = std::fs::remove_file(path);
+        let conn = self.lock();
+        conn.execute("VACUUM INTO ?1", [path.to_string_lossy().as_ref()])?;
+        Ok(())
+    }
+
     pub(crate) fn lock(&self) -> std::sync::MutexGuard<'_, Connection> {
         self.conn.lock().unwrap_or_else(|p| p.into_inner())
     }

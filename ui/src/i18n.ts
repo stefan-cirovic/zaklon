@@ -118,6 +118,14 @@ const en = {
   aiSearched: "Looked up", aiConfirm: "Yes, do it", aiDone: "Done", aiCancelled: "Not changed.", aiFromSupplies: "From your supplies",
   aiSources: "Sources", aiNewChat: "New conversation", aiOnThisPhone: "AI on this phone (without the hub)",
   aiAwayFromHub: "The hub is not reachable, so this phone's own AI answers.", aiHubHasNoModel: "The hub has no AI model yet, so this phone's own AI answers.",
+  errNoFile: "That file does not exist.", errNotBackup: "This is not a Zaklon backup, or it is damaged.", errNewerBackup: "This backup was made by a newer Zaklon. Update Zaklon first.",
+  backups: "Backups", backupsIntro: "Zaklon saves a copy of the supplies, their history, the paired phones and the settings every day by itself (the last 7 days). The library, maps and AI models are not included; they come back by downloading or from USB.",
+  backupsOnHub: "On this computer", noBackupsYet: "No backups yet; the first one is made within an hour.", backupAuto: "daily", backupManual: "saved by hand",
+  backupNow: "Make a backup now", backupToUsb: "Save a backup to a USB drive", saveBackup: "Save backup", backupSaved: "Saved:",
+  restoreFromFile: "Restore from a backup file", restore: "Restore", yesRestore: "Yes, restore",
+  restoreReady: "The backup is checked and ready. It replaces the current data when Zaklon starts again; today's data is kept as a backup too.",
+  restartNow: "Restart Zaklon now", restartByHand: "Close Zaklon (tray icon, Quit) and open it again.",
+  backupPrivate: "A backup holds the household's password check and the phones' keys. Keep it as safe as the laptop.",
 
 };
 
@@ -239,6 +247,14 @@ const sr: typeof en = {
   aiSearched: "Tražio sam", aiConfirm: "Da, uradi", aiDone: "Urađeno", aiCancelled: "Nije promenjeno.", aiFromSupplies: "Iz tvojih zaliha",
   aiSources: "Izvori", aiNewChat: "Nov razgovor", aiOnThisPhone: "AI na ovom telefonu (bez huba)",
   aiAwayFromHub: "Hub nije dostupan, pa odgovara AI na ovom telefonu.", aiHubHasNoModel: "Hub još nema AI model, pa odgovara AI na ovom telefonu.",
+  errNoFile: "Taj fajl ne postoji.", errNotBackup: "Ovo nije Zaklon kopija, ili je oštećena.", errNewerBackup: "Ovu kopiju je napravio noviji Zaklon. Prvo ažuriraj Zaklon.",
+  backups: "Rezervne kopije", backupsIntro: "Zaklon svaki dan sam čuva kopiju zaliha, njihove istorije, uparenih telefona i podešavanja (poslednjih 7 dana). Biblioteka, mape i AI modeli nisu u kopiji; vraćaju se preuzimanjem ili sa USB-a.",
+  backupsOnHub: "Na ovom računaru", noBackupsYet: "Još nema kopija; prva nastaje u roku od sat vremena.", backupAuto: "dnevna", backupManual: "ručna",
+  backupNow: "Napravi kopiju sada", backupToUsb: "Sačuvaj kopiju na USB", saveBackup: "Sačuvaj kopiju", backupSaved: "Sačuvano:",
+  restoreFromFile: "Vrati iz fajla sa kopijom", restore: "Vrati", yesRestore: "Da, vrati",
+  restoreReady: "Kopija je proverena i spremna. Zameniće trenutne podatke kad se Zaklon ponovo pokrene; današnji podaci se takođe čuvaju kao kopija.",
+  restartNow: "Pokreni Zaklon ponovo", restartByHand: "Zatvori Zaklon (ikonica kod sata, Izađi) i ponovo ga otvori.",
+  backupPrivate: "Kopija sadrži proveru lozinke domaćinstva i ključeve telefona. Čuvaj je kao i sam laptop.",
 
 };
 
