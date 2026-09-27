@@ -110,7 +110,81 @@ pub struct ApiError(StatusCode, String);
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.0, Json(serde_json::json!({ "error": self.1 }))).into_response()
+        // The sentence is for people reading logs; the code is what the app
+        // translates, so rewording a message can never break a translation.
+        let code = error_code(self.0, &self.1);
+        (self.0, Json(serde_json::json!({ "error": self.1, "code": code }))).into_response()
+    }
+}
+
+/// Stable codes for the app to translate, found from the message. One table,
+/// next to where the messages come from; `every_known_message_has_a_code`
+/// keeps it complete.
+const ERROR_CODES: &[(&str, &str)] = &[
+    ("wrong household password", "wrong_password"),
+    ("pairing code is invalid or expired", "code_expired"),
+    ("too many attempts", "too_many_attempts"),
+    ("password must be at least", "password_too_short"),
+    ("set a household password first", "not_set_up"),
+    ("already set up", "already_set_up"),
+    ("only the laptop can do this", "laptop_only"),
+    ("request from another website", "laptop_only"),
+    ("not enough free disk space", "no_disk_space"),
+    ("not enough space", "no_disk_space"),
+    ("formatted as FAT32", "fat32"),
+    ("battery below", "battery_low"),
+    ("checksum mismatch", "checksum"),
+    ("expiry must be a date", "bad_date"),
+    ("must be a date", "bad_date"),
+    ("name is required", "name_required"),
+    ("text is required", "name_required"),
+    ("that folder does not exist", "no_folder"),
+    ("that file does not exist", "no_file"),
+    ("pause the download first", "pause_first"),
+    ("could not delete", "delete_failed"),
+    ("not a Zaklon backup", "not_a_backup"),
+    ("backup is incomplete", "not_a_backup"),
+    ("database is damaged", "not_a_backup"),
+    ("settings are damaged", "not_a_backup"),
+    ("made by a newer Zaklon", "newer_backup"),
+    ("a copy is already running", "copy_running"),
+    ("writing to the drive", "drive_write"),
+    ("outside the library", "outside_library"),
+    ("nothing selected", "nothing_selected"),
+    ("no AI model is installed", "no_model"),
+    ("AI engine is not installed", "no_ai_engine"),
+    ("stopped while loading the model", "ai_memory"),
+    ("AI engine was stopped", "ai_stopped"),
+    ("assistant is busy", "ai_busy"),
+    ("question is too long", "question_too_long"),
+    ("ask something first", "question_empty"),
+    ("note is too long", "note_too_long"),
+    ("remembers too much", "notes_full"),
+    ("is not installed", "not_installed"),
+    ("cannot be copied", "cannot_copy"),
+    ("delta must be", "bad_quantity"),
+    ("quantity must be", "bad_quantity"),
+    ("several batches", "several_batches"),
+    ("unknown category", "bad_category"),
+    ("bad barcode", "bad_barcode"),
+    ("no such", "not_found"),
+    ("no file", "not_found"),
+    ("model is not installed on the hub", "not_found"),
+    ("unauthorized", "unauthorized"),
+    ("internal error", "internal"),
+];
+
+pub fn error_code(status: StatusCode, msg: &str) -> &'static str {
+    if let Some((_, code)) = ERROR_CODES.iter().find(|(needle, _)| msg.contains(needle)) {
+        return code;
+    }
+    match status {
+        StatusCode::NOT_FOUND => "not_found",
+        StatusCode::UNAUTHORIZED => "unauthorized",
+        StatusCode::FORBIDDEN => "forbidden",
+        StatusCode::TOO_MANY_REQUESTS => "too_many_attempts",
+        s if s.is_server_error() => "internal",
+        _ => "other",
     }
 }
 
@@ -868,12 +942,15 @@ fn not_found_item() -> ApiError {
 }
 
 /// Validation problems from the storage layer are the caller's fault.
+/// A failure from the household data: a problem with what was asked (a
+/// missing name, a bad date) is the asker's to fix; a failure of the database
+/// or the disk is ours. Decided by the kind of error, not by its wording.
 fn invalid(e: anyhow::Error) -> ApiError {
-    let msg = e.to_string();
-    if msg.contains("required") || msg.contains("unknown") || msg.contains("must be") || msg.contains("several batches") {
-        bad(&msg)
-    } else {
+    let ours = e.chain().any(|c| c.downcast_ref::<zaklon_core::rusqlite::Error>().is_some() || c.downcast_ref::<std::io::Error>().is_some());
+    if ours {
         ApiError::from(e)
+    } else {
+        bad(&e.to_string())
     }
 }
 
@@ -1540,4 +1617,47 @@ async fn firewall_allow(_: Local) -> Result<Json<FirewallReply>, ApiError> {
     tracing::info!("asking Windows to let phones in through the firewall");
     let state = tokio::task::spawn_blocking(crate::firewall::allow).await.map_err(|e| anyhow::anyhow!(e))?;
     Ok(Json(FirewallReply { ok: state.ok(), state }))
+}
+
+#[cfg(test)]
+mod error_code_tests {
+    use super::*;
+
+    #[test]
+    fn every_known_message_has_a_code() {
+        // Messages the hub sends (from this file and the modules it calls).
+        let messages = [
+            (StatusCode::BAD_REQUEST, "password must be at least 8 characters"),
+            (StatusCode::BAD_REQUEST, "that folder does not exist"),
+            (StatusCode::BAD_REQUEST, "that file does not exist"),
+            (StatusCode::BAD_REQUEST, "this is not a Zaklon backup"),
+            (StatusCode::BAD_REQUEST, "not enough space: 5 bytes needed, 1 free"),
+            (StatusCode::BAD_REQUEST, "this drive is formatted as FAT32, which cannot hold files of 4 GB or more; format it as exFAT or NTFS"),
+            (StatusCode::BAD_REQUEST, "the assistant is busy with other questions; try again in a moment"),
+            (StatusCode::BAD_REQUEST, "name is required"),
+            (StatusCode::BAD_REQUEST, "expiry must be a date (YYYY-MM-DD)"),
+            (StatusCode::BAD_REQUEST, "this item has several batches; change the date of a batch instead"),
+            (StatusCode::BAD_REQUEST, "delta must be a non-zero number"),
+            (StatusCode::FORBIDDEN, "only the laptop can do this"),
+            (StatusCode::NOT_FOUND, "no such item"),
+            (StatusCode::UNAUTHORIZED, "unauthorized"),
+            (StatusCode::INTERNAL_SERVER_ERROR, "internal error"),
+        ];
+        for (status, msg) in messages {
+            assert_ne!(error_code(status, msg), "other", "{msg}");
+        }
+        assert_eq!(error_code(StatusCode::BAD_REQUEST, "not enough space: 1 bytes"), "no_disk_space");
+        assert_eq!(error_code(StatusCode::NOT_FOUND, "no such note"), "not_found");
+        assert_eq!(error_code(StatusCode::BAD_REQUEST, "something new"), "other");
+    }
+
+    #[test]
+    fn user_mistakes_are_400_and_our_failures_500() {
+        let user = invalid(anyhow::anyhow!("any wording at all"));
+        assert_eq!(user.0, StatusCode::BAD_REQUEST);
+        let disk = invalid(anyhow::Error::new(std::io::Error::other("disk gone")));
+        assert_eq!(disk.0, StatusCode::INTERNAL_SERVER_ERROR);
+        let db = invalid(anyhow::Error::new(zaklon_core::rusqlite::Error::InvalidQuery));
+        assert_eq!(db.0, StatusCode::INTERNAL_SERVER_ERROR);
+    }
 }

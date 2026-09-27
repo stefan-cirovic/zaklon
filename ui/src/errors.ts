@@ -46,7 +46,42 @@ const KNOWN: [RegExp, Key][] = [
   [/fingerprint/i, "errFingerprint"],
 ];
 
-export function tErr(t: (k: Key) => string, message: string | null | undefined): string {
+/** The hub's error codes (see ERROR_CODES in the hub's api.rs). */
+const CODES: Record<string, Key> = {
+  wrong_password: "errWrongPassword",
+  code_expired: "errCodeExpired",
+  too_many_attempts: "errTooManyAttempts",
+  password_too_short: "passwordRule",
+  laptop_only: "errLaptopOnly",
+  unauthorized: "errUnauthorized",
+  no_disk_space: "errDisk",
+  fat32: "fat32Warn",
+  battery_low: "batteryRule",
+  checksum: "errChecksum",
+  bad_date: "errBadDate",
+  name_required: "errNameRequired",
+  no_folder: "errNoFolder",
+  no_file: "errNoFile",
+  pause_first: "errPauseFirst",
+  delete_failed: "errDelete",
+  not_a_backup: "errNotBackup",
+  newer_backup: "errNewerBackup",
+  copy_running: "errCopyRunning",
+  drive_write: "errDriveWrite",
+  outside_library: "errOutsideLibrary",
+  no_model: "aiNeedsModel",
+  no_ai_engine: "errAiEngineMissing",
+  ai_memory: "errAiMemory",
+  ai_stopped: "errAiStopped",
+  ai_busy: "errAiBusy",
+  question_too_long: "errQuestionLong",
+  question_empty: "askSomething",
+  note_too_long: "errNoteLong",
+  notes_full: "errNotesFull",
+};
+
+export function tErr(t: (k: Key) => string, message: string | null | undefined, code?: string): string {
+  if (code && CODES[code]) return t(CODES[code]);
   const msg = String(message ?? "").trim();
   if (!msg) return t("errGeneric");
   for (const [re, key] of KNOWN) {
@@ -56,6 +91,6 @@ export function tErr(t: (k: Key) => string, message: string | null | undefined):
 }
 
 export function errText(t: (k: Key) => string, e: unknown): string {
-  if (e instanceof Error) return tErr(t, e.message);
+  if (e instanceof Error) return tErr(t, e.message, (e as { code?: string }).code);
   return tErr(t, String(e));
 }

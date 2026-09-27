@@ -74,20 +74,26 @@ function sameOrigin(): AppMode {
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** Stable code from the hub (e.g. "no_disk_space"), what the app translates. */
+  code?: string;
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
 function errorFromBody(status: number, text: string, fallback: string): ApiError {
   let msg = fallback;
+  let code: string | undefined;
   try {
-    msg = (JSON.parse(text) as { error?: string }).error ?? fallback;
+    const body = JSON.parse(text) as { error?: string; code?: string };
+    msg = body.error ?? fallback;
+    code = body.code;
   } catch {
     /* not JSON */
   }
-  return new ApiError(status, msg);
+  return new ApiError(status, msg, code);
 }
 
 /** Call the hub. On the laptop this goes to 127.0.0.1; on phones it goes through the pinned-TLS client in Rust. */

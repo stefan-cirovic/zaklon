@@ -13,4 +13,6 @@ pub mod tls;
 pub mod translit;
 
 pub use config::Config;
+/// The database library, so callers can tell database failures apart.
+pub use rusqlite;
 pub use db::Db;
