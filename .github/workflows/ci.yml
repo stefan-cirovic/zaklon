@@ -1,9 +1,15 @@
 name: CI
 
+# Also run by the release workflow before it builds anything.
+
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -11,14 +17,18 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
         with:
+          persist-credentials: false
+
+      # Third-party actions are pinned to a commit (the tag it had when pinned is in the comment).
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
           components: clippy, rustfmt
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 10
 
@@ -36,13 +46,13 @@ jobs:
         run: pnpm --filter ui build
 
       - name: Clippy
-        run: cargo clippy -p zaklon-core -p zaklon-hub --all-targets -- -D warnings
+        run: cargo clippy -p zaklon-core -p zaklon-hub -p zaklon-app --all-targets -- -D warnings
 
       - name: Unit and hub end-to-end tests
         run: cargo test -p zaklon-core -p zaklon-hub
 
-      - name: Check the desktop and phone app compiles
-        run: cargo check -p zaklon-app
+      - name: Desktop app tests
+        run: cargo test -p zaklon-app
 
       - name: Build the hub for interface tests
         run: cargo build -p zaklon-hub

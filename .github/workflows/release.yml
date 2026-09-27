@@ -4,11 +4,16 @@ name: Release
 # DRAFT GitHub release with both files and their SHA-256 checksums. Nothing
 # is published until someone reviews the draft and publishes it by hand.
 #
-# Runs on a version tag (v0.2.0) or by hand from the Actions tab.
+# Runs on a version tag (v0.2.0) or by hand from the Actions tab. The same
+# checks as CI must pass first.
 #
 # Not yet: a release-signed phone app (needs the project's signing key as a
 # secret) and a signed Windows installer (planned with SignPath). Until then
 # the phone app is the debug-signed build.
+#
+# The token can only read the repository, except in the last job, which
+# only uploads the finished files. Third-party actions are pinned to a
+# commit (the tag it had when pinned is in the comment).
 
 on:
   push:
@@ -16,16 +21,22 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
   android:
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
       NDK_VERSION: 27.1.12297006
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-java@v4
         with:
@@ -38,13 +49,14 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${NDK_VERSION}" "platforms;android-36" "build-tools;36.0.0" > /dev/null
           echo "NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
+          toolchain: stable
           targets: aarch64-linux-android
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 10
 
@@ -75,12 +87,16 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 10
 
@@ -122,6 +138,8 @@ jobs:
   draft:
     needs: windows
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -129,11 +147,13 @@ jobs:
           path: out
 
       - name: Draft release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           draft: true
           name: ${{ github.ref_type == 'tag' && github.ref_name || format('Build {0}', github.run_number) }}
           tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}
+          # A draft published later is tagged on the commit that was built, not on main's newest commit.
+          target_commitish: ${{ github.sha }}
           files: out/*
           body: |
             Draft made by the release workflow. Check it, write the notes, then publish.
