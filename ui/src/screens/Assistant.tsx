@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { api, ApiError } from "../api";
+import { api, ApiError, inTauri } from "../api";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
 import { fmtBytes } from "../format";
@@ -19,7 +20,7 @@ type Overview = {
   models: ModelChoice[];
   books: number;
 };
-type Source = { n: number; title: string; url: string; book_title_en: string; book_title_sr: string };
+type Source = { n: number; title: string; web?: boolean; url: string; book_title_en: string; book_title_sr: string };
 type Proposal = {
   action: "add" | "use" | "shopping" | "remember";
   item_id: string | null;
@@ -113,6 +114,8 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
   const asking = useRef(false);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [memoryVersion, setMemoryVersion] = useState(0);
+  // Online research is off unless switched on, for this conversation only.
+  const [online, setOnline] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -210,7 +213,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
       .slice(-2)
       .map((a) => ({ question: a.question, answer: a.text }));
     try {
-      const r = await api<{ id: string }>("/api/assistant/ask", { json: { question: q, language: lang, history } });
+      const r = await api<{ id: string }>("/api/assistant/ask", { json: { question: q, language: lang, history, online } });
       setChat((list) => [
         ...list,
         { id: r.id, question: q, status: "searching", text: "", sources: [], grounded: false, language: lang, tokens_per_second: 0, error: null },
@@ -224,6 +227,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
   };
 
   const clear = () => {
+    setOnline(false);
     setChat([]);
     saveChat([]);
   };
@@ -277,6 +281,13 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
 
   const title = (m: ModelChoice) => (lang === "sr" && m.title_sr ? m.title_sr : m.title_en);
   const bookTitle = (s: Source) => (lang === "sr" && s.book_title_sr ? s.book_title_sr : s.book_title_en);
+
+  const openSource = (src: Source) => {
+    if (src.web) {
+      if (inTauri()) openUrl(src.url).catch(() => window.open(src.url, "_blank", "noopener"));
+      else window.open(src.url, "_blank", "noopener");
+    } else setReader(src);
+  };
 
   if (reader) {
     return <Reader t={t} lang={lang} url={reader.url} title={reader.title} onClose={() => setReader(null)} />;
@@ -380,7 +391,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
                     <p className="error" style={{ margin: 0 }}>{errText(t, new Error(a.error ?? ""))}</p>
                   ) : (
                     <>
-                      {a.text ? <AnswerText text={a.text} sources={a.sources} open={setReader} /> : <p className="muted" style={{ margin: 0 }}>{t(statusText[a.status])}</p>}
+                      {a.text ? <AnswerText text={a.text} sources={a.sources} open={openSource} /> : <p className="muted" style={{ margin: 0 }}>{t(statusText[a.status])}</p>}
                       {a.status === "done" && a.proposal && (
                         <div className="row wrap proposal">
                           {a.outcome === "done" ? (
@@ -403,8 +414,8 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
                         <div className="sources">
                           <div className="label">{t("aiSources")}</div>
                           {a.sources.map((s) => (
-                            <button key={s.n} className="source" onClick={() => setReader(s)}>
-                              <span className="cite static">{s.n}</span> {s.title} <span className="muted">· {bookTitle(s)}</span>
+                            <button key={s.n} className={"source" + (s.web ? " web" : "")} onClick={() => openSource(s)}>
+                              <span className="cite static">{s.n}</span> {s.title} <span className="muted">· {bookTitle(s)}{s.web ? ` (${t("aiInternet")})` : ""}</span>
                             </button>
                           ))}
                         </div>
@@ -438,6 +449,10 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
               rows={2}
               maxLength={2000}
             />
+            <label className="check-line online-switch">
+              <input type="checkbox" checked={online} onChange={(e) => setOnline(e.target.checked)} />
+              <span>{t("aiOnline")}</span>
+            </label>
             <div className="row between wrap">
               <button className="btn" disabled={busy || !question.trim()}>{busy ? t("aiThinking") : t("ask")}</button>
               {chat.length > 0 && !busy && <button type="button" className="btn secondary small" onClick={clear}>{t("aiNewChat")}</button>}

@@ -56,6 +56,8 @@ pub enum EngineState {
 pub struct Source {
     pub n: usize,
     pub title: String,
+    /// From the internet (online research) rather than the library.
+    pub web: bool,
     /// Path of the article, relative to the hub (`/kiwix/content/...`).
     pub url: String,
     pub book_title_en: String,
@@ -83,6 +85,8 @@ pub struct Answer {
     pub searched: Vec<String>,
     /// Answered from the household's supplies.
     pub from_supplies: bool,
+    /// Online research was on for this question.
+    pub used_internet: bool,
     pub proposal: Option<Proposal>,
     /// False when no library passage was found and the model answered alone.
     pub grounded: bool,
@@ -108,6 +112,16 @@ pub struct Proposal {
     pub category: String,
     /// How much is in stock now (existing items).
     pub current: Option<f64>,
+}
+
+/// What a question comes with: the conversation so far, the supplies, the
+/// household's notes, and whether online research is on.
+#[derive(Debug, Clone, Default)]
+pub struct AskContext {
+    pub history: Vec<Turn>,
+    pub items: Vec<Item>,
+    pub notes: Vec<Note>,
+    pub online: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -164,6 +178,8 @@ pub struct Assistant {
     #[cfg(windows)]
     job: crate::kiwix::job::Job,
     http: reqwest::Client,
+    /// For online research only.
+    web_http: reqwest::Client,
 }
 
 /// Which model fits this computer's memory. The model, its context and the
@@ -202,6 +218,7 @@ impl Assistant {
             #[cfg(windows)]
             job: crate::kiwix::job::Job::new(),
             http: reqwest::Client::builder().no_proxy().connect_timeout(Duration::from_secs(5)).build().expect("http client"),
+            web_http: crate::web::client(),
         })
     }
 
@@ -413,7 +430,7 @@ impl Assistant {
     }
 
     /// Start answering; the answer is read with `answer(id)`.
-    pub fn ask(self: &Arc<Self>, question: &str, app_language: &str, history: Vec<Turn>, items: Vec<Item>, notes: Vec<Note>) -> Result<String, String> {
+    pub fn ask(self: &Arc<Self>, question: &str, app_language: &str, ctx: AskContext) -> Result<String, String> {
         let question = question.trim().to_string();
         if question.is_empty() {
             return Err("ask something first".into());
@@ -443,6 +460,7 @@ impl Assistant {
                     sources: Vec::new(),
                     searched: Vec::new(),
                     from_supplies: false,
+                    used_internet: ctx.online,
                     proposal: None,
                     grounded: false,
                     language,
@@ -458,7 +476,7 @@ impl Assistant {
         self.pending.fetch_add(1, Ordering::SeqCst);
         tokio::spawn(async move {
             let _turn = me.turn.lock().await;
-            if let Err(e) = me.run(&id2, &question, language, &history, &items, &notes).await {
+            if let Err(e) = me.run(&id2, &question, language, &ctx).await {
                 warn!("assistant: {e}");
                 me.update(&id2, |a| {
                     a.status = AnswerStatus::Failed;
@@ -471,7 +489,8 @@ impl Assistant {
         Ok(id)
     }
 
-    async fn run(&self, id: &str, question: &str, language: &'static str, history: &[Turn], items: &[Item], notes: &[Note]) -> Result<(), String> {
+    async fn run(&self, id: &str, question: &str, language: &'static str, ctx: &AskContext) -> Result<(), String> {
+        let (history, items, notes, online) = (&ctx.history[..], &ctx.items[..], &ctx.notes[..], ctx.online);
         // 1. Make sure the engine runs (it also decides what the question is about).
         self.update(id, |a| a.status = AnswerStatus::Starting);
         let port = self.ensure_running().await?;
@@ -551,6 +570,12 @@ impl Assistant {
             self.update(id, |a| a.searched = shown);
             self.find_sources(&terms, question).await
         };
+        let (mut sources, mut passages) = (sources, passages);
+        if online {
+            let (web_sources, web_passages) = self.find_web_sources(question, &plan.terms, sources.len()).await;
+            sources.extend(web_sources);
+            passages.extend(web_passages);
+        }
         let grounded = !sources.is_empty();
         self.update(id, |a| {
             a.sources = sources.clone();
@@ -559,6 +584,28 @@ impl Assistant {
         });
         let messages = with_notes(build_messages(question, language, &passages, history), &known, language);
         self.stream_answer(id, port, messages, language).await
+    }
+
+    /// Online research: a web search for the question, and the relevant
+    /// parts of the first two readable pages, numbered after the library's.
+    async fn find_web_sources(&self, question: &str, terms: &[String], first: usize) -> (Vec<Source>, Vec<String>) {
+        let mut stems: Vec<String> = search_words(question).iter().map(|w| zaklon_core::translit::fold(&stem(w))).collect();
+        stems.extend(terms.iter().flat_map(|t| t.split_whitespace().map(|w| zaklon_core::translit::fold(&stem(w))).collect::<Vec<_>>()));
+        stems.retain(|s| s.chars().count() >= 3);
+        let pages = crate::web::look_up(&self.web_http, question, 2).await;
+        let mut sources = Vec::new();
+        let mut passages = Vec::new();
+        for page in pages {
+            let st = stems.clone();
+            let text = tokio::task::spawn_blocking(move || relevant_text(&page.html, &st, SOURCE_CHARS)).await.unwrap_or_default();
+            if text.chars().count() < 80 {
+                continue;
+            }
+            let n = first + sources.len() + 1;
+            passages.push(format!("[{n}] {} ({})\n{text}", page.title, page.host));
+            sources.push(Source { n, title: page.title, web: true, url: page.url, book_title_en: page.host.clone(), book_title_sr: page.host });
+        }
+        (sources, passages)
     }
 
     /// Ask the model, streaming its text into the answer as it comes.
@@ -817,7 +864,7 @@ quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; categor
             let n = sources.len() + 1;
             let title = zaklon_core::translit::cyrillic_to_latin(&r.title);
             passages.push(format!("[{n}] {title}\n{text}"));
-            sources.push(Source { n, title, url: r.url, book_title_en: r.book_title_en, book_title_sr: r.book_title_sr });
+            sources.push(Source { n, title, web: false, url: r.url, book_title_en: r.book_title_en, book_title_sr: r.book_title_sr });
         }
         (sources, passages)
     }
@@ -921,20 +968,33 @@ pub fn remember_request(question: &str) -> Option<String> {
     None
 }
 
-/// The notes that matter for a question: those sharing a word with it, or
-/// all of them when there are only a few. At most eight.
-pub fn relevant_notes(notes: &[Note], question: &str, terms: &[String]) -> Vec<String> {
-    if notes.len() <= 8 {
-        return notes.iter().map(|n| n.text.clone()).collect();
+/// The root of a word for matching names and nouns in their forms:
+/// "Ana", "Ani", "Anu", "Anom" -> "an"; "penicilina" -> "penicilin".
+fn root(word: &str) -> String {
+    let w = plain(word);
+    let n = w.chars().count();
+    if n <= 4 {
+        for e in ["om", "em", "oj", "a", "e", "i", "u", "o"] {
+            if w.ends_with(e) && n - e.len() >= 2 {
+                return w[..w.len() - e.len()].to_string();
+            }
+        }
+        return w;
     }
-    let mut words: Vec<String> = search_words(question).iter().map(|w| stem(&plain(w))).collect();
-    words.extend(terms.iter().flat_map(|t| t.split_whitespace().map(|w| stem(&plain(w))).collect::<Vec<_>>()));
-    words.retain(|w| w.chars().count() >= 3);
+    stem(&w)
+}
+
+/// The notes that matter for a question: those sharing a word (in any of
+/// its forms) with it. At most eight.
+pub fn relevant_notes(notes: &[Note], question: &str, terms: &[String]) -> Vec<String> {
+    let mut words: Vec<String> = search_words(question).iter().map(|w| root(w)).collect();
+    words.extend(terms.iter().flat_map(|t| t.split_whitespace().map(root).collect::<Vec<_>>()));
+    words.retain(|w| w.chars().count() >= 2);
     notes
         .iter()
         .filter(|n| {
-            let text = plain(&n.text);
-            words.iter().any(|w| text.contains(w.as_str()))
+            let note_words: Vec<String> = n.text.split(|c: char| !c.is_alphanumeric()).filter(|w| w.chars().count() >= 2).map(root).collect();
+            words.iter().any(|w| note_words.iter().any(|nw| nw == w || (w.chars().count() >= 5 && (nw.starts_with(w.as_str()) || w.starts_with(nw.as_str())))))
         })
         .take(8)
         .map(|n| n.text.clone())
@@ -1415,6 +1475,11 @@ pub fn article_text(html: &str, max: usize) -> String {
     }
 }
 
+/// Plain text of a piece of HTML (tags off, entities decoded).
+pub fn strip_html(s: &str) -> String {
+    strip_tags(s)
+}
+
 fn strip_tags(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut in_tag = false;
@@ -1551,7 +1616,8 @@ mod tests {
     fn notes_reach_the_prompt() {
         let note = |t: &str| Note { id: t.into(), text: t.into(), created_at: String::new(), created_by: None };
         let few = vec![note("Ana je alergična na penicilin.")];
-        assert_eq!(relevant_notes(&few, "Šta da dam Ani za temperaturu?", &[]).len(), 1, "few notes: all of them");
+        assert_eq!(relevant_notes(&few, "Šta da dam Ani za temperaturu?", &[]).len(), 1, "the name in another form");
+        assert!(relevant_notes(&few, "Kako da prečistim vodu bez filtera?", &["voda".into()]).is_empty(), "not about Ana or penicillin");
         let many: Vec<Note> = (0..20).map(|i| note(&format!("Beleška broj {i} o nečemu."))).chain([note("Ana je alergična na penicilin.")]).collect();
         let r = relevant_notes(&many, "Da li Ana sme penicilin?", &[]);
         assert_eq!(r, vec!["Ana je alergična na penicilin."]);

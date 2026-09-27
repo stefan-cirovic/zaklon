@@ -18,6 +18,7 @@ pub mod latin;
 pub mod machine;
 pub mod ui;
 pub mod updates;
+pub mod web;
 
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr};

@@ -1249,14 +1249,18 @@ struct AskBody {
     language: String,
     #[serde(default)]
     history: Vec<crate::assistant::Turn>,
+    /// Look things up on the internet too (switched on per conversation).
+    #[serde(default)]
+    online: bool,
 }
 
 async fn assistant_ask(State(state): State<Arc<HubState>>, caller: Caller, Json(body): Json<AskBody>) -> Result<Json<serde_json::Value>, ApiError> {
     // The assistant can answer about the supplies and propose changes to them.
     let items = state.db.list_items().unwrap_or_default();
     let notes = state.db.list_notes().unwrap_or_default();
-    let id = state.assistant.ask(&body.question, &body.language, body.history, items, notes).map_err(|e| bad(&e))?;
-    tracing::info!(by = %caller.actor(), "assistant asked");
+    let ctx = crate::assistant::AskContext { history: body.history, items, notes, online: body.online };
+    let id = state.assistant.ask(&body.question, &body.language, ctx).map_err(|e| bad(&e))?;
+    tracing::info!(by = %caller.actor(), online = body.online, "assistant asked");
     Ok(Json(serde_json::json!({ "id": id })))
 }
 

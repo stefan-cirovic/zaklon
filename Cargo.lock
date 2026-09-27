@@ -6351,6 +6351,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "url",
  "uuid",
  "windows-sys 0.59.0",
  "zaklon-core",

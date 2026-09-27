@@ -291,3 +291,5 @@ body::before {
 .offline-banner { margin-bottom: 16px; text-align: left; }
 .memory-row { padding: 6px 0; border-top: 1px solid var(--line); gap: 8px; }
 .memory-row span { flex: 1 1 200px; overflow-wrap: anywhere; }
+.online-switch { font-size: 14px; color: var(--muted); }
+.source.web { color: var(--text); }

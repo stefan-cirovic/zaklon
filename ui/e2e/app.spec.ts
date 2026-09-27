@@ -508,3 +508,42 @@ test("assistant memory: notes can be added and deleted by hand", async ({ page }
   await row.getByRole("button", { name: /Yes, delete/ }).click();
   await expect(row).toHaveCount(0);
 });
+
+test("assistant: online research is off until switched on, and only for this conversation", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.route("**/api/assistant", (route) =>
+    route.fulfill({
+      json: {
+        engine: "ready", engine_installed: true, selected: "qwen35-2b", recommended: "qwen35-2b", ram_total: 8e9, books: 1,
+        models: [{ id: "qwen35-2b", title_en: "AI model for phones (Qwen3.5 2B)", title_sr: "x", size: 1e9, installed: true, recommended: true }],
+      },
+    }),
+  );
+  const bodies: { online: boolean }[] = [];
+  await page.route("**/api/assistant/ask", (route) => {
+    bodies.push(route.request().postDataJSON());
+    return route.fulfill({ json: { id: `w${bodies.length}` } });
+  });
+  await page.route("**/api/assistant/answers/*", (route) =>
+    route.fulfill({
+      json: {
+        id: route.request().url().split("/").pop(), question: "q", status: "done", grounded: true, language: "en", tokens_per_second: 5, error: null,
+        text: "Boil it for a minute [1].", sources: [{ n: 1, title: "Boiling water", web: true, url: "https://example.org/boil", book_title_en: "example.org", book_title_sr: "example.org" }],
+      },
+    }),
+  );
+  await page.goto("/#assistant");
+  const box = page.getByRole("textbox", { name: "Ask something" });
+  await box.fill("How do I make water safe?");
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  await expect(page.getByText("Boil it for a minute")).toBeVisible();
+  expect(bodies[0].online).toBe(false);
+  await page.getByLabel(/Also search the internet/).check();
+  await box.fill("And without a pot?");
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  await expect.poll(() => bodies.length).toBe(2);
+  expect(bodies[1].online).toBe(true);
+  await expect(page.getByText("example.org (internet)").first()).toBeVisible();
+  await page.getByRole("button", { name: "New conversation" }).click();
+  await expect(page.getByLabel(/Also search the internet/)).not.toBeChecked();
+});
