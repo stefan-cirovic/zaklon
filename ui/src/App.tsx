@@ -47,7 +47,13 @@ export default function App() {
   const [mode, setMode] = useState<AppMode | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [lang, setLangState] = useState<Lang>((readPref("zaklon.lang", "") as Lang) || "en");
+  // Until the hub says otherwise: the device's own language (sr, hr, bs -> Serbian).
+  const [lang, setLangState] = useState<Lang>(() => {
+    const saved = readPref("zaklon.lang", "") as Lang;
+    if (saved === "sr" || saved === "en") return saved;
+    const device = typeof navigator !== "undefined" ? navigator.language.toLowerCase() : "en";
+    return /^(sr|hr|bs|sh|cnr)/.test(device) ? "sr" : "en";
+  });
   const [accent, setAccentState] = useState<Accent>(() => {
     const a = readPref("zaklon.accent", "green") as Accent;
     return ACCENTS.includes(a) ? a : "green";
@@ -144,19 +150,45 @@ export default function App() {
   }, []);
 
   // One request at a time: the next one starts only after the previous finished.
+  // A phone away from the hub asks less and less often (2 s, then up to a
+  // minute) so it does not drain the battery at the shop, and not at all while
+  // the app is in the background; coming back to the app asks right away.
+  // An unpaired phone does not ask.
   useEffect(() => {
+    if (mode?.mode === "client" && link && !link.linked) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const tick = async () => {
-      await refresh();
-      if (alive) timer = setTimeout(tick, connected.current ? POLL_SLOW : POLL_FAST);
+    let misses = 0;
+    const schedule = () => {
+      if (!alive) return;
+      if (timer) clearTimeout(timer);
+      const wait = connected.current ? POLL_SLOW : Math.min(POLL_FAST * 2 ** Math.min(misses, 5), 60000);
+      timer = setTimeout(tick, wait);
     };
+    const tick = async () => {
+      if (typeof document !== "undefined" && document.hidden) {
+        schedule();
+        return;
+      }
+      await refresh();
+      misses = connected.current ? 0 : misses + 1;
+      schedule();
+    };
+    const onVisible = () => {
+      if (!document.hidden) {
+        misses = 0;
+        if (timer) clearTimeout(timer);
+        tick();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
     tick();
     return () => {
       alive = false;
+      document.removeEventListener("visibilitychange", onVisible);
       if (timer) clearTimeout(timer);
     };
-  }, [refresh, link?.linked]);
+  }, [refresh, link?.linked, mode?.mode]);
 
   useEffect(() => {
     document.documentElement.dataset.accent = accent;
