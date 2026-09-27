@@ -282,7 +282,8 @@ const ITEM_COLS: &str =
 /// Batches of an item, the one that expires first first (no date last).
 const BATCH_ORDER: &str = "ORDER BY (expiry IS NULL), expiry, added_at";
 
-fn today() -> String {
+/// Today's date on this computer (local time), "YYYY-MM-DD".
+pub fn today() -> String {
     let d = time::OffsetDateTime::now_local().unwrap_or_else(|_| time::OffsetDateTime::now_utc()).date();
     format!("{:04}-{:02}-{:02}", d.year(), u8::from(d.month()), d.day())
 }

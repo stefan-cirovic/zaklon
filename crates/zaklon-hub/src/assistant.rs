@@ -1215,7 +1215,8 @@ fn capitalize(s: &str) -> String {
 /// expires, what runs low, and the rest, one line each.
 pub fn supplies_context(items: &[Item], terms: &[String], language: &str) -> String {
     let sr = language == "sr";
-    let today = chrono_today();
+    // Local date, like the supplies screen (UTC was a day behind after midnight in Serbia).
+    let today = zaklon_core::supplies::today();
     let stems: Vec<String> = terms.iter().map(|t| stem(&plain(t))).filter(|t| t.chars().count() >= 2).collect();
     let matches = |i: &Item| {
         let n = plain(&i.name);
@@ -1247,20 +1248,6 @@ pub fn supplies_context(items: &[Item], terms: &[String], language: &str) -> Str
     lines.join("\n")
 }
 
-fn chrono_today() -> String {
-    // Days since 1970-01-01 to a civil date (no time zone database needed).
-    let days = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) / 86_400) as i64;
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = yoe + era * 400 + i64::from(m <= 2);
-    format!("{y:04}-{m:02}-{d:02}")
-}
 
 fn supplies_messages(question: &str, language: &str, context: &str, history: &[Turn]) -> Vec<serde_json::Value> {
     let system = if language == "sr" {

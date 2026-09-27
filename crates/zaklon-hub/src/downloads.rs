@@ -484,6 +484,10 @@ impl Downloads {
     /// Download `url` into `part` starting at offset `*have`. Ok(true) when the
     /// file is complete, Ok(false) when paused, Err on a network problem.
     async fn fetch_range(&self, id: &str, f: &PackFile, url: &str, part: &Path, have: &mut u64) -> Result<bool, String> {
+        // What is really on disk decides where to continue: a write that failed
+        // halfway (disk full) may have left more bytes than were counted, and a
+        // second mirror appending after them would corrupt the file.
+        *have = std::fs::metadata(part).map(|m| m.len()).unwrap_or(0);
         let mut req = self.client.get(url);
         if *have > 0 {
             req = req.header("range", format!("bytes={}-", *have));
