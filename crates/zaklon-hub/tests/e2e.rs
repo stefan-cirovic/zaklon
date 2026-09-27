@@ -17,8 +17,19 @@ use sha2::{Digest, Sha256};
 
 // ---- helpers ------------------------------------------------------------------
 
+/// A port that is free for TCP and UDP on every interface. Windows reserves
+/// ranges of ports (Hyper-V, WSL) that a plain "port 0" pick can land in for
+/// the other protocol, so both are tried before the port is used.
 fn free_port() -> u16 {
-    TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port()
+    for _ in 0..50 {
+        let port = TcpListener::bind(("0.0.0.0", 0)).unwrap().local_addr().unwrap().port();
+        let tcp_ok = TcpListener::bind(("0.0.0.0", port)).is_ok() && TcpListener::bind(("127.0.0.1", port)).is_ok();
+        let udp_ok = std::net::UdpSocket::bind(("0.0.0.0", port)).is_ok();
+        if tcp_ok && udp_ok {
+            return port;
+        }
+    }
+    panic!("no free port found");
 }
 
 fn temp_dir(name: &str) -> PathBuf {
