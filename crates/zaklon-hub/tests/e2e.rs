@@ -352,6 +352,8 @@ async fn full_hub_flow() {
         (reqwest::Method::POST, "/api/firewall/allow", json!({})),
         (reqwest::Method::POST, "/api/export/cancel", json!({})),
         (reqwest::Method::POST, "/api/packs/import", json!({ "dir": hub.root.display().to_string() })),
+        (reqwest::Method::DELETE, "/api/packs/kiwix-tools", Value::Null),
+        (reqwest::Method::DELETE, "/api/maps/rs", Value::Null),
     ];
     for (method, path, body) in laptop_only {
         let mut req = as_phone(method.clone(), path);

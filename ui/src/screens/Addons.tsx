@@ -144,7 +144,7 @@ export default function Addons({ t, lang, isHub }: Props) {
             <h2>{t(CATEGORY_KEY[cat])}</h2>
             <div className="list">
               {packs.map((p) => (
-                <PackRow key={p.id} p={p} t={t} lang={lang} title={title} act={act} />
+                <PackRow key={p.id} p={p} t={t} lang={lang} title={title} act={act} isHub={isHub} />
               ))}
             </div>
           </div>
@@ -168,7 +168,7 @@ export default function Addons({ t, lang, isHub }: Props) {
   );
 }
 
-function PackRow({ p, t, lang, title, act }: { p: Pack; t: T; lang: Lang; title: (l: Localized) => string; act: (path: string, method?: string) => void }) {
+function PackRow({ p, t, lang, title, act, isHub }: { p: Pack; t: T; lang: Lang; title: (l: Localized) => string; act: (path: string, method?: string) => void; isHub: boolean }) {
   const s = p.state;
   const pct = s.bytes_total ? Math.min(100, Math.round((s.bytes_done / s.bytes_total) * 100)) : 0;
   const recommended = p.recommended_for.includes(lang);
@@ -196,7 +196,7 @@ function PackRow({ p, t, lang, title, act }: { p: Pack; t: T; lang: Lang; title:
           {(s.status === "paused" || s.status === "failed") && (
             <>
               <button className="btn" onClick={() => act(`/api/packs/${p.id}/download`)}>{s.status === "paused" ? t("resume") : t("retry")}</button>
-              <ConfirmButton label={t("remove")} confirmLabel={t("yesRemove")} cancelLabel={t("cancel")} onConfirm={() => act(`/api/packs/${p.id}`, "DELETE")} />
+              {isHub && <ConfirmButton label={t("remove")} confirmLabel={t("yesRemove")} cancelLabel={t("cancel")} onConfirm={() => act(`/api/packs/${p.id}`, "DELETE")} />}
             </>
           )}
           {s.status === "installed" && (
@@ -209,7 +209,7 @@ function PackRow({ p, t, lang, title, act }: { p: Pack; t: T; lang: Lang; title:
               ) : (
                 <span className="ok">{t("installed")}</span>
               )}
-              <ConfirmButton label={t("remove")} confirmLabel={t("yesRemove")} cancelLabel={t("cancel")} onConfirm={() => act(`/api/packs/${p.id}`, "DELETE")} />
+              {isHub && <ConfirmButton label={t("remove")} confirmLabel={t("yesRemove")} cancelLabel={t("cancel")} onConfirm={() => act(`/api/packs/${p.id}`, "DELETE")} />}
             </>
           )}
         </div>

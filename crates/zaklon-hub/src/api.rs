@@ -773,8 +773,10 @@ async fn pack_pause(State(state): State<Arc<HubState>>, _caller: Caller, Path(id
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn pack_remove(State(state): State<Arc<HubState>>, caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
-    tracing::info!(by = %caller.actor(), pack = %id, "pack removed");
+/// Laptop only: packs are often tens of GB and cannot be downloaded again
+/// without internet, so a phone may not delete them.
+async fn pack_remove(State(state): State<Arc<HubState>>, _: Local, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
+    tracing::info!(pack = %id, "pack removed on the laptop");
     // The library engine keeps knowledge packs (and its own files) open, the
     // AI engine its model and its own files; stop the one concerned so
     // Windows lets us delete them. It starts again by itself.
@@ -1393,9 +1395,10 @@ async fn maps_country_download(State(state): State<Arc<HubState>>, _caller: Call
     Ok(StatusCode::ACCEPTED)
 }
 
-async fn maps_country_remove(State(state): State<Arc<HubState>>, caller: Caller, Path(country): Path<String>) -> Result<StatusCode, ApiError> {
+/// Laptop only, like removing a pack.
+async fn maps_country_remove(State(state): State<Arc<HubState>>, _: Local, Path(country): Path<String>) -> Result<StatusCode, ApiError> {
     let ids = country_regions(&country).ok_or_else(|| not_found("no such country"))?;
-    tracing::info!(by = %caller.actor(), country = %country, "maps removed");
+    tracing::info!(country = %country, "maps removed on the laptop");
     for id in ids {
         let st = state.downloads.state_of(&id).map(|s| s.status);
         let active = |s: Option<zaklon_core::catalog::PackStatus>| {

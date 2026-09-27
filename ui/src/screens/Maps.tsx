@@ -211,7 +211,7 @@ export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: bool
                       {s.update ? t("packUpdate") : s.some || s.paused ? t("resume") : s.failed ? t("retry") : t("download")}
                     </button>
                   )}
-                  {(s.some || s.failed || s.paused) && !s.busy && (
+                  {isHub && (s.some || s.failed || s.paused) && !s.busy && (
                     <ConfirmButton
                       label={t("remove")}
                       confirmLabel={t("yesRemove")}
@@ -234,7 +234,9 @@ export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: bool
                   {c.regions.map((r) => (
                     <div className="row between region" key={r.id}>
                       <span>{nameOf(r)} <span className="muted" style={{ fontSize: 13 }}>· {fmtBytes(r.size)}</span></span>
-                      {r.status === "installed" ? (
+                      {r.status === "installed" && !isHub ? (
+                        <span className="ok">{t("installed")}</span>
+                      ) : r.status === "installed" ? (
                         <ConfirmButton
                           label={t("remove")}
                           confirmLabel={t("yesRemove")}
