@@ -734,8 +734,8 @@
         "sr": "AI model za laptopove (Qwen3.5 4B)"
       },
       "description": {
-        "en": "Recommended for laptops with 12-16 GB of memory. Clearly better answers.",
-        "sr": "Preporučen za laptopove sa 12-16 GB memorije. Znatno bolji odgovori."
+        "en": "Recommended for laptops with 12 GB of memory. Clearly better answers.",
+        "sr": "Preporučen za laptopove sa 12 GB memorije. Znatno bolji odgovori."
       },
       "category": "model",
       "version": "2026",
@@ -753,6 +753,35 @@
           ],
           "sha256": "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4",
           "size": 2740937888
+        }
+      ]
+    },
+    {
+      "id": "qwen35-9b",
+      "title": {
+        "en": "AI model for 16 GB computers (Qwen3.5 9B)",
+        "sr": "AI model za računare sa 16 GB (Qwen3.5 9B)"
+      },
+      "description": {
+        "en": "The best answers, but slower. For computers with 16 GB of memory or more.",
+        "sr": "Najbolji odgovori, ali sporiji. Za računare sa 16 GB memorije i više."
+      },
+      "category": "model",
+      "version": "2026",
+      "size": 5680522464,
+      "languages": [],
+      "recommended_for": [],
+      "license": "Apache-2.0",
+      "attribution": "Qwen team, Alibaba Cloud",
+      "source": "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF",
+      "files": [
+        {
+          "path": "models/Qwen3.5-9B-Q4_K_M.gguf",
+          "urls": [
+            "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf"
+          ],
+          "sha256": "03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8",
+          "size": 5680522464
         }
       ]
     }

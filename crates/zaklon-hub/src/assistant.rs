@@ -188,7 +188,10 @@ pub struct Assistant {
 /// rest of the system all have to fit.
 pub fn recommended_model(ram_total: u64) -> &'static str {
     const GIB: u64 = 1 << 30;
-    if ram_total >= 11 * GIB {
+    if ram_total >= 15 * GIB {
+        // A 16 GB machine reports about 15.x GiB.
+        "qwen35-9b"
+    } else if ram_total >= 11 * GIB {
         "qwen35-4b"
     } else if ram_total >= 5 * GIB {
         "qwen35-2b"
@@ -198,7 +201,7 @@ pub fn recommended_model(ram_total: u64) -> &'static str {
 }
 
 /// Model size order, smallest first, for picking a fallback.
-const MODEL_ORDER: [&str; 3] = ["qwen35-08b", "qwen35-2b", "qwen35-4b"];
+const MODEL_ORDER: [&str; 4] = ["qwen35-08b", "qwen35-2b", "qwen35-4b", "qwen35-9b"];
 
 impl Assistant {
     pub fn new(downloads: Arc<Downloads>, library: Arc<Library>, chosen: Option<String>) -> Arc<Self> {
@@ -1620,7 +1623,10 @@ mod tests {
     #[test]
     fn model_by_memory() {
         const GIB: u64 = 1 << 30;
-        assert_eq!(recommended_model(16 * GIB), "qwen35-4b");
+        assert_eq!(recommended_model(32 * GIB), "qwen35-9b");
+        assert_eq!(recommended_model(16 * GIB), "qwen35-9b");
+        assert_eq!(recommended_model(15 * GIB + GIB / 2), "qwen35-9b");
+        assert_eq!(recommended_model(14 * GIB), "qwen35-4b");
         assert_eq!(recommended_model(12 * GIB - GIB / 2), "qwen35-4b");
         assert_eq!(recommended_model(8 * GIB), "qwen35-2b");
         assert_eq!(recommended_model(4 * GIB), "qwen35-08b");
