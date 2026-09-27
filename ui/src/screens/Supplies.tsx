@@ -467,6 +467,7 @@ function BatchesEditor({
           <input type="date" defaultValue={b.expiry ?? ""} aria-label={t("expiry")} onBlur={(e) => update(b, "expiry", e.target.value)} />
           <ConfirmButton
             label="×"
+            ariaLabel={t("removeBatch")}
             confirmLabel={t("yesRemove")}
             cancelLabel={t("cancel")}
             onConfirm={() => apply(api<Item>(`/api/batches/${b.id}`, { method: "DELETE" }))}
