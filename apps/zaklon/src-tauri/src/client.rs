@@ -322,8 +322,15 @@ impl ClientState {
                 }
             };
             // 416: the part on the phone is already as long as (or longer than)
-            // the file. It cannot be trusted as it is; start over once.
-            if res.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+            // the file. A 206 that does not start where we asked cannot be
+            // appended either. In both cases drop the part and start over once.
+            let bad_resume = res.status() == reqwest::StatusCode::PARTIAL_CONTENT
+                && !res
+                    .headers()
+                    .get("content-range")
+                    .and_then(|v| v.to_str().ok())
+                    .is_some_and(|v| v.trim().starts_with(&format!("bytes {have}-")));
+            if res.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE || bad_resume {
                 let _ = std::fs::remove_file(&part);
                 res = match client.get(&url).header("authorization", format!("Bearer {}", link.device_token)).send().await {
                     Ok(r) => r,
@@ -338,7 +345,10 @@ impl ClientState {
             if !status.is_success() {
                 return Err(format!("hub replied {status}"));
             }
-            let sha = res.headers().get("x-zaklon-sha256").and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
+            let sha = res.headers().get("x-zaklon-sha256").and_then(|v| v.to_str().ok()).unwrap_or_default().trim().to_string();
+            if sha.is_empty() {
+                return Err("the hub did not say how to check the file; update the hub".into());
+            }
             let resumed = status == reqwest::StatusCode::PARTIAL_CONTENT;
             let body_len = res.content_length().unwrap_or(0);
             let total = if resumed { have + body_len } else { body_len };
@@ -396,7 +406,7 @@ impl ClientState {
                 return Err("connection lost; try again to continue".into());
             }
             let actual: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
-            if !sha.is_empty() && !actual.eq_ignore_ascii_case(&sha) {
+            if !actual.eq_ignore_ascii_case(&sha) {
                 let _ = std::fs::remove_file(&part);
                 return Err("checksum mismatch: the copy was damaged and discarded; try again".into());
             }
@@ -628,8 +638,22 @@ impl ClientState {
             };
             let ctype = header_str("content-type", "application/octet-stream");
             let cache = header_str("cache-control", "no-cache");
+            // Security headers from the hub (the sandbox CSP for articles) must
+            // reach the web view too.
+            let passthrough: Vec<(header::HeaderName, header::HeaderValue)> =
+                [header::CONTENT_SECURITY_POLICY, header::X_CONTENT_TYPE_OPTIONS]
+                    .into_iter()
+                    .filter_map(|name| {
+                        let value = res.headers().get(name.as_str())?.to_str().ok()?;
+                        Some((name, header::HeaderValue::from_str(value).ok()?))
+                    })
+                    .collect();
             return match res.bytes().await {
-                Ok(body) => (status, [(header::CONTENT_TYPE, ctype), (header::CACHE_CONTROL, cache)], body).into_response(),
+                Ok(body) => {
+                    let mut out = (status, [(header::CONTENT_TYPE, ctype), (header::CACHE_CONTROL, cache)], body).into_response();
+                    out.headers_mut().extend(passthrough);
+                    out
+                }
                 Err(_) => StatusCode::BAD_GATEWAY.into_response(),
             };
         }
