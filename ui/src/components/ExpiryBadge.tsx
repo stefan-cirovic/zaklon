@@ -1,4 +1,4 @@
-import { daysUntil, fmtDate } from "../format";
+import { countWord, daysUntil, fmtDate } from "../format";
 import type { Key } from "../i18n";
 
 export default function ExpiryBadge({ date, t }: { date: string | null; t: (k: Key) => string }) {
@@ -9,7 +9,7 @@ export default function ExpiryBadge({ date, t }: { date: string | null; t: (k: K
   if (days <= 30) {
     return (
       <span className="badge soon">
-        {days === 0 ? t("today") : `${days} ${t("daysShort")}`} · {label}
+        {days === 0 ? t("today") : `${days} ${countWord(days, [t("daysShort"), t("daysShort")], ["dan", "dana", "dana"])}`} · {label}
       </span>
     );
   }

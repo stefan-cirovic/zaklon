@@ -70,7 +70,7 @@ export default function StarterSet({ t, lang, packs, freeBytes, onStarted }: { t
 
   return (
     <div className="panel stack left starter">
-      <h2>{lang === "sr" ? "Srbija osnovni" : "English essentials"}</h2>
+      <h2>{lang === "sr" ? t("starterTitleSr") : t("starterTitleEn")}</h2>
       <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("starterIntro")}</p>
       <ul className="plain">
         {lines.map((l) => (

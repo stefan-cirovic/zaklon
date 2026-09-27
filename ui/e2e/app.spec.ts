@@ -298,7 +298,7 @@ test("maps: the phone steps show the hub address, and the world is searchable", 
   await search.fill("germany");
   const germany = page.locator(".map-country").filter({ hasText: /^Germany/ });
   await expect(germany.getByText(/regions/)).toBeVisible();
-  await germany.getByRole("button", { name: "▾" }).click();
+  await germany.getByRole("button", { name: /Regions of/ }).click();
   await expect(germany.locator(".region").first()).toBeVisible();
   expect(await germany.locator(".region").count()).toBeGreaterThan(5);
   await search.fill("zzzz-nowhere");

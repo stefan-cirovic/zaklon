@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
-import { fmtBytes } from "../format";
+import { countWord, fmtBytes } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
 import Qr from "../components/Qr";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -172,7 +172,7 @@ export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: bool
                   <div className="map-name">{nameOf(c)}</div>
                   <div className="muted" style={{ fontSize: 13 }}>
                     {fmtBytes(c.size)}
-                    {multi && ` · ${c.regions.length} ${t("mapsRegions")}`}
+                    {multi && ` · ${c.regions.length} ${countWord(c.regions.length, ["region", "regions"], ["region", "regiona", "regiona"])}`}
                     {s.some && !s.all && ` · ${s.installed}/${c.regions.length} ${t("installed").toLowerCase()}`}
                   </div>
                 </div>
@@ -196,7 +196,7 @@ export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: bool
                     />
                   )}
                   {multi && (
-                    <button className="btn secondary small" aria-expanded={open === c.id} onClick={() => setOpen(open === c.id ? null : c.id)}>
+                    <button className="btn secondary small" aria-expanded={open === c.id} aria-label={`${t("mapsRegionsOf")} ${nameOf(c)}`} onClick={() => setOpen(open === c.id ? null : c.id)}>
                       {open === c.id ? "▴" : "▾"}
                     </button>
                   )}

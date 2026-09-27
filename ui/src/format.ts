@@ -86,6 +86,18 @@ export function unitLabel(unit: string, qty: number, short: (u: string) => strin
   return qty === 1 ? "liter" : "liters";
 }
 
+/** A word after a number: "1 dan, 2 dana, 5 dana" / "1 region, 2 regions". */
+export function countWord(n: number, en: [string, string], sr: [string, string, string]): string {
+  if (lang === "sr") {
+    const last = n % 10;
+    const lastTwo = n % 100;
+    if (last === 1 && lastTwo !== 11) return sr[0];
+    if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) return sr[1];
+    return sr[2];
+  }
+  return n === 1 ? en[0] : en[1];
+}
+
 // ---- Serbian Cyrillic to Latin (same rules as the hub) --------------------
 
 const CYR: Record<string, string> = {

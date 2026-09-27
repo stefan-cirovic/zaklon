@@ -173,15 +173,15 @@ function PackRow({ p, t, lang, title, act }: { p: Pack; t: T; lang: Lang; title:
   const recommended = p.recommended_for.includes(lang);
   return (
     <div className="item" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
-      <div className="row between">
-        <div>
+      <div className="row between wrap">
+        <div style={{ flex: "1 1 220px", minWidth: 0 }}>
           <div>
             {title(p.title)} {recommended && <span className="ok" style={{ fontSize: 12 }}>· {t("recommended")}</span>}
           </div>
           <div className="muted" style={{ fontSize: 13 }}>{title(p.description)}</div>
           <div className="muted" style={{ fontSize: 13 }}>{fmtBytes(p.size)} · {p.version} · {p.license}</div>
         </div>
-        <div className="row" style={{ flexShrink: 0 }}>
+        <div className="row wrap">
           {s.status === "not_installed" && <button className="btn" onClick={() => act(`/api/packs/${p.id}/download`)}>{t("download")}</button>}
           {s.status === "queued" && <button className="btn secondary" onClick={() => act(`/api/packs/${p.id}/pause`)}>{t("queued")} · {t("cancel")}</button>}
           {(s.status === "downloading" || s.status === "verifying") && (

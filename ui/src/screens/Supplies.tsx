@@ -1,3 +1,4 @@
+import { countWord } from "../format";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import type { Key } from "../i18n";
@@ -186,7 +187,7 @@ export default function Supplies({ t }: { t: T }) {
                       <div className="muted supply-meta">
                         {t(catKey(i.category))}
                         {i.place ? ` · ${placeName(i.place)}` : ""}
-                        {batches > 1 ? ` · ${batches} ${t("batchesShort")}` : ""}
+                        {batches > 1 ? ` · ${batches} ${countWord(batches, ["batch", "batches"], ["serija", "serije", "serija"])}` : ""}
                       </div>
                       <div className="supply-badges">
                         <ExpiryBadge date={i.expiry} t={t} />
