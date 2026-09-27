@@ -16,7 +16,7 @@ You will get an acknowledgment within 72 hours and a status update at least ever
 
 - The hub application (Windows), the Android app, the installer and the update check.
 - Download verification (SHA-256 / SHA-1 checks of every pack), and add-on catalog signing once it is added.
-- Pairing, device tokens and TLS (and profile encryption once profiles ship).
+- Pairing, device tokens and TLS, backup encryption and restore (and profile encryption once profiles ship).
 
 Third-party programs that Zaklon runs as separate processes (kiwix-serve, llama.cpp, CoMaps) have their own security policies; issues in them should be reported upstream, but we welcome a heads-up so we can ship a mitigation.
 

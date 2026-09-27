@@ -487,8 +487,18 @@ test("household: a backup can be made and a restore is prepared for the next sta
   await expect(page.getByText(/^Saved: .*zaklon-backup-.*\.zip$/)).toBeVisible();
   const row = page.locator(".backup-row").first();
   await expect(row).toContainText("saved by hand");
+  await expect(row).toContainText(/· encrypted ·/);
   await row.getByRole("button", { name: "Restore" }).click();
-  await row.getByRole("button", { name: "Yes, restore" }).click();
+  // What a restore keeps is said, and the backup asks for the password it was made with.
+  await expect(row.getByText(/the phones paired now, the household password and this hub's identity stay as they are/)).toBeVisible();
+  const yes = row.getByRole("button", { name: "Yes, restore" });
+  await expect(yes).toBeDisabled();
+  const password = row.getByLabel("Household password from when the backup was made");
+  await password.fill("not the password");
+  await yes.click();
+  await expect(row.getByText(/This password does not open the backup/)).toBeVisible();
+  await password.fill(PASSWORD);
+  await yes.click();
   await expect(page.getByText(/The backup is checked and ready/)).toBeVisible();
   // Wait until that restore has finished (the notice may already be there from an earlier run).
   await expect(page.getByRole("button", { name: "Make a backup now" })).toBeEnabled();

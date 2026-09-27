@@ -136,9 +136,53 @@ impl Db {
         Ok(())
     }
 
+    /// Several settings at once: all of them are written, or none (for
+    /// values that must always match, like a password and what it locks).
+    pub fn set_settings(&self, pairs: &[(&str, &str)]) -> Result<()> {
+        let conn = self.lock();
+        let tx = conn.unchecked_transaction()?;
+        for (key, value) in pairs {
+            tx.execute(
+                "INSERT INTO settings(key, value) VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![key, value],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     /// True once the household password has been set (first-run setup done).
     pub fn is_set_up(&self) -> Result<bool> {
         Ok(self.get_setting("household_password_hash")?.is_some())
+    }
+
+    /// For a restore: replace this database's paired devices and the
+    /// settings named in `keys` with those of the database file at `other`
+    /// (a setting `other` does not have is removed here too). All or nothing.
+    pub fn take_devices_and_settings_from(&self, other: &Path, keys: &[&str]) -> Result<()> {
+        let conn = self.lock();
+        let file = other.to_string_lossy().to_string();
+        conn.execute("ATTACH DATABASE ?1 AS other", params![file]).with_context(|| format!("opening {}", other.display()))?;
+        let copied = (|| -> Result<()> {
+            let tx = conn.unchecked_transaction()?;
+            tx.execute("DELETE FROM main.devices", [])?;
+            tx.execute(
+                "INSERT INTO main.devices(id, name, platform, token_hash, created_at, last_seen)
+                 SELECT id, name, platform, token_hash, created_at, last_seen FROM other.devices",
+                [],
+            )?;
+            for key in keys {
+                tx.execute("DELETE FROM main.settings WHERE key = ?1", params![key])?;
+                tx.execute("INSERT INTO main.settings(key, value) SELECT key, value FROM other.settings WHERE key = ?1", params![key])?;
+            }
+            tx.commit()?;
+            Ok(())
+        })();
+        let detached = conn.execute("DETACH DATABASE other", []);
+        copied?;
+        detached?;
+        Ok(())
     }
 
     // ---- devices --------------------------------------------------------
@@ -242,6 +286,38 @@ mod tests {
         assert_eq!(found.id, "d1");
         assert!(db.delete_device("d1").unwrap());
         assert_eq!(db.count_devices().unwrap(), 0);
+    }
+
+    #[test]
+    fn settings_written_together() {
+        let db = Db::open_in_memory().unwrap();
+        db.set_settings(&[("a", "1"), ("b", "2")]).unwrap();
+        db.set_settings(&[("b", "3")]).unwrap();
+        assert_eq!(db.get_setting("a").unwrap().as_deref(), Some("1"));
+        assert_eq!(db.get_setting("b").unwrap().as_deref(), Some("3"));
+    }
+
+    #[test]
+    fn devices_and_settings_taken_from_another_database() {
+        let dir = std::env::temp_dir().join(format!("zaklon-take-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let dev = |id: &str| Device { id: id.into(), name: id.into(), platform: "android".into(), created_at: now_rfc3339(), last_seen: None };
+        let other = Db::open(&dir.join("other.db")).unwrap();
+        other.insert_device(&dev("kept"), "kept-hash").unwrap();
+        other.set_settings(&[("secret", "theirs"), ("plain", "theirs")]).unwrap();
+        drop(other);
+        let db = Db::open(&dir.join("this.db")).unwrap();
+        db.insert_device(&dev("gone"), "gone-hash").unwrap();
+        db.set_settings(&[("secret", "ours"), ("plain", "ours"), ("missing", "ours")]).unwrap();
+        db.take_devices_and_settings_from(&dir.join("other.db"), &["secret", "missing"]).unwrap();
+        let ids: Vec<String> = db.list_devices().unwrap().into_iter().map(|d| d.id).collect();
+        assert_eq!(ids, ["kept"]);
+        assert!(db.device_by_token_hash("gone-hash", &now_rfc3339()).unwrap().is_none());
+        assert_eq!(db.get_setting("secret").unwrap().as_deref(), Some("theirs"));
+        assert_eq!(db.get_setting("plain").unwrap().as_deref(), Some("ours"), "only the named settings");
+        assert_eq!(db.get_setting("missing").unwrap(), None, "what the other lacks is removed");
+        drop(db);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

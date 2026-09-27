@@ -123,6 +123,10 @@ pub struct HubState {
     /// Recent successful pairings by the phone's nonce, so a phone whose
     /// reply got lost can ask again and get the same answer (no ghost device).
     pub recent_pairs: Mutex<HashMap<String, (Instant, String, api::Paired)>>,
+    /// Setting or changing the household password and turning on backup
+    /// encryption happen one at a time, so the password and the backup key
+    /// locked with it always match.
+    pub password_lock: tokio::sync::Mutex<()>,
     pub downloads: Arc<Downloads>,
     pub library: Arc<Library>,
     pub export: Arc<export::Exporter>,
@@ -235,6 +239,7 @@ impl Hub {
                 pairing: Mutex::new(HashMap::new()),
                 pairing_failures: Mutex::new(PairingFailures::default()),
                 recent_pairs: Mutex::new(HashMap::new()),
+                password_lock: tokio::sync::Mutex::new(()),
                 library,
                 export: export::Exporter::new(),
                 assistant,

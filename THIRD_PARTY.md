@@ -43,6 +43,6 @@ The knowledge packs are ZIM files published by Kiwix (openZIM).
 
 ## Libraries
 
-Zaklon is built with Tauri, React, Rust crates (among them axum, tokio, rustls and reqwest) and SQLite (public domain, compiled in through rusqlite). A generated list of all Rust and JavaScript libraries and their licenses is not produced yet; it is planned to ship with every build. Until then, the complete dependency lists are `Cargo.lock` and `pnpm-lock.yaml` in this repository.
+Zaklon is built with Tauri, React, Rust crates (among them axum, tokio, rustls and reqwest) and SQLite (public domain, compiled in through rusqlite). Backups are encrypted in the standard age format with the `age` crate (MIT or Apache-2.0, https://github.com/str4d/rage), so the `age` tool can open them too. A generated list of all Rust and JavaScript libraries and their licenses is not produced yet; it is planned to ship with every build. Until then, the complete dependency lists are `Cargo.lock` and `pnpm-lock.yaml` in this repository.
 
 Trademark notice: product names above are used only to identify the respective projects. Logos are not used.

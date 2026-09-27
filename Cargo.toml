@@ -32,6 +32,12 @@ rcgen = { version = "0.13", default-features = false, features = ["pem", "ring",
 opt-level = 3
 [profile.dev.package.sha1]
 opt-level = 3
+# scrypt, which locks the backup key with the household password: seconds
+# instead of a fraction of one in debug builds and tests otherwise.
+[profile.dev.package.scrypt]
+opt-level = 3
+[profile.dev.package.salsa20]
+opt-level = 3
 
 [profile.release]
 opt-level = "s"

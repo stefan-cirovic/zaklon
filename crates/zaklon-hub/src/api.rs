@@ -66,6 +66,7 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/updates/settings", post(updates_settings))
         .route("/api/backups", get(backups_list).post(backups_create))
         .route("/api/backups/restore", post(backups_restore))
+        .route("/api/backups/encryption", post(backups_encryption))
         .route("/api/hardware", get(hardware))
         .route("/api/supplies/summary", get(supplies_summary))
         .route("/api/items", get(items_list).post(items_create))
@@ -126,6 +127,9 @@ impl IntoResponse for ApiError {
 /// every entry still matches a message, and the app translates every code.
 const ERROR_CODES: &[(&str, &str)] = &[
     ("wrong household password", "wrong_password"),
+    ("does not open this backup", "backup_wrong_password"),
+    ("backup is encrypted", "backup_needs_password"),
+    ("backup key cannot be read", "backup_key_damaged"),
     ("pairing code is invalid or expired", "code_expired"),
     ("too many wrong attempts from this device", "device_blocked"),
     ("too many attempts", "too_many_attempts"),
@@ -151,6 +155,7 @@ const ERROR_CODES: &[(&str, &str)] = &[
     ("backup is incomplete", "not_a_backup"),
     ("database is damaged", "not_a_backup"),
     ("settings are damaged", "not_a_backup"),
+    ("key is damaged", "not_a_backup"),
     ("made by a newer Zaklon", "newer_backup"),
     ("a copy is already running", "copy_running"),
     ("writing to the drive", "drive_write"),
@@ -422,14 +427,17 @@ async fn setup(
     _: Local,
     Json(body): Json<SetupBody>,
 ) -> Result<StatusCode, ApiError> {
+    let _one_at_a_time = state.password_lock.lock().await;
     if state.db.is_set_up()? {
         return Err(bad("already set up; use /api/password to change the password"));
     }
     if body.password.chars().count() < pairing::MIN_PASSWORD_LEN {
         return Err(bad("password must be at least 8 characters"));
     }
-    let hash = blocking(move || pairing::hash_password(&body.password)).await??;
-    state.db.set_setting("household_password_hash", &hash)?;
+    // With it, the key backups are encrypted with.
+    let st = state.clone();
+    let password = body.password;
+    blocking(move || crate::backup::set_household_password(&st.db, &password)).await??;
     let mut cfg = state.config.lock().unwrap_or_else(|p| p.into_inner());
     let mut changed = false;
     if let Some(n) = body.hub_name.filter(|n| !n.trim().is_empty()) {
@@ -466,8 +474,11 @@ async fn change_password(
     if body.new_password.chars().count() < pairing::MIN_PASSWORD_LEN {
         return Err(bad("password must be at least 8 characters"));
     }
-    let hash = blocking(move || pairing::hash_password(&body.new_password)).await??;
-    state.db.set_setting("household_password_hash", &hash)?;
+    // Backups get a new key locked with the new password; those made before
+    // keep opening with the old one.
+    let _one_at_a_time = state.password_lock.lock().await;
+    let st = state.clone();
+    blocking(move || crate::backup::set_household_password(&st.db, &body.new_password)).await??;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1511,13 +1522,20 @@ struct BackupsReply {
     /// A restore is waiting for the next start.
     restore_pending: bool,
     folder: String,
+    /// "on", "off" (not yet: the household password turns it on) or "no_password".
+    encryption: &'static str,
 }
 
 async fn backups_list(State(state): State<Arc<HubState>>, _: Local) -> Result<Json<BackupsReply>, ApiError> {
     let cfg = state.config();
     let root = cfg.root.clone();
     let backups = blocking(move || crate::backup::list(&cfg)).await?;
-    Ok(Json(BackupsReply { backups, restore_pending: crate::backup::restore_pending(&root), folder: state.config().backups_dir().display().to_string() }))
+    Ok(Json(BackupsReply {
+        backups,
+        restore_pending: crate::backup::restore_pending(&root),
+        folder: state.config().backups_dir().display().to_string(),
+        encryption: crate::backup::encryption_state(&state.db),
+    }))
 }
 
 #[derive(Deserialize)]
@@ -1541,21 +1559,43 @@ async fn backups_create(State(state): State<Arc<HubState>>, _: Local, Json(body)
 #[derive(Deserialize)]
 struct RestoreBody {
     path: String,
+    /// For an encrypted backup: the household password from when it was made.
+    #[serde(default)]
+    password: String,
 }
 
-/// Check a backup and prepare it; it replaces the data on the next start.
+/// Check a backup and prepare it; it replaces the data on the next start
+/// (on a hub with paired phones, keeping who may connect: see
+/// `backup::finish_pending_restore`).
 async fn backups_restore(State(state): State<Arc<HubState>>, _: Local, Json(body): Json<RestoreBody>) -> Result<Json<crate::backup::Manifest>, ApiError> {
     let cfg = state.config();
     let path = std::path::PathBuf::from(body.path.trim().trim_matches('"'));
     if !path.is_file() {
         return Err(bad("that file does not exist"));
     }
+    // A wrong password is found out before anything is written.
+    let password = body.password;
+    let backup = blocking(move || crate::backup::unlock(&path, &password)).await?.map_err(|e| bad(&e))?;
     // Keep today's data too, whatever happens next.
     let st = state.clone();
     let cfg2 = cfg.clone();
     blocking(move || crate::backup::create(&cfg2, &st.db, &cfg2.backups_dir(), false)).await?.map_err(|e| bad(&e))?;
-    let manifest = blocking(move || crate::backup::stage_restore(&cfg, &path)).await?.map_err(|e| bad(&e))?;
+    let manifest = blocking(move || crate::backup::stage_unlocked(&cfg, backup)).await?.map_err(|e| bad(&e))?;
     Ok(Json(manifest))
+}
+
+#[derive(Deserialize)]
+struct EncryptionBody {
+    password: String,
+}
+
+/// For a hub set up before backups were encrypted: the household password,
+/// typed once, encrypts every backup from now on.
+async fn backups_encryption(State(state): State<Arc<HubState>>, _: Local, Json(body): Json<EncryptionBody>) -> Result<StatusCode, ApiError> {
+    let _one_at_a_time = state.password_lock.lock().await;
+    let st = state.clone();
+    blocking(move || crate::backup::turn_on_encryption(&st.db, &body.password)).await?.map_err(|e| bad(&e))?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ---- updates ----------------------------------------------------------------------
@@ -1768,7 +1808,12 @@ mod error_code_tests {
             (BAD, "the backup is incomplete", "not_a_backup"),
             (BAD, "the backup's database is damaged", "not_a_backup"),
             (BAD, "the backup's settings are damaged", "not_a_backup"),
+            (BAD, "the backup's key is damaged", "not_a_backup"),
             (BAD, "this backup was made by a newer Zaklon; update first", "newer_backup"),
+            (BAD, "the password does not open this backup", "backup_wrong_password"),
+            (BAD, "this backup is encrypted; enter the household password", "backup_needs_password"),
+            (BAD, "this hub's backup key cannot be read; turn backup encryption on again", "backup_key_damaged"),
+            (BAD, "wrong household password", "wrong_password"),
             (BAD, "a copy is already running", "copy_running"),
             (BAD, "nothing selected", "nothing_selected"),
             (BAD, "choose a folder outside the library", "outside_library"),
