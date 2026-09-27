@@ -11,11 +11,18 @@ export default function Reader({ t, lang, url, title, onClose }: { t: T; lang: L
   useEffect(() => {
     contentBase().then(setBase).catch(() => setBase(""));
   }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   const latin = latinArticles(lang);
   const shown = latin ? cyrToLat(title) : title;
   const src = latin ? url.replace(/^\/kiwix\//, "/kiwix-lat/") : url;
   return (
-    <div className="reader">
+    <div className="reader" role="dialog" aria-modal="true" aria-label={shown}>
       <div className="reader-bar">
         <button className="btn secondary" onClick={onClose}>← {t("back")}</button>
         <div className="reader-title">{shown}</div>

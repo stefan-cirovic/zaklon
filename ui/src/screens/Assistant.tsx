@@ -106,6 +106,8 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
   const [ov, setOv] = useState<Overview | null>(null);
   const [hubDown, setHubDown] = useState(false);
   const [chat, setChat] = useState<Answer[]>(loadChat);
+  // Answers restored from the last visit are not read out again.
+  const restored = useRef(new Set(chat.map((a) => a.id)));
   const [question, setQuestion] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [reader, setReader] = useState<Source | null>(null);
@@ -320,6 +322,15 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
     done: "aiWriting",
     failed: "aiWriting",
   };
+  // Screen readers hear only the latest answer: its status while it works, then the final text once.
+  const latest = chat[chat.length - 1];
+  const announce = !latest || restored.current.has(latest.id)
+    ? ""
+    : latest.status === "failed"
+      ? errText(t, new Error(latest.error ?? ""))
+      : latest.status === "done"
+        ? latest.text.replace(/\[\d+(?:,\s*\d+)*\]/g, "").replace(/\*\*/g, "")
+        : t(statusText[latest.status]);
 
   return (
     <div className="stack assistant">
@@ -390,6 +401,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
               {t("aiNoLibraryLong")} <a href="#addons">{t("addons")}</a>.
             </p>
           )}
+          <div className="sr-only" aria-live="polite" aria-atomic="true">{announce}</div>
           <div className="chat">
             {chat.length === 0 && <p className="muted">{t("aiEmptyChat")}</p>}
             {chat.map((a) => (

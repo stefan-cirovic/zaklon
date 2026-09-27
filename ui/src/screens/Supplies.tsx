@@ -150,7 +150,7 @@ export default function Supplies({ t }: { t: T }) {
       </div>
       <div className="segmented tabs-4">
         {tabs.map(([v, label]) => (
-          <button key={v} className={view === v ? "active" : ""} onClick={() => setView(v)}>
+          <button key={v} className={view === v ? "active" : ""} aria-pressed={view === v} onClick={() => setView(v)}>
             {label}
           </button>
         ))}
@@ -166,7 +166,7 @@ export default function Supplies({ t }: { t: T }) {
           <input type="search" className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("searchSupplies")} aria-label={t("searchSupplies")} />
           <div className="chips">
             {["all", ...CATEGORIES].map((c) => (
-              <button key={c} className={"chip" + (cat === c ? " active" : "")} onClick={() => setCat(c)}>
+              <button key={c} className={"chip" + (cat === c ? " active" : "")} aria-pressed={cat === c} onClick={() => setCat(c)}>
                 {c === "all" ? t("all") : t(catKey(c))}
               </button>
             ))}
