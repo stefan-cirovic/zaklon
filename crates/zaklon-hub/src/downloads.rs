@@ -21,6 +21,8 @@ use zaklon_core::catalog::{Catalog, Pack, PackFile, PackState, PackStatus};
 pub const MIN_BATTERY_PERCENT: u8 = 50;
 /// Keep at least this much free after a download.
 const DISK_MARGIN: u64 = 512 * 1024 * 1024;
+/// How much of a partial file's end is fetched again when resuming.
+const RESUME_OVERLAP: u64 = 4 << 20;
 const STATE_SAVE_INTERVAL: Duration = Duration::from_secs(2);
 /// A download with no data for this long is treated as a broken connection.
 const STALL_TIMEOUT: Duration = Duration::from_secs(60);
@@ -452,6 +454,15 @@ impl Downloads {
             let _ = std::fs::remove_file(&part);
             have = 0;
         }
+        // After a power cut the end of a partial file may not have reached the
+        // disk (zeros or junk). Fetch the last few MB again rather than let one
+        // bad block fail the checksum and throw away the whole download.
+        if have > RESUME_OVERLAP && have < f.size {
+            let keep = have - RESUME_OVERLAP;
+            if std::fs::OpenOptions::new().write(true).open(&part).and_then(|file| file.set_len(keep)).is_ok() {
+                have = keep;
+            }
+        }
 
         if have < f.size {
             let mut last_err = String::from("no download locations");
@@ -557,6 +568,7 @@ impl Downloads {
 
         let mut stream = res.bytes_stream();
         let mut last_save = Instant::now();
+        let mut last_sync = Instant::now();
         let mut tick = Instant::now();
         let mut tick_bytes: u64 = 0;
         let mut idle = Duration::ZERO;
@@ -600,6 +612,11 @@ impl Downloads {
             if last_save.elapsed() >= STATE_SAVE_INTERVAL {
                 self.save();
                 last_save = Instant::now();
+                // Put what was written so far really on the disk, now and then.
+                if last_sync.elapsed() >= Duration::from_secs(30) {
+                    let _ = file.sync_data();
+                    last_sync = Instant::now();
+                }
                 // The battery rule holds for the whole download, not just its start:
                 // a long download on a laptop that was unplugged pauses in time.
                 if battery_too_low() {
