@@ -86,11 +86,16 @@ fn labels(root: &Path) -> Labels {
     }
 }
 
+/// Show the window, making it again if it was closed.
 pub fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
+        return;
+    }
+    if let Err(e) = open_hub_window(app, true) {
+        tracing::error!("could not open the window: {e}");
     }
 }
 
@@ -107,15 +112,21 @@ pub fn setup(app: &mut tauri::App, root: &Path) -> Result<(), Box<dyn std::error
         let _ = std::fs::write(&marker, b"1");
     }
 
+    // Started with Windows: only the tray icon; the window (and the memory a
+    // web view takes) comes when someone opens it.
     let start_hidden = std::env::args().any(|a| a == MINIMIZED_ARG);
-    open_hub_window(app, !start_hidden)?;
+    if !start_hidden {
+        open_hub_window(app.handle(), true)?;
+    }
     build_tray(app, root)?;
     Ok(())
 }
 
 /// The window shows the interface served by the hub itself, so the page and
-/// the API share one origin. Closing it only hides it.
-fn open_hub_window(app: &mut tauri::App, visible: bool) -> Result<(), Box<dyn std::error::Error>> {
+/// the API share one origin. Closing it really closes it (a hidden web view
+/// still holds a few hundred MB); the hub keeps running, and the tray opens
+/// a new window.
+fn open_hub_window(app: &AppHandle, visible: bool) -> Result<(), Box<dyn std::error::Error>> {
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], local_port()));
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
     while std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(300)).is_err() {
@@ -133,12 +144,9 @@ fn open_hub_window(app: &mut tauri::App, visible: bool) -> Result<(), Box<dyn st
         .background_color(tauri::window::Color(11, 13, 16, 255))
         .visible(visible)
         .build()?;
-    let w = window.clone();
-    window.on_window_event(move |event| {
-        if let WindowEvent::CloseRequested { api, .. } = event {
-            // Keep the hub running for the phones; the tray menu really quits.
-            api.prevent_close();
-            let _ = w.hide();
+    window.on_window_event(|event| {
+        if let WindowEvent::Destroyed = event {
+            tracing::info!("window closed; the hub keeps running in the tray");
         }
     });
     Ok(())

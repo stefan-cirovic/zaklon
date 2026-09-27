@@ -189,6 +189,14 @@ pub fn run() {
             local_ai_ask,
             app_restart
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Zaklon");
+        .build(tauri::generate_context!())
+        .expect("error while building Zaklon")
+        .run(|_app, _event| {
+            // Desktop: closing the window does not end the app; the hub keeps
+            // serving phones until "Quit" in the tray (which exits with a code).
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            if let tauri::RunEvent::ExitRequested { api, code: None, .. } = _event {
+                api.prevent_exit();
+            }
+        });
 }
