@@ -17,14 +17,16 @@ use sha2::{Digest, Sha256};
 
 // ---- helpers ------------------------------------------------------------------
 
-/// A port that is free for TCP and UDP on every interface. Windows reserves
-/// ranges of ports (Hyper-V, WSL) that a plain "port 0" pick can land in for
-/// the other protocol, so both are tried before the port is used.
+/// A port that is free for TCP and UDP. Windows reserves ranges of ports
+/// (Hyper-V, WSL) that a plain "port 0" pick can land in for the other
+/// protocol, so both are tried before the port is used. Loopback only: the
+/// hub under test listens on 127.0.0.1 (ZAKLON_LOOPBACK_ONLY), so nothing
+/// here makes Windows ask about its firewall.
 fn free_port() -> u16 {
     for _ in 0..50 {
-        let port = TcpListener::bind(("0.0.0.0", 0)).unwrap().local_addr().unwrap().port();
-        let tcp_ok = TcpListener::bind(("0.0.0.0", port)).is_ok() && TcpListener::bind(("127.0.0.1", port)).is_ok();
-        let udp_ok = std::net::UdpSocket::bind(("0.0.0.0", port)).is_ok();
+        let port = TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port();
+        let tcp_ok = TcpListener::bind(("127.0.0.1", port)).is_ok();
+        let udp_ok = std::net::UdpSocket::bind(("127.0.0.1", port)).is_ok();
         if tcp_ok && udp_ok {
             return port;
         }
@@ -155,6 +157,7 @@ async fn start_hub() -> Hub {
     std::env::set_var("ZAKLON_INSTALL_PORT", install.to_string());
     std::env::set_var("ZAKLON_BEACON_PORT", beacon.to_string());
     std::env::set_var("ZAKLON_IGNORE_BATTERY", "1");
+    std::env::set_var("ZAKLON_LOOPBACK_ONLY", "1");
 
     // A small test catalog served by a local file server.
     let files = temp_dir("files");

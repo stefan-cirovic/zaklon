@@ -83,7 +83,8 @@ fn split_ipv4_addresses() -> (Vec<Ipv4Addr>, Vec<Ipv4Addr>) {
 
 pub async fn start(state: Arc<HubState>) -> Result<Discovery> {
     let cfg = state.config();
-    let mdns = match ServiceDaemon::new() {
+    let loopback_only = zaklon_core::config::loopback_only();
+    let mdns = match if loopback_only { Err(mdns_sd::Error::Msg("loopback only".into())) } else { ServiceDaemon::new() } {
         Ok(daemon) => {
             let host = format!("{}.local.", cfg.hub_id.split('-').next().unwrap_or("zaklon"));
             let ips: Vec<IpAddr> = lan_ipv4_addresses().into_iter().map(IpAddr::V4).collect();
@@ -117,7 +118,7 @@ pub async fn start(state: Arc<HubState>) -> Result<Discovery> {
     };
 
     let beacon_port = cfg.beacon_port;
-    let socket = UdpSocket::bind(("0.0.0.0", beacon_port))
+    let socket = UdpSocket::bind((if loopback_only { "127.0.0.1" } else { "0.0.0.0" }, beacon_port))
         .await
         .with_context(|| format!("binding UDP beacon on {beacon_port}"))?;
     socket.set_broadcast(true).ok();

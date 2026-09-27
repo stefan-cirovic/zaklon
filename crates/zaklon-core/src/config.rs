@@ -64,6 +64,14 @@ fn default_beacon_port() -> u16 {
     BEACON_PORT
 }
 
+/// `ZAKLON_LOOPBACK_ONLY=1`: listen on 127.0.0.1 only and skip DNS-SD, for
+/// tests and development. Nothing then listens on the network, so Windows
+/// does not ask about its firewall for every freshly built test program.
+/// Never saved; a real hub always listens for phones.
+pub fn loopback_only() -> bool {
+    std::env::var("ZAKLON_LOOPBACK_ONLY").is_ok_and(|v| v.trim() == "1")
+}
+
 /// `ZAKLON_TLS_PORT`, `ZAKLON_LOCAL_PORT`, `ZAKLON_INSTALL_PORT` and
 /// `ZAKLON_BEACON_PORT` override the ports for this run only (used by tests
 /// and for running a second hub on one machine). They are never saved.

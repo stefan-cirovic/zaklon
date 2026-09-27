@@ -12,6 +12,7 @@ const child = spawn(exe, ["--root", root], {
   stdio: "inherit",
   env: {
     ...process.env,
+    ZAKLON_LOOPBACK_ONLY: "1",
     ZAKLON_LOCAL_PORT: "28481",
     ZAKLON_TLS_PORT: "28484",
     ZAKLON_INSTALL_PORT: "28480",

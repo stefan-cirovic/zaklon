@@ -227,9 +227,10 @@ impl Hub {
 
         let network_app = api::router(state.clone(), api::Listener::Network);
         let local_app = api::router(state.clone(), api::Listener::Local);
-        let tls_addr = SocketAddr::from(([0, 0, 0, 0], cfg.port));
+        let network = if zaklon_core::config::loopback_only() { [127, 0, 0, 1] } else { [0, 0, 0, 0] };
+        let tls_addr = SocketAddr::from((network, cfg.port));
         let local_addr = SocketAddr::from(([127, 0, 0, 1], cfg.local_port));
-        let install_addr = SocketAddr::from(([0, 0, 0, 0], cfg.install_port));
+        let install_addr = SocketAddr::from((network, cfg.install_port));
 
         info!(%tls_addr, %local_addr, %install_addr, "listening");
 
