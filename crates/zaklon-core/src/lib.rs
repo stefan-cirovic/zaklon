@@ -6,6 +6,7 @@ pub mod config;
 pub mod db;
 pub mod lang;
 pub mod maps;
+pub mod memory;
 pub mod pairing;
 pub mod supplies;
 pub mod tls;

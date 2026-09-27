@@ -20,6 +20,7 @@ use tokio::process::{Child, Command};
 use tracing::{info, warn};
 use zaklon_core::catalog::{Category, PackStatus};
 
+use zaklon_core::memory::Note;
 use zaklon_core::supplies::Item;
 
 use crate::downloads::Downloads;
@@ -412,7 +413,7 @@ impl Assistant {
     }
 
     /// Start answering; the answer is read with `answer(id)`.
-    pub fn ask(self: &Arc<Self>, question: &str, app_language: &str, history: Vec<Turn>, items: Vec<Item>) -> Result<String, String> {
+    pub fn ask(self: &Arc<Self>, question: &str, app_language: &str, history: Vec<Turn>, items: Vec<Item>, notes: Vec<Note>) -> Result<String, String> {
         let question = question.trim().to_string();
         if question.is_empty() {
             return Err("ask something first".into());
@@ -457,7 +458,7 @@ impl Assistant {
         self.pending.fetch_add(1, Ordering::SeqCst);
         tokio::spawn(async move {
             let _turn = me.turn.lock().await;
-            if let Err(e) = me.run(&id2, &question, language, &history, &items).await {
+            if let Err(e) = me.run(&id2, &question, language, &history, &items, &notes).await {
                 warn!("assistant: {e}");
                 me.update(&id2, |a| {
                     a.status = AnswerStatus::Failed;
@@ -470,7 +471,7 @@ impl Assistant {
         Ok(id)
     }
 
-    async fn run(&self, id: &str, question: &str, language: &'static str, history: &[Turn], items: &[Item]) -> Result<(), String> {
+    async fn run(&self, id: &str, question: &str, language: &'static str, history: &[Turn], items: &[Item], notes: &[Note]) -> Result<(), String> {
         // 1. Make sure the engine runs (it also decides what the question is about).
         self.update(id, |a| a.status = AnswerStatus::Starting);
         let port = self.ensure_running().await?;
@@ -479,6 +480,35 @@ impl Assistant {
         if plan.kind == "library" && mentions_supplies(question) {
             plan.kind = "supplies_question".into();
         }
+        if let Some(note) = remember_request(question) {
+            if plan.kind != "remember" || plan.note.trim().is_empty() {
+                plan.kind = "remember".into();
+                plan.note = note;
+            }
+        }
+
+        // 2. Something to remember: propose it, keep nothing yet.
+        if plan.kind == "remember" && !plan.note.trim().is_empty() {
+            let note: String = plan.note.trim().chars().take(zaklon_core::memory::MAX_TEXT).collect();
+            let text = if language == "sr" { format!("Da zapamtim: „{note}“?") } else { format!("Remember this: \"{note}\"?") };
+            let proposal = Proposal {
+                action: "remember".into(),
+                item_id: None,
+                name: note,
+                quantity: 0.0,
+                unit: String::new(),
+                category: String::new(),
+                current: None,
+            };
+            self.update(id, |a| {
+                a.text = text;
+                a.proposal = Some(proposal);
+                a.grounded = true;
+                a.status = AnswerStatus::Done;
+            });
+            return Ok(());
+        }
+        let known = relevant_notes(notes, question, &plan.terms);
 
         // 2a. A change to the supplies: propose it, change nothing.
         if plan.kind == "supplies_change" {
@@ -504,7 +534,7 @@ impl Assistant {
                 a.searched = plan.terms.clone();
                 a.status = AnswerStatus::Thinking;
             });
-            let messages = supplies_messages(question, language, &context, history);
+            let messages = with_notes(supplies_messages(question, language, &context, history), &known, language);
             return self.stream_answer(id, port, messages, language).await;
         }
 
@@ -527,7 +557,7 @@ impl Assistant {
             a.grounded = grounded;
             a.status = AnswerStatus::Thinking;
         });
-        let messages = build_messages(question, language, &passages, history);
+        let messages = with_notes(build_messages(question, language, &passages, history), &known, language);
         self.stream_answer(id, port, messages, language).await
     }
 
@@ -607,6 +637,7 @@ impl Assistant {
             "Odluči o čemu je poruka i odgovori samo JSON-om.\n\
 kind: \"library\" za opšta pitanja (zdravlje, hrana, popravke, priroda...), \"supplies_question\" za pitanja o zalihama u kući \
 (šta imam, koliko imam, šta ističe, šta treba kupiti), \"supplies_change\" kad treba dodati, potrošiti ili staviti na listu za kupovinu.\n\
+\"remember\" kad treba nešto zapamtiti (note je ta činjenica kao rečenica o domaćinstvu).\n\
 terms: 2 do 4 pojma za pretragu enciklopedije ili zaliha, imenice u osnovnom obliku, na srpskom, latinicom.\n\
 change (samo za supplies_change): action je \"add\" (dodaj u zalihe), \"use\" (potrošeno) ili \"shopping\" (na listu za kupovinu); \
 name je naziv stvari u osnovnom obliku; quantity je broj (0 ako nije rečeno); unit je pcs, kg, g, l, ml ili pack; \
@@ -615,11 +646,12 @@ category je food, drink, medicine, hygiene, equipment, fuel ili other."
             "Decide what the message is about and answer only with JSON.\n\
 kind: \"library\" for general questions (health, food, repairs, nature...), \"supplies_question\" for questions about the household's supplies \
 (what do I have, how much, what expires, what to buy), \"supplies_change\" to add, use up or put something on the shopping list.\n\
+\"remember\" when something should be remembered (note is that fact as a sentence about the household).\n\
 terms: 2 to 4 terms to search the encyclopedia or the supplies, nouns in their basic form.\n\
 change (only for supplies_change): action is \"add\", \"use\" or \"shopping\"; name is the thing in its basic form; \
 quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; category is food, drink, medicine, hygiene, equipment, fuel or other."
         };
-        let examples: [(&str, &str); 6] = if sr {
+        let examples: [(&str, &str); 7] = if sr {
             [
                 ("Koliko dugo traje hleb?", r#"{"kind":"library","terms":["hleb","rok trajanja"]}"#),
                 ("Kako da izlečim prehladu kod deteta?", r#"{"kind":"library","terms":["prehlada","lečenje","dete"]}"#),
@@ -627,6 +659,7 @@ quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; categor
                 ("Šta imam u zalihama?", r#"{"kind":"supplies_question","terms":[]}"#),
                 ("Dodaj 2 litra mleka", r#"{"kind":"supplies_change","terms":["mleko"],"change":{"action":"add","name":"mleko","quantity":2,"unit":"l","category":"drink"}}"#),
                 ("Potrošili smo 3 konzerve pasulja", r#"{"kind":"supplies_change","terms":["pasulj"],"change":{"action":"use","name":"pasulj","quantity":3,"unit":"pcs","category":"food"}}"#),
+                ("Zapamti da je Marko alergičan na orahe", r#"{"kind":"remember","terms":[],"note":"Marko je alergičan na orahe."}"#),
             ]
         } else {
             [
@@ -636,6 +669,7 @@ quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; categor
                 ("What do we have in the supplies?", r#"{"kind":"supplies_question","terms":[]}"#),
                 ("Add 2 liters of milk", r#"{"kind":"supplies_change","terms":["milk"],"change":{"action":"add","name":"milk","quantity":2,"unit":"l","category":"drink"}}"#),
                 ("We used 3 cans of beans", r#"{"kind":"supplies_change","terms":["beans"],"change":{"action":"use","name":"beans","quantity":3,"unit":"pcs","category":"food"}}"#),
+                ("Remember that Mark is allergic to walnuts", r#"{"kind":"remember","terms":[],"note":"Mark is allergic to walnuts."}"#),
             ]
         };
         let mut messages = vec![serde_json::json!({ "role": "system", "content": prompt })];
@@ -647,7 +681,8 @@ quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; categor
         let schema = serde_json::json!({
             "type": "object",
             "properties": {
-                "kind": { "type": "string", "enum": ["library", "supplies_question", "supplies_change"] },
+                "kind": { "type": "string", "enum": ["library", "supplies_question", "supplies_change", "remember"] },
+                "note": { "type": "string" },
                 "terms": { "type": "array", "items": { "type": "string" }, "maxItems": 4 },
                 "change": {
                     "type": "object",
@@ -808,6 +843,9 @@ pub struct Plan {
     pub terms: Vec<String>,
     #[serde(default)]
     pub change: Option<PlannedChange>,
+    /// For "remember": the fact, as a sentence about the household.
+    #[serde(default)]
+    pub note: String,
 }
 
 /// The model's JSON; anything unusable becomes a library question with the
@@ -828,7 +866,7 @@ pub fn parse_plan(text: &str) -> Plan {
                     acc
                 });
             p.terms.truncate(4);
-            if !["library", "supplies_question", "supplies_change"].contains(&p.kind.as_str()) {
+            if !["library", "supplies_question", "supplies_change", "remember"].contains(&p.kind.as_str()) {
                 p.kind = "library".into();
             }
             if let Some(c) = p.change.as_mut() {
@@ -851,8 +889,88 @@ pub fn parse_plan(text: &str) -> Plan {
             }
             p
         }
-        Err(_) => Plan { kind: "library".into(), terms: parse_keywords(text), change: None },
+        Err(_) => Plan { kind: "library".into(), terms: parse_keywords(text), change: None, note: String::new() },
     }
+}
+
+/// "Zapamti da je Ana alergična na penicilin" -> "Ana je alergična na penicilin."
+pub fn remember_request(question: &str) -> Option<String> {
+    let q = question.trim();
+    let lower = q.to_lowercase();
+    const STARTS: &[&str] = &["zapamti da ", "zapamti: ", "zapamti ", "upamti da ", "upamti ", "remember that ", "remember: ", "remember "];
+    for s in STARTS {
+        if lower.starts_with(s) {
+            let rest = q[s.len()..].trim().trim_end_matches(['.', '!']);
+            if rest.chars().count() < 3 {
+                return None;
+            }
+            // "je Ana alergična" reads better as "Ana je alergična".
+            let words: Vec<&str> = rest.split_whitespace().collect();
+            let rest = if words.len() >= 3 && ["je", "su", "ima", "imaju", "nije", "nisu"].contains(&words[0]) {
+                let mut w = words.clone();
+                w.swap(0, 1);
+                w.join(" ")
+            } else {
+                rest.to_string()
+            };
+            let mut c = rest.chars();
+            let first = c.next()?;
+            return Some(format!("{}{}.", first.to_uppercase(), c.as_str()));
+        }
+    }
+    None
+}
+
+/// The notes that matter for a question: those sharing a word with it, or
+/// all of them when there are only a few. At most eight.
+pub fn relevant_notes(notes: &[Note], question: &str, terms: &[String]) -> Vec<String> {
+    if notes.len() <= 8 {
+        return notes.iter().map(|n| n.text.clone()).collect();
+    }
+    let mut words: Vec<String> = search_words(question).iter().map(|w| stem(&plain(w))).collect();
+    words.extend(terms.iter().flat_map(|t| t.split_whitespace().map(|w| stem(&plain(w))).collect::<Vec<_>>()));
+    words.retain(|w| w.chars().count() >= 3);
+    notes
+        .iter()
+        .filter(|n| {
+            let text = plain(&n.text);
+            words.iter().any(|w| text.contains(w.as_str()))
+        })
+        .take(8)
+        .map(|n| n.text.clone())
+        .collect()
+}
+
+/// Put what the household asked to remember in front of the question, with
+/// a rule to take it into account first. Small models skip a note that sits
+/// quietly in the instructions ("Ana is allergic to penicillin" matters more
+/// than any encyclopedia article about penicillin).
+fn with_notes(mut messages: Vec<serde_json::Value>, notes: &[String], language: &str) -> Vec<serde_json::Value> {
+    if notes.is_empty() {
+        return messages;
+    }
+    let sr = language == "sr";
+    let rule = if sr {
+        "Beleške domaćinstva su proverene činjenice o ovoj porodici. Ako se neka beleška tiče pitanja, uzmi je u obzir pre svega i pomeni je na početku odgovora."
+    } else {
+        "The household notes are checked facts about this family. If a note matters for the question, take it into account before anything else and mention it at the start of the answer."
+    };
+    let head = if sr { "Beleške domaćinstva:" } else { "Household notes:" };
+    let list = notes.iter().map(|n| format!("- {n}")).collect::<Vec<_>>().join("
+");
+    if let Some(sys) = messages.first_mut() {
+        let content = sys["content"].as_str().unwrap_or_default().to_string();
+        sys["content"] = serde_json::Value::String(format!("{content}
+{rule}"));
+    }
+    if let Some(user) = messages.last_mut() {
+        let content = user["content"].as_str().unwrap_or_default().to_string();
+        user["content"] = serde_json::Value::String(format!("{head}
+{list}
+
+{content}"));
+    }
+    messages
 }
 
 /// Questions that are clearly about the household's own supplies, whatever
@@ -1419,6 +1537,30 @@ mod tests {
             "updated_at": "2026-09-28T00:00:00Z", "updated_by": null, "batches": []
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn remember_requests_become_notes() {
+        assert_eq!(remember_request("Zapamti da je Ana alergična na penicilin").as_deref(), Some("Ana je alergična na penicilin."));
+        assert_eq!(remember_request("zapamti: ključ od podruma je kod komšije").as_deref(), Some("Ključ od podruma je kod komšije."));
+        assert_eq!(remember_request("Remember that the water tank holds 200 liters.").as_deref(), Some("The water tank holds 200 liters."));
+        assert!(remember_request("Kako da zapamtim brojeve?").is_none());
+    }
+
+    #[test]
+    fn notes_reach_the_prompt() {
+        let note = |t: &str| Note { id: t.into(), text: t.into(), created_at: String::new(), created_by: None };
+        let few = vec![note("Ana je alergična na penicilin.")];
+        assert_eq!(relevant_notes(&few, "Šta da dam Ani za temperaturu?", &[]).len(), 1, "few notes: all of them");
+        let many: Vec<Note> = (0..20).map(|i| note(&format!("Beleška broj {i} o nečemu."))).chain([note("Ana je alergična na penicilin.")]).collect();
+        let r = relevant_notes(&many, "Da li Ana sme penicilin?", &[]);
+        assert_eq!(r, vec!["Ana je alergična na penicilin."]);
+        let m = with_notes(vec![serde_json::json!({"role":"system","content":"Base."}), serde_json::json!({"role":"user","content":"Pitanje?"})], &r, "sr");
+        assert!(m[0]["content"].as_str().unwrap().contains("Beleške domaćinstva su proverene"));
+        assert!(m[1]["content"].as_str().unwrap().starts_with("Beleške domaćinstva:
+- Ana je alergična na penicilin.
+
+Pitanje?"));
     }
 
     #[test]

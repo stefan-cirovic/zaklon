@@ -28,6 +28,8 @@ const KNOWN: [RegExp, Key][] = [
   [/ask something first/i, "askSomething"],
   [/question is too long/i, "errQuestionLong"],
   [/assistant is busy/i, "errAiBusy"],
+  [/note is too long/i, "errNoteLong"],
+  [/remembers too much/i, "errNotesFull"],
   [/AI engine was stopped/i, "errAiStopped"],
   [/not enough space/i, "notEnoughSpace"],
   [/formatted as FAT32/i, "fat32Warn"],

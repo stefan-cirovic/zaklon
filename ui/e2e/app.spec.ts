@@ -486,3 +486,25 @@ test("updates: Home tells about a newer version; Household has the switch", asyn
   await expect(page.getByRole("button", { name: "Check now" })).toBeVisible();
   await noHorizontalScroll(page);
 });
+
+test("assistant memory: notes can be added and deleted by hand", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.route("**/api/assistant", (route) =>
+    route.fulfill({
+      json: {
+        engine: "ready", engine_installed: true, selected: "qwen35-2b", recommended: "qwen35-2b", ram_total: 8e9, books: 1,
+        models: [{ id: "qwen35-2b", title_en: "AI model for phones (Qwen3.5 2B)", title_sr: "x", size: 1e9, installed: true, recommended: true }],
+      },
+    }),
+  );
+  const text = `The water tank holds 200 liters (${Date.now()})`;
+  await page.goto("/#assistant");
+  await page.getByRole("button", { name: /What the assistant remembers/ }).click();
+  await page.getByRole("textbox", { name: "Add" }).fill(text);
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  const row = page.locator(".memory-row").filter({ hasText: text });
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: "Delete" }).click();
+  await row.getByRole("button", { name: /Yes, delete/ }).click();
+  await expect(row).toHaveCount(0);
+});

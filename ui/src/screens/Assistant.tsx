@@ -5,6 +5,7 @@ import { errText } from "../errors";
 import { fmtBytes } from "../format";
 import Reader from "../components/Reader";
 import PhoneAi from "./PhoneAi";
+import Memory from "../components/Memory";
 
 type T = (k: Key) => string;
 type EngineState = "missing" | "no_model" | "stopped" | "starting" | "ready" | "failed";
@@ -20,7 +21,7 @@ type Overview = {
 };
 type Source = { n: number; title: string; url: string; book_title_en: string; book_title_sr: string };
 type Proposal = {
-  action: "add" | "use" | "shopping";
+  action: "add" | "use" | "shopping" | "remember";
   item_id: string | null;
   name: string;
   quantity: number;
@@ -111,6 +112,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
   const endRef = useRef<HTMLDivElement | null>(null);
   const asking = useRef(false);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [memoryVersion, setMemoryVersion] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -255,9 +257,11 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
       if (p.action === "add" && p.item_id) await api(`/api/items/${p.item_id}/adjust`, { json: { delta: p.quantity } });
       else if (p.action === "add") await api("/api/items", { json: { name: p.name, quantity: p.quantity, unit: p.unit, category: p.category } });
       else if (p.action === "use" && p.item_id) await api(`/api/items/${p.item_id}/adjust`, { json: { delta: -p.quantity } });
+      else if (p.action === "remember") await api("/api/memory", { json: { text: p.name } });
       else if (p.action === "shopping")
         await api("/api/shopping", { json: { text: p.name, quantity: p.quantity > 0 ? p.quantity : null, unit: p.quantity > 0 ? p.unit : null, item_id: p.item_id } });
       setOutcome(a.id, "done");
+      if (p.action === "remember") setMemoryVersion((v) => v + 1);
     } catch (ex) {
       setErr(errText(t, ex));
     } finally {
@@ -380,7 +384,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
                       {a.status === "done" && a.proposal && (
                         <div className="row wrap proposal">
                           {a.outcome === "done" ? (
-                            <span className="ok">✓ {t("aiDone")} · <a href="#supplies">{t("supplies")}</a></span>
+                            <span className="ok">✓ {t("aiDone")}{a.proposal.action !== "remember" && <> · <a href="#supplies">{t("supplies")}</a></>}</span>
                           ) : a.outcome === "canceled" ? (
                             <span className="muted">{t("aiCancelled")}</span>
                           ) : (
@@ -439,6 +443,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
               {chat.length > 0 && !busy && <button type="button" className="btn secondary small" onClick={clear}>{t("aiNewChat")}</button>}
             </div>
           </form>
+          <Memory t={t} version={memoryVersion} />
         </>
       )}
 

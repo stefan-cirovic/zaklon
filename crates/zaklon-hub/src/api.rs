@@ -86,6 +86,8 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/assistant/ask", post(assistant_ask))
         .route("/api/assistant/answers/{id}", get(assistant_answer))
         .route("/api/assistant/stop", post(assistant_stop))
+        .route("/api/memory", get(memory_list).post(memory_add))
+        .route("/api/memory/{id}", axum::routing::delete(memory_delete))
         .route("/api/models", get(models_list))
         .route("/api/models/{id}/file", get(model_file))
         .route("/api/library", get(library_books))
@@ -1252,7 +1254,8 @@ struct AskBody {
 async fn assistant_ask(State(state): State<Arc<HubState>>, caller: Caller, Json(body): Json<AskBody>) -> Result<Json<serde_json::Value>, ApiError> {
     // The assistant can answer about the supplies and propose changes to them.
     let items = state.db.list_items().unwrap_or_default();
-    let id = state.assistant.ask(&body.question, &body.language, body.history, items).map_err(|e| bad(&e))?;
+    let notes = state.db.list_notes().unwrap_or_default();
+    let id = state.assistant.ask(&body.question, &body.language, body.history, items, notes).map_err(|e| bad(&e))?;
     tracing::info!(by = %caller.actor(), "assistant asked");
     Ok(Json(serde_json::json!({ "id": id })))
 }
@@ -1353,4 +1356,28 @@ async fn updates_settings(State(state): State<Arc<HubState>>, _: Local, Json(bod
     }
     state.updates.set_enabled(body.enabled);
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ---- the assistant's memory ------------------------------------------------------
+
+async fn memory_list(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<Vec<zaklon_core::memory::Note>>, ApiError> {
+    Ok(Json(state.db.list_notes()?))
+}
+
+#[derive(Deserialize)]
+struct NoteBody {
+    text: String,
+}
+
+async fn memory_add(State(state): State<Arc<HubState>>, caller: Caller, Json(body): Json<NoteBody>) -> Result<(StatusCode, Json<zaklon_core::memory::Note>), ApiError> {
+    let note = state.db.add_note(&body.text, &caller.actor()).map_err(invalid)?;
+    Ok((StatusCode::CREATED, Json(note)))
+}
+
+async fn memory_delete(State(state): State<Arc<HubState>>, caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
+    if state.db.delete_note(&id, &caller.actor())? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(not_found("no such note"))
+    }
 }
