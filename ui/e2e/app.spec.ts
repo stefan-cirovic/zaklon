@@ -602,3 +602,15 @@ test("household: warns when Windows Firewall would keep phones out, and fixes it
   await panel.getByRole("button", { name: "Let phones connect" }).click();
   await expect(panel).toHaveCount(0);
 });
+
+test("household: says how to open a network Windows treats as public (simulated)", async ({ page }) => {
+  await ensureSetUp(page);
+  const state = { checked: true, firewall_on: true, allowed: true, blocked: false, public_network: true, error: null, ok: false };
+  await page.route("**/api/firewall", (r) => r.fulfill({ json: state }));
+  await page.goto("/#household");
+  await page.reload();
+  const panel = page.locator(".firewall");
+  await expect(panel.getByText(/treats the network this laptop is on as a public network/)).toBeVisible();
+  // The rules are there already; asking Windows again would not help.
+  await expect(panel.getByRole("button", { name: "Let phones connect" })).toHaveCount(0);
+});

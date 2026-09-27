@@ -5,7 +5,6 @@
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
 use mdns_sd::{ServiceDaemon, ServiceInfo};
 use serde::Serialize;
 use tokio::net::UdpSocket;
@@ -81,7 +80,10 @@ fn split_ipv4_addresses() -> (Vec<Ipv4Addr>, Vec<Ipv4Addr>) {
     (real, virtual_)
 }
 
-pub async fn start(state: Arc<HubState>) -> Result<Discovery> {
+/// Announce the hub. Neither part is essential: DNS-SD that cannot start is
+/// logged and left out, and a beacon port held by another program is tried
+/// again in the background, while the hub keeps serving.
+pub async fn start(state: Arc<HubState>) -> Discovery {
     let cfg = state.config();
     let loopback_only = zaklon_core::config::loopback_only();
     let mdns = match if loopback_only { Err(mdns_sd::Error::Msg("loopback only".into())) } else { ServiceDaemon::new() } {
@@ -117,13 +119,17 @@ pub async fn start(state: Arc<HubState>) -> Result<Discovery> {
         }
     };
 
-    let beacon_port = cfg.beacon_port;
-    let socket = UdpSocket::bind((if loopback_only { "127.0.0.1" } else { "0.0.0.0" }, beacon_port))
-        .await
-        .with_context(|| format!("binding UDP beacon on {beacon_port}"))?;
-    socket.set_broadcast(true).ok();
-    tokio::spawn(beacon_loop(socket, state));
-    Ok(Discovery { _mdns: mdns })
+    let beacon_addr = (if loopback_only { Ipv4Addr::LOCALHOST } else { Ipv4Addr::UNSPECIFIED }, cfg.beacon_port);
+    tokio::spawn(crate::keep_serving("the discovery beacon", move || {
+        let state = state.clone();
+        async move {
+            let socket = UdpSocket::bind(beacon_addr).await?;
+            socket.set_broadcast(true).ok();
+            beacon_loop(socket, state).await;
+            Ok(())
+        }
+    }));
+    Discovery { _mdns: mdns }
 }
 
 async fn beacon_loop(socket: UdpSocket, state: Arc<HubState>) {

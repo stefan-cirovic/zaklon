@@ -1609,12 +1609,24 @@ async fn hotspot_start(State(state): State<Arc<HubState>>, _: Local) -> Result<J
     };
     tracing::info!("starting the Wi-Fi network");
     let s = tokio::task::spawn_blocking(move || crate::hotspot::start(&pass)).await.map_err(|e| anyhow::anyhow!(e))?;
+    if let Some(previous) = &s.previous {
+        // The person's own hotspot name and password; they come back when ours is turned off.
+        state.db.set_setting(crate::hotspot::SETTING_PREVIOUS, &serde_json::to_string(previous).map_err(|e| anyhow::anyhow!(e))?)?;
+    }
     Ok(Json(hotspot_reply(s)))
 }
 
-async fn hotspot_stop(_: Local) -> Result<Json<HotspotReply>, ApiError> {
+async fn hotspot_stop(State(state): State<Arc<HubState>>, _: Local) -> Result<Json<HotspotReply>, ApiError> {
     tracing::info!("stopping the Wi-Fi network");
-    let s = tokio::task::spawn_blocking(crate::hotspot::stop).await.map_err(|e| anyhow::anyhow!(e))?;
+    let previous = state
+        .db
+        .get_setting(crate::hotspot::SETTING_PREVIOUS)?
+        .and_then(|t| serde_json::from_str::<crate::hotspot::AccessPoint>(&t).ok());
+    let restore = previous.clone();
+    let s = tokio::task::spawn_blocking(move || crate::hotspot::stop(restore.as_ref())).await.map_err(|e| anyhow::anyhow!(e))?;
+    if previous.is_some() && s.error.is_none() && s.ssid != crate::hotspot::SSID {
+        state.db.set_setting(crate::hotspot::SETTING_PREVIOUS, "")?;
+    }
     Ok(Json(hotspot_reply(s)))
 }
 
@@ -1633,9 +1645,10 @@ async fn firewall_status(_: Local) -> Result<Json<FirewallReply>, ApiError> {
 }
 
 /// Laptop only: changes this computer's firewall (Windows asks for consent).
-async fn firewall_allow(_: Local) -> Result<Json<FirewallReply>, ApiError> {
+async fn firewall_allow(State(state): State<Arc<HubState>>, _: Local) -> Result<Json<FirewallReply>, ApiError> {
     tracing::info!("asking Windows to let phones in through the firewall");
-    let state = tokio::task::spawn_blocking(crate::firewall::allow).await.map_err(|e| anyhow::anyhow!(e))?;
+    let ports = crate::firewall::Ports::of(&state.config());
+    let state = tokio::task::spawn_blocking(move || crate::firewall::allow(&ports)).await.map_err(|e| anyhow::anyhow!(e))?;
     Ok(Json(FirewallReply { ok: state.ok(), state }))
 }
 

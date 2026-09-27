@@ -18,6 +18,7 @@ pub mod install;
 pub mod kiwix;
 pub mod latin;
 pub mod machine;
+mod powershell;
 pub mod ui;
 pub mod updates;
 pub mod web;
@@ -161,6 +162,23 @@ pub fn default_root() -> PathBuf {
     PathBuf::from("zaklon-data")
 }
 
+/// How many daily log files are kept (about a month).
+pub const LOG_FILES_KEPT: usize = 30;
+
+/// A log file in `<root>/logs` that starts anew every day (`<name>.<date>`);
+/// the oldest are deleted, so a hub that runs for years does not collect
+/// them forever.
+pub fn log_file(root: &Path, name: &str) -> Result<tracing_appender::rolling::RollingFileAppender> {
+    let dir = root.join("logs");
+    std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
+    tracing_appender::rolling::Builder::new()
+        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .filename_prefix(name)
+        .max_log_files(LOG_FILES_KEPT)
+        .build(&dir)
+        .with_context(|| format!("opening the log in {}", dir.display()))
+}
+
 impl Hub {
     pub fn open(root: &Path) -> Result<Self> {
         // A restore chosen before the last restart is swapped in before anything opens the data.
@@ -213,6 +231,11 @@ impl Hub {
     }
 
     /// Serve until the process ends. Never returns Ok while healthy.
+    ///
+    /// Only the laptop's own window (local) and the phones' connection (TLS)
+    /// end the run when they fail. The install page and discovery are extras:
+    /// if they cannot start (another program holds the port, say), that is
+    /// logged, they are tried again later, and everything else keeps serving.
     pub async fn run(&self) -> Result<()> {
         let _ = rustls::crypto::ring::default_provider().install_default();
         let state = self.state.clone();
@@ -238,10 +261,11 @@ impl Hub {
             .serve(network_app.into_make_service_with_connect_info::<SocketAddr>());
         let local_srv = axum_server::bind(local_addr)
             .serve(local_app.into_make_service_with_connect_info::<SocketAddr>());
-        let install_srv = axum_server::bind(install_addr)
-            .serve(install::router(state.clone()).into_make_service_with_connect_info::<SocketAddr>());
-
-        let _discovery = discovery::start(state.clone()).await?;
+        let install_app = install::router(state.clone());
+        tokio::spawn(keep_serving("install page", move || {
+            axum_server::bind(install_addr).serve(install_app.clone().into_make_service_with_connect_info::<SocketAddr>())
+        }));
+        let _discovery = discovery::start(state.clone()).await;
         state.downloads.start();
         state.library.start();
         state.assistant.start();
@@ -259,9 +283,32 @@ impl Hub {
         tokio::select! {
             r = tls_srv => r.context("tls server")?,
             r = local_srv => r.context("local server")?,
-            r = install_srv => r.context("install server")?,
         }
         Ok(())
+    }
+}
+
+/// How long a part that is not essential waits before it is tried again.
+const RETRY_EXTRA: Duration = Duration::from_secs(30);
+
+/// Run a part that is not essential (see [`Hub::run`]) for as long as the
+/// hub runs: when it cannot start or stops, log it (in full the first time,
+/// briefly after that) and try again a little later.
+pub(crate) async fn keep_serving<F, Fut>(what: &'static str, mut serve: F)
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = std::io::Result<()>>,
+{
+    let mut failures = 0u32;
+    loop {
+        let result = serve().await;
+        failures += 1;
+        match result {
+            Err(e) if failures == 1 => tracing::error!("{what} is not available, trying again every {} s: {e}", RETRY_EXTRA.as_secs()),
+            Err(e) => tracing::debug!("{what} is still not available: {e}"),
+            Ok(()) => tracing::warn!("{what} stopped; starting it again"),
+        }
+        tokio::time::sleep(RETRY_EXTRA).await;
     }
 }
 

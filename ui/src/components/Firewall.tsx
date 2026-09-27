@@ -3,7 +3,16 @@ import { api } from "../api";
 import type { Key } from "../i18n";
 
 type T = (k: Key) => string;
-type State = { checked: boolean; firewall_on: boolean; allowed: boolean; blocked: boolean; error: string | null; ok: boolean };
+type State = {
+  checked: boolean;
+  firewall_on: boolean;
+  allowed: boolean;
+  blocked: boolean;
+  /** The network the laptop is on is one Zaklon's rules leave out (Windows treats it as public). */
+  public_network: boolean;
+  error: string | null;
+  ok: boolean;
+};
 
 /** Laptop only: shows up when Windows Firewall would keep phones out, with a fix. */
 export default function Firewall({ t }: { t: T }) {
@@ -23,14 +32,20 @@ export default function Firewall({ t }: { t: T }) {
       setBusy(false);
     }
   };
+  // The rules are in place; only the network's type in Windows keeps phones out.
+  const onlyNetwork = st.public_network && st.allowed && !st.blocked;
   return (
     <div className="panel stack left notice firewall" role="alert">
       <h2>{t("firewallTitle")}</h2>
-      <p style={{ margin: 0 }}>{st.blocked ? t("firewallBlocked") : t("firewallMissing")}</p>
-      <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("firewallHow")}</p>
-      <div>
-        <button className="btn" onClick={allow} disabled={busy}>{busy ? t("firewallWaiting") : t("firewallAllow")}</button>
-      </div>
+      <p style={{ margin: 0 }}>{st.blocked ? t("firewallBlocked") : onlyNetwork ? t("firewallPublic") : t("firewallMissing")}</p>
+      {!onlyNetwork && (
+        <>
+          <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("firewallHow")}</p>
+          <div>
+            <button className="btn" onClick={allow} disabled={busy}>{busy ? t("firewallWaiting") : t("firewallAllow")}</button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

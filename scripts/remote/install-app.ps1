@@ -12,11 +12,16 @@ Get-Process -Name 'kiwix-serve' -ErrorAction SilentlyContinue | Where-Object { $
 Start-Sleep -Seconds 2
 
 # 2. Firewall: allow the app itself, so Windows never asks (a dismissed prompt creates block rules).
+#    The same rules as "Let phones connect" in the app (crates/zaklon-hub/src/firewall.rs), for the
+#    default ports: Private networks, and on Public ones only the laptop's own hotspot.
 $exe = Join-Path $Root 'zaklon-app.exe'
+$tcp = @(8480, 8484); $udp = @(5353, 8485); $hotspot = '192.168.137.0/24'
 Get-NetFirewallRule | Where-Object { $_.DisplayName -like '*zaklon-app*' -and $_.Action -eq 'Block' } | Remove-NetFirewallRule -ErrorAction SilentlyContinue
 Get-NetFirewallRule -DisplayName 'Zaklon app (program*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
-New-NetFirewallRule -DisplayName 'Zaklon app (program TCP)' -Direction Inbound -Action Allow -Protocol TCP -Program $exe -Profile Private,Public | Out-Null
-New-NetFirewallRule -DisplayName 'Zaklon app (program UDP)' -Direction Inbound -Action Allow -Protocol UDP -Program $exe -Profile Private,Public | Out-Null
+New-NetFirewallRule -DisplayName 'Zaklon app (program TCP)' -Direction Inbound -Action Allow -Program $exe -Protocol TCP -LocalPort $tcp -Profile Private | Out-Null
+New-NetFirewallRule -DisplayName 'Zaklon app (program UDP)' -Direction Inbound -Action Allow -Program $exe -Protocol UDP -LocalPort $udp -Profile Private | Out-Null
+New-NetFirewallRule -DisplayName 'Zaklon app (program TCP, Wi-Fi from this laptop)' -Direction Inbound -Action Allow -Program $exe -Protocol TCP -LocalPort $tcp -Profile Public -RemoteAddress $hotspot | Out-Null
+New-NetFirewallRule -DisplayName 'Zaklon app (program UDP, Wi-Fi from this laptop)' -Direction Inbound -Action Allow -Program $exe -Protocol UDP -LocalPort $udp -Profile Public -RemoteAddress $hotspot | Out-Null
 
 # 3. Silent install into the same folder (NSIS: /D must be last and unquoted).
 $p = Start-Process -FilePath $Installer -ArgumentList '/S', "/D=$Root" -Wait -PassThru

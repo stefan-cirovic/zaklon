@@ -2,12 +2,24 @@
 //! household's phones when there is no router (a power cut, a cabin). Uses
 //! Windows' own Mobile hotspot through PowerShell and WinRT, so nothing
 //! extra is installed. The network is called "Zaklon" and has a password the
-//! hub keeps.
+//! hub keeps. If the person had their own name and password set for Windows'
+//! Mobile hotspot, they are kept and put back when Zaklon's network is
+//! turned off.
 
 use serde::{Deserialize, Serialize};
 
 pub const SSID: &str = "Zaklon";
 pub const SETTING_PASSPHRASE: &str = "hotspot_passphrase";
+/// The person's own hotspot name and password from before Zaklon changed
+/// them (JSON [`AccessPoint`]; empty once they are back).
+pub const SETTING_PREVIOUS: &str = "hotspot_previous";
+
+/// A name and password for Windows' Mobile hotspot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AccessPoint {
+    pub ssid: String,
+    pub passphrase: String,
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HotspotState {
@@ -18,6 +30,10 @@ pub struct HotspotState {
     pub passphrase: String,
     pub clients: u32,
     pub error: Option<String>,
+    /// From `start`: the person's own name and password that Zaklon's
+    /// replaced just now. Kept by the hub, never sent to the interface.
+    #[serde(default, skip_serializing)]
+    pub previous: Option<AccessPoint>,
 }
 
 /// Easy to read out and type on a phone: no 0/O, 1/l.
@@ -49,8 +65,9 @@ $null = [Windows.Networking.Connectivity.NetworkInformation, Windows.Networking.
 $null = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager, Windows.Networking.NetworkOperators, ContentType = WindowsRuntime]
 $asTaskOp = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
 $asTaskAction = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncAction' })[0]
-function AwaitOp($op, $type) { $t = $asTaskOp.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(-1) | Out-Null; $t.Result }
-function AwaitAction($a) { $t = $asTaskAction.Invoke($null, @($a)); $t.Wait(-1) | Out-Null }
+# Some drivers never finish; give up after 30 s instead of waiting forever.
+function AwaitOp($op, $type) { $t = $asTaskOp.MakeGenericMethod($type).Invoke($null, @($op)); if (-not $t.Wait(30000)) { throw 'Windows did not answer in time' }; $t.Result }
+function AwaitAction($a) { $t = $asTaskAction.Invoke($null, @($a)); if (-not $t.Wait(30000)) { throw 'Windows did not answer in time' } }
 # No Wi-Fi adapter, no hotspot (802.11 adapters report physical medium 9).
 if (-not (Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object { $_.NdisPhysicalMedium -eq 9 })) { throw 'no Wi-Fi adapter' }
 # The hotspot hangs off a network connection; with no internet, any known connection will do.
@@ -58,37 +75,26 @@ $profile = [Windows.Networking.Connectivity.NetworkInformation]::GetInternetConn
 if ($null -eq $profile) { $profile = [Windows.Networking.Connectivity.NetworkInformation]::GetConnectionProfiles() | Select-Object -First 1 }
 if ($null -eq $profile) { throw 'no network connection to make a hotspot from' }
 $tm = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager]::CreateFromConnectionProfile($profile)
-function Report($err) {
+function Report($err, $previous = $null) {
   $cfg = $tm.GetCurrentAccessPointConfiguration()
-  [pscustomobject]@{ supported = $true; on = ($tm.TetheringOperationalState -eq 'On'); ssid = $cfg.Ssid; passphrase = $cfg.Passphrase; clients = [uint32]$tm.ClientCount; error = $err } | ConvertTo-Json -Compress
+  [pscustomobject]@{ supported = $true; on = ($tm.TetheringOperationalState -eq 'On'); ssid = $cfg.Ssid; passphrase = $cfg.Passphrase; clients = [uint32]$tm.ClientCount; error = $err; previous = $previous } | ConvertTo-Json -Compress
 }
 "#;
 
+/// A backstop for a PowerShell that hangs anyway; longer than the two 30 s
+/// waits a script may do.
+#[cfg(windows)]
+const SCRIPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
+
 #[cfg(windows)]
 fn run(script: &str) -> HotspotState {
-    let full = format!("try {{\n{PRELUDE}\n{script}\n}} catch {{ [pscustomobject]@{{ supported = $false; on = $false; ssid = ''; passphrase = ''; clients = 0; error = $_.Exception.Message }} | ConvertTo-Json -Compress }}");
-    // The script goes in as -EncodedCommand (UTF-16LE, base64): PowerShell
-    // reads a script from stdin line by line, which breaks multi-line blocks.
-    use base64::Engine;
-    let utf16: Vec<u8> = full.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
-    let encoded = base64::engine::general_purpose::STANDARD.encode(utf16);
-    let mut cmd = std::process::Command::new("powershell.exe");
-    cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", &encoded])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000); // no console window
-    }
-    let out = cmd.output();
-    match out {
-        Ok(o) => {
-            let text = String::from_utf8_lossy(&o.stdout);
-            let line = text.lines().rev().find(|l| l.trim_start().starts_with('{')).unwrap_or_default();
-            serde_json::from_str(line).unwrap_or_else(|_| HotspotState { error: Some("Windows did not answer about the hotspot".into()), ..Default::default() })
-        }
-        Err(e) => HotspotState { error: Some(e.to_string()), ..Default::default() },
+    // `$previous` (set by `start` before it changes anything) is reported on
+    // failure too, so the person's own settings are never lost.
+    let full = format!("$previous = $null\ntry {{\n{PRELUDE}\n{script}\n}} catch {{ [pscustomobject]@{{ supported = $false; on = $false; ssid = ''; passphrase = ''; clients = 0; error = $_.Exception.Message; previous = $previous }} | ConvertTo-Json -Compress }}");
+    match crate::powershell::run(&full, SCRIPT_TIMEOUT) {
+        Ok(out) => serde_json::from_str(crate::powershell::last_json_line(&out))
+            .unwrap_or_else(|_| HotspotState { error: Some("Windows did not answer about the hotspot".into()), ..Default::default() }),
+        Err(e) => HotspotState { error: Some(e), ..Default::default() },
     }
 }
 
@@ -97,7 +103,9 @@ pub fn status() -> HotspotState {
     run("Report $null")
 }
 
-/// Name the network "Zaklon" with our password, then switch it on.
+/// Name the network "Zaklon" with our password, then switch it on. When
+/// that replaces the person's own name and password, the result carries
+/// them in `previous`, for [`stop`] to put back.
 #[cfg(windows)]
 pub fn start(passphrase: &str) -> HotspotState {
     if !is_safe_passphrase(passphrase) {
@@ -108,29 +116,55 @@ pub fn start(passphrase: &str) -> HotspotState {
         r#"
 $cfg = $tm.GetCurrentAccessPointConfiguration()
 if ($cfg.Ssid -ne '{SSID}' -or $cfg.Passphrase -ne '{pass}') {{
+  if ($cfg.Ssid -ne '{SSID}') {{ $previous = [pscustomobject]@{{ ssid = $cfg.Ssid; passphrase = $cfg.Passphrase }} }}
   $cfg.Ssid = '{SSID}'
   $cfg.Passphrase = '{pass}'
   AwaitAction ($tm.ConfigureAccessPointAsync($cfg))
 }}
 if ($tm.TetheringOperationalState -ne 'On') {{
   $r = AwaitOp ($tm.StartTetheringAsync()) ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
-  if ($r.Status -ne 'Success') {{ Report ("" + $r.Status + " " + $r.AdditionalErrorMessage).Trim(); return }}
+  if ($r.Status -ne 'Success') {{ Report ("" + $r.Status + " " + $r.AdditionalErrorMessage).Trim() $previous; return }}
 }}
-Report $null
+Report $null $previous
 "#
     ))
 }
 
+/// Switch the network off. If Zaklon's name is still set, put the person's
+/// own name and password (`previous`) back.
 #[cfg(windows)]
-pub fn stop() -> HotspotState {
-    run(
-        r#"
-if ($tm.TetheringOperationalState -eq 'On') {
-  $r = AwaitOp ($tm.StopTetheringAsync()) ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
-  if ($r.Status -ne 'Success') { Report ("" + $r.Status + " " + $r.AdditionalErrorMessage).Trim(); return }
+pub fn stop(previous: Option<&AccessPoint>) -> HotspotState {
+    run(&stop_script(previous))
 }
-Report $null
+
+/// The person's name and password are their own text, so they go into the
+/// script as base64 (see [`crate::powershell`]).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn stop_script(previous: Option<&AccessPoint>) -> String {
+    let restore = match previous {
+        Some(p) => format!(
+            r#"
+$cfg = $tm.GetCurrentAccessPointConfiguration()
+if ($cfg.Ssid -eq '{SSID}') {{
+  $cfg.Ssid = {ssid}
+  $cfg.Passphrase = {pass}
+  AwaitAction ($tm.ConfigureAccessPointAsync($cfg))
+}}
 "#,
+            ssid = crate::powershell::text(&p.ssid),
+            pass = crate::powershell::text(&p.passphrase),
+        ),
+        None => String::new(),
+    };
+    format!(
+        r#"
+if ($tm.TetheringOperationalState -eq 'On') {{
+  $r = AwaitOp ($tm.StopTetheringAsync()) ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
+  if ($r.Status -ne 'Success') {{ Report ("" + $r.Status + " " + $r.AdditionalErrorMessage).Trim(); return }}
+}}
+{restore}
+Report $null
+"#
     )
 }
 
@@ -143,7 +177,7 @@ pub fn start(_passphrase: &str) -> HotspotState {
     status()
 }
 #[cfg(not(windows))]
-pub fn stop() -> HotspotState {
+pub fn stop(_previous: Option<&AccessPoint>) -> HotspotState {
     status()
 }
 
@@ -166,6 +200,21 @@ mod tests {
         assert!(!is_safe_passphrase("aaaaaaaa\u{2019}; calc; \u{2019}"));
         assert!(!is_safe_passphrase("aaaaaaaa'; calc; '"));
         assert!(!is_safe_passphrase("ABCDEFGH"));
+    }
+
+    #[test]
+    fn the_persons_own_network_goes_back_safely() {
+        let own = AccessPoint { ssid: "Ana\u{2019}s phone'; calc; '".into(), passphrase: "p\u{2018}ss\"$(calc)".into() };
+        let script = stop_script(Some(&own));
+        assert!(script.contains("ConfigureAccessPointAsync"));
+        assert!(!script.contains("Ana") && !script.contains('\u{2019}') && !script.contains('\u{2018}') && !script.contains("$(calc)"), "{script}");
+        assert!(!stop_script(None).contains("ConfigureAccessPointAsync"), "nothing to put back");
+
+        // What `start` reports: the previous settings come in, but never go out to the interface.
+        let s: HotspotState = serde_json::from_str(r#"{"supported":true,"on":true,"ssid":"Zaklon","passphrase":"abcd2345ef","clients":0,"error":null,"previous":{"ssid":"Home","passphrase":"secret123"}}"#).unwrap();
+        assert_eq!(s.previous, Some(AccessPoint { ssid: "Home".into(), passphrase: "secret123".into() }));
+        let out = serde_json::to_string(&s).unwrap();
+        assert!(!out.contains("previous") && !out.contains("secret123"), "{out}");
     }
 
     #[test]
