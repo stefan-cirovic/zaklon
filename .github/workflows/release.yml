@@ -1,0 +1,144 @@
+name: Release
+
+# Builds the phone app and the Windows installer that carries it, and makes a
+# DRAFT GitHub release with both files and their SHA-256 checksums. Nothing
+# is published until someone reviews the draft and publishes it by hand.
+#
+# Runs on a version tag (v0.2.0) or by hand from the Actions tab.
+#
+# Not yet: a release-signed phone app (needs the project's signing key as a
+# secret) and a signed Windows installer (planned with SignPath). Until then
+# the phone app is the debug-signed build.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      NDK_VERSION: 27.1.12297006
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android NDK and platform
+        run: |
+          sdkmanager --install "ndk;${NDK_VERSION}" "platforms;android-36" "build-tools;36.0.0"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+      - name: On-device AI engine (llama.cpp for Android)
+        run: bash scripts/fetch-android-llama.sh
+
+      - name: Build the phone app
+        run: pnpm tauri android build --debug --target aarch64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phone-app
+          path: apps/zaklon/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+
+  windows:
+    needs: android
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: phone-app
+          path: phone-app
+
+      - name: Put the phone app inside the installer
+        shell: bash
+        run: cp phone-app/app-universal-debug.apk apps/zaklon/src-tauri/windows/zaklon.apk
+
+      - name: Build the Windows installer
+        run: pnpm tauri build
+
+      - name: Collect files and checksums
+        shell: bash
+        run: |
+          mkdir out
+          cp target/release/bundle/nsis/*-setup.exe out/
+          cp phone-app/app-universal-debug.apk out/zaklon.apk
+          cd out && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-files
+          path: out/
+
+  draft:
+    needs: windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-files
+          path: out
+
+      - name: Draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: ${{ github.ref_type == 'tag' && github.ref_name || format('Build {0}', github.run_number) }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}
+          files: out/*
+          body: |
+            Draft made by the release workflow. Check it, write the notes, then publish.
+
+            - `Zaklon_*_x64-setup.exe`: Windows installer (works offline; includes the phone app).
+            - `zaklon.apk`: the Android app (test build, debug-signed).
+            - `SHA256SUMS.txt`: checksums of both.
