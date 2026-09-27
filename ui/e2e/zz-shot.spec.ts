@@ -1,11 +1,18 @@
 import { test } from "@playwright/test";
-const S = "C:/Users/Cirovic/AppData/Local/Temp/claude/d--Projects-Zaklon/1f72f887-9840-4e40-b659-e97259a1e479/scratchpad/shots/";
+import { join } from "node:path";
+
+// Screenshots of every screen, to look at by eye; not a check. Runs only when
+// ZAKLON_SHOTS_DIR names the folder to put them in (SHOT_LANG=en|sr, default sr):
+//   ZAKLON_SHOTS_DIR=C:/temp/shots pnpm e2e zz-shot
+const DIR = process.env.ZAKLON_SHOTS_DIR;
 const LANG = process.env.SHOT_LANG ?? "sr";
+test.skip(!DIR, "set ZAKLON_SHOTS_DIR to take screenshots");
+
 test("shots", async ({ page }, info) => {
   test.setTimeout(120000);
+  const file = (name: string) => join(DIR ?? "", `${LANG}-${info.project.name}-${name}.png`);
   await page.addInitScript((l) => localStorage.setItem("zaklon.lang", l), LANG);
   await page.goto("/#household");
-  const pw = page.locator('input[type="password"]').first();
   const setup = page.getByText(/Set up your household|Podesi domaćinstvo/);
   if (await setup.isVisible({ timeout: 3000 }).catch(() => false)) {
     await page.locator('input[type="password"]').nth(0).fill("correct horse");
@@ -27,17 +34,17 @@ test("shots", async ({ page }, info) => {
   for (const [name, url] of shots) {
     await page.goto(url);
     await page.waitForTimeout(1200);
-    await page.screenshot({ path: `${S}${LANG}-${info.project.name}-${name}.png`, fullPage: true });
+    await page.screenshot({ path: file(name), fullPage: true });
   }
   await page.goto("/#supplies");
   await page.waitForTimeout(800);
   for (const [i, n] of [[1, "history"], [2, "shopping"], [3, "putaway"]] as const) {
     await page.locator(".segmented.tabs-4 button").nth(i).click();
     await page.waitForTimeout(600);
-    await page.screenshot({ path: `${S}${LANG}-${info.project.name}-supplies-${n}.png`, fullPage: true });
+    await page.screenshot({ path: file(`supplies-${n}`), fullPage: true });
   }
   await page.locator(".segmented.tabs-4 button").nth(0).click();
   await page.locator(".item").first().click();
   await page.waitForTimeout(600);
-  await page.screenshot({ path: `${S}${LANG}-${info.project.name}-supplies-edit.png`, fullPage: true });
+  await page.screenshot({ path: file("supplies-edit"), fullPage: true });
 });

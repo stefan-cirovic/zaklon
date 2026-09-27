@@ -1,12 +1,13 @@
 // Starts a throwaway hub for the interface tests: fresh data folder, fixed
 // test ports, the debug build of zaklon-hub. Playwright stops it afterwards.
+// ZAKLON_HUB_EXE points at another build (e.g. with a different CARGO_TARGET_DIR).
 import { spawn } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const root = mkdtempSync(join(tmpdir(), "zaklon-ui-e2e-"));
-const exe = resolve(import.meta.dirname, "../../target/debug/zaklon-hub" + (process.platform === "win32" ? ".exe" : ""));
+const exe = process.env.ZAKLON_HUB_EXE || resolve(import.meta.dirname, "../../target/debug/zaklon-hub" + (process.platform === "win32" ? ".exe" : ""));
 
 const child = spawn(exe, ["--root", root], {
   stdio: "inherit",
