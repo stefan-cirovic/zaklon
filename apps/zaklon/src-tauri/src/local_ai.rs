@@ -4,6 +4,7 @@
 //! measuring what a phone can do.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -14,6 +15,8 @@ use crate::client::ClientState;
 /// The server executable, packaged as a "library" so Android extracts it.
 const SERVER_FILE: &str = "libllama_server_exec.so";
 const CONTEXT: &str = "2048";
+/// The engine's log is cut down to about this much at each start.
+const LOG_KEEP: u64 = 200 * 1024;
 
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct CopyProgress {
@@ -56,6 +59,8 @@ pub struct Answer {
 }
 
 struct Server {
+    /// Which `start` call spawned this engine.
+    id: u64,
     child: std::process::Child,
     port: u16,
     model: String,
@@ -63,8 +68,15 @@ struct Server {
 
 pub struct LocalAi {
     models_dir: PathBuf,
+    /// The engine's stderr (app data dir/llama.log).
+    log_file: PathBuf,
+    /// PID of the running engine, so a leftover one can be killed after the
+    /// app itself was killed (app data dir/llama.pid).
+    pid_file: PathBuf,
     server: Mutex<Option<Server>>,
-    starting: Mutex<bool>,
+    /// The id of the `start` call that is loading a model, if any.
+    starting: Mutex<Option<u64>>,
+    next_id: AtomicU64,
     copy: Arc<Mutex<Option<CopyProgress>>>,
     http: reqwest::Client,
 }
@@ -73,6 +85,23 @@ impl Drop for LocalAi {
     fn drop(&mut self) {
         if let Some(mut s) = self.server.lock().unwrap_or_else(|p| p.into_inner()).take() {
             let _ = s.child.kill();
+            let _ = std::fs::remove_file(&self.pid_file);
+        }
+    }
+}
+
+/// Clears the loading flag when the `start` call that set it ends (also
+/// when that call is cancelled), but never a flag set by another call.
+struct StartingGuard<'a> {
+    starting: &'a Mutex<Option<u64>>,
+    id: u64,
+}
+
+impl Drop for StartingGuard<'_> {
+    fn drop(&mut self) {
+        let mut g = self.starting.lock().unwrap_or_else(|p| p.into_inner());
+        if *g == Some(self.id) {
+            *g = None;
         }
     }
 }
@@ -95,14 +124,72 @@ fn free_port() -> std::io::Result<u16> {
     Ok(std::net::TcpListener::bind(("127.0.0.1", 0))?.local_addr()?.port())
 }
 
+/// Keep only the last `LOG_KEEP` bytes of the log (from a line start).
+fn trim_log(path: &Path) {
+    let Ok(data) = std::fs::read(path) else { return };
+    if (data.len() as u64) <= LOG_KEEP {
+        return;
+    }
+    let mut from = data.len() - LOG_KEEP as usize;
+    if let Some(nl) = data[from..].iter().position(|&b| b == b'\n') {
+        from += nl + 1;
+    }
+    let _ = std::fs::write(path, &data[from..]);
+}
+
+/// The last few non-empty lines written to the log after `offset`.
+fn log_tail(path: &Path, offset: u64) -> String {
+    let Ok(data) = std::fs::read(path) else { return String::new() };
+    let from = (offset as usize).min(data.len()).max(data.len().saturating_sub(16 * 1024));
+    let text = String::from_utf8_lossy(&data[from..]);
+    let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let tail = lines[lines.len().saturating_sub(3)..].join(" | ");
+    let count = tail.chars().count();
+    if count > 600 {
+        format!("…{}", tail.chars().skip(count - 600).collect::<String>())
+    } else {
+        tail
+    }
+}
+
+/// Kill an engine left running by an earlier run of the app (for example
+/// when Android killed the app), if the PID file points at one.
+fn kill_leftover(pid_file: &Path) {
+    let Ok(text) = std::fs::read_to_string(pid_file) else { return };
+    let _ = std::fs::remove_file(pid_file);
+    let Ok(pid) = text.trim().parse::<u32>() else { return };
+    let is_ours = |pid: u32| {
+        std::fs::read(format!("/proc/{pid}/cmdline"))
+            .map(|c| String::from_utf8_lossy(&c).contains(SERVER_FILE))
+            .unwrap_or(false)
+    };
+    if pid == std::process::id() || !is_ours(pid) {
+        return;
+    }
+    let _ = std::process::Command::new("kill")
+        .args(["-9", &pid.to_string()])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    // Give the system a moment to free its memory before loading again.
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while is_ours(pid) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
 impl LocalAi {
     pub fn new(app_data: &Path) -> Self {
         let models_dir = app_data.join("models");
         let _ = std::fs::create_dir_all(&models_dir);
         Self {
             models_dir,
+            log_file: app_data.join("llama.log"),
+            pid_file: app_data.join("llama.pid"),
             server: Mutex::new(None),
-            starting: Mutex::new(false),
+            starting: Mutex::new(None),
+            next_id: AtomicU64::new(1),
             copy: Arc::new(Mutex::new(None)),
             http: reqwest::Client::builder().no_proxy().timeout(Duration::from_secs(600)).build().expect("http client"),
         }
@@ -133,7 +220,7 @@ impl LocalAi {
             engine: server_exe().is_some(),
             models,
             running,
-            starting: *self.starting.lock().unwrap_or_else(|p| p.into_inner()),
+            starting: self.starting.lock().unwrap_or_else(|p| p.into_inner()).is_some(),
             copy: self.copy.lock().unwrap_or_else(|p| p.into_inner()).clone(),
             cpu_cores: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4),
         }
@@ -177,14 +264,47 @@ impl LocalAi {
         if file.contains('/') || file.contains('\\') || file.contains("..") {
             return Err("bad model file name".into());
         }
-        self.stop();
+        let copying = self
+            .copy
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+            .is_some_and(|c| !c.finished && c.model == file);
+        if copying {
+            return Err("that model is still being copied".into());
+        }
+        // Stop the engine only when it uses this file.
+        let taken = {
+            let mut g = self.server.lock().unwrap_or_else(|p| p.into_inner());
+            if g.as_ref().is_some_and(|s| s.model == file) { g.take() } else { None }
+        };
+        if let Some(s) = taken {
+            self.kill(s);
+        }
         std::fs::remove_file(self.models_dir.join(file)).map_err(|e| e.to_string())
     }
 
+    fn kill(&self, mut s: Server) {
+        let _ = s.child.kill();
+        let _ = s.child.wait();
+        let _ = std::fs::remove_file(&self.pid_file);
+    }
+
     pub fn stop(&self) {
-        if let Some(mut s) = self.server.lock().unwrap_or_else(|p| p.into_inner()).take() {
-            let _ = s.child.kill();
-            let _ = s.child.wait();
+        let taken = self.server.lock().unwrap_or_else(|p| p.into_inner()).take();
+        if let Some(s) = taken {
+            self.kill(s);
+        }
+    }
+
+    /// Stop the engine only if it is the one spawned by `start` call `id`.
+    fn stop_if(&self, id: u64) {
+        let taken = {
+            let mut g = self.server.lock().unwrap_or_else(|p| p.into_inner());
+            if g.as_ref().is_some_and(|s| s.id == id) { g.take() } else { None }
+        };
+        if let Some(s) = taken {
+            self.kill(s);
         }
     }
 
@@ -195,11 +315,31 @@ impl LocalAi {
         if !model.is_file() {
             return Err("that model is not on this phone".into());
         }
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        {
+            let mut g = self.starting.lock().unwrap_or_else(|p| p.into_inner());
+            if g.is_some() {
+                return Err("the AI is already starting".into());
+            }
+            *g = Some(id);
+        }
+        let _starting = StartingGuard { starting: &self.starting, id };
+        kill_leftover(&self.pid_file);
         self.stop();
         let port = free_port().map_err(|e| e.to_string())?;
         let lib_dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
         // Big cores only: phones have 4 fast cores and 4 efficient ones.
         let threads = std::thread::available_parallelism().map(|n| (n.get() / 2).max(2)).unwrap_or(4);
+        trim_log(&self.log_file);
+        let (stderr, log_start) = match std::fs::OpenOptions::new().create(true).append(true).open(&self.log_file) {
+            Ok(mut f) => {
+                use std::io::Write;
+                let _ = writeln!(f, "--- starting {file} ---");
+                let start = f.metadata().map(|m| m.len()).unwrap_or(0);
+                (std::process::Stdio::from(f), start)
+            }
+            Err(_) => (std::process::Stdio::null(), 0),
+        };
         let child = std::process::Command::new(&exe)
             .arg("-m")
             .arg(&model)
@@ -209,11 +349,11 @@ impl LocalAi {
             .current_dir(&lib_dir)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
+            .stderr(stderr)
             .spawn()
             .map_err(|e| format!("could not start the AI engine: {e}"))?;
-        *self.server.lock().unwrap_or_else(|p| p.into_inner()) = Some(Server { child, port, model: file.to_string() });
-        *self.starting.lock().unwrap_or_else(|p| p.into_inner()) = true;
+        let _ = std::fs::write(&self.pid_file, child.id().to_string());
+        *self.server.lock().unwrap_or_else(|p| p.into_inner()) = Some(Server { id, child, port, model: file.to_string() });
 
         // Loading a model takes a few seconds to a minute.
         let deadline = Instant::now() + Duration::from_secs(180);
@@ -221,12 +361,22 @@ impl LocalAi {
             if Instant::now() > deadline {
                 break Err("the AI engine did not become ready in 3 minutes".to_string());
             }
-            let exited = {
+            // None: stopped from elsewhere (e.g. the model was deleted); Some(exited).
+            let state = {
                 let mut g = self.server.lock().unwrap_or_else(|p| p.into_inner());
-                g.as_mut().map(|s| matches!(s.child.try_wait(), Ok(Some(_)) | Err(_))).unwrap_or(true)
+                g.as_mut().filter(|s| s.id == id).map(|s| matches!(s.child.try_wait(), Ok(Some(_)) | Err(_)))
             };
-            if exited {
-                break Err("the AI engine stopped while loading (not enough memory?)".to_string());
+            match state {
+                None => break Err("the AI engine was stopped while loading".to_string()),
+                Some(true) => {
+                    let tail = log_tail(&self.log_file, log_start);
+                    break Err(if tail.is_empty() {
+                        "the AI engine stopped while loading (not enough memory?)".to_string()
+                    } else {
+                        format!("the AI engine stopped while loading: {tail}")
+                    });
+                }
+                Some(false) => {}
             }
             if let Ok(r) = self.http.get(format!("http://127.0.0.1:{port}/health")).timeout(Duration::from_secs(2)).send().await {
                 if r.status().is_success() {
@@ -235,9 +385,8 @@ impl LocalAi {
             }
             tokio::time::sleep(Duration::from_millis(500)).await;
         };
-        *self.starting.lock().unwrap_or_else(|p| p.into_inner()) = false;
         if result.is_err() {
-            self.stop();
+            self.stop_if(id);
         }
         result
     }
