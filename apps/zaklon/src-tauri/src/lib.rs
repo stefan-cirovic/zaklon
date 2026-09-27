@@ -70,6 +70,20 @@ async fn client_pair(
     state.pair(payload, password, device_name).await
 }
 
+/// Pair with a hub found on the network ("Find hubs"): the phone checks the
+/// hub with the code before it sends the password (see `ClientState::pair_found`).
+#[tauri::command]
+async fn client_pair_found(
+    state: tauri::State<'_, Arc<ClientState>>,
+    host: String,
+    port: u16,
+    code: String,
+    password: String,
+    device_name: String,
+) -> Result<LinkSummary, String> {
+    state.pair_found(host, port, code, password, device_name).await
+}
+
 #[tauri::command]
 async fn client_request(
     state: tauri::State<'_, Arc<ClientState>>,
@@ -211,6 +225,7 @@ pub fn run() {
             app_mode,
             client_state,
             client_pair,
+            client_pair_found,
             client_request,
             client_forget,
             client_discover,

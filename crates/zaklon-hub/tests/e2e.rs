@@ -4,127 +4,16 @@
 //!
 //! Run with: `cargo test -p zaklon-hub --test e2e -- --nocapture`
 
-use std::net::{SocketAddr, TcpListener};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+mod common;
+
+use std::net::SocketAddr;
+use std::path::Path;
 use std::time::{Duration, Instant};
 
-use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
-use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
-use rustls::{DigitallySignedStruct, SignatureScheme};
+use common::*;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 
 // ---- helpers ------------------------------------------------------------------
-
-/// A port that is free for TCP and UDP. Windows reserves ranges of ports
-/// (Hyper-V, WSL) that a plain "port 0" pick can land in for the other
-/// protocol, so both are tried before the port is used. Loopback only: the
-/// hub under test listens on 127.0.0.1 (ZAKLON_LOOPBACK_ONLY), so nothing
-/// here makes Windows ask about its firewall.
-fn free_port() -> u16 {
-    for _ in 0..50 {
-        let port = TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port();
-        let tcp_ok = TcpListener::bind(("127.0.0.1", port)).is_ok();
-        let udp_ok = std::net::UdpSocket::bind(("127.0.0.1", port)).is_ok();
-        if tcp_ok && udp_ok {
-            return port;
-        }
-    }
-    panic!("no free port found");
-}
-
-fn temp_dir(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("zaklon-e2e-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
-}
-
-#[derive(Debug)]
-struct Pin(String);
-
-impl ServerCertVerifier for Pin {
-    fn verify_server_cert(
-        &self,
-        cert: &CertificateDer<'_>,
-        _: &[CertificateDer<'_>],
-        _: &ServerName<'_>,
-        _: &[u8],
-        _: UnixTime,
-    ) -> Result<ServerCertVerified, rustls::Error> {
-        if sha256_hex(cert.as_ref()) == self.0 {
-            Ok(ServerCertVerified::assertion())
-        } else {
-            Err(rustls::Error::General("fingerprint mismatch".into()))
-        }
-    }
-    fn verify_tls12_signature(&self, m: &[u8], c: &CertificateDer<'_>, d: &DigitallySignedStruct) -> Result<HandshakeSignatureValid, rustls::Error> {
-        rustls::crypto::verify_tls12_signature(m, c, d, &rustls::crypto::ring::default_provider().signature_verification_algorithms)
-    }
-    fn verify_tls13_signature(&self, m: &[u8], c: &CertificateDer<'_>, d: &DigitallySignedStruct) -> Result<HandshakeSignatureValid, rustls::Error> {
-        rustls::crypto::verify_tls13_signature(m, c, d, &rustls::crypto::ring::default_provider().signature_verification_algorithms)
-    }
-    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
-        rustls::crypto::ring::default_provider().signature_verification_algorithms.supported_schemes()
-    }
-}
-
-/// A "phone": TLS client that only accepts the hub certificate with this fingerprint.
-fn phone_client(fingerprint: &str) -> reqwest::Client {
-    let _ = rustls::crypto::ring::default_provider().install_default();
-    let tls = rustls::ClientConfig::builder()
-        .dangerous()
-        .with_custom_certificate_verifier(Arc::new(Pin(fingerprint.to_string())))
-        .with_no_client_auth();
-    reqwest::Client::builder().use_preconfigured_tls(tls).no_proxy().build().unwrap()
-}
-
-struct Hub {
-    local: String,
-    tls: String,
-    install: String,
-    beacon_port: u16,
-    root: PathBuf,
-    http: reqwest::Client,
-}
-
-impl Hub {
-    async fn get(&self, path: &str) -> (u16, Value) {
-        let r = self.http.get(format!("{}{path}", self.local)).send().await.unwrap();
-        let st = r.status().as_u16();
-        let text = r.text().await.unwrap();
-        (st, serde_json::from_str(&text).unwrap_or(Value::String(text)))
-    }
-    async fn send(&self, method: reqwest::Method, path: &str, body: Option<Value>) -> (u16, Value) {
-        let mut req = self.http.request(method, format!("{}{path}", self.local));
-        if let Some(b) = body {
-            req = req.json(&b);
-        }
-        let r = req.send().await.unwrap();
-        let st = r.status().as_u16();
-        let text = r.text().await.unwrap();
-        (st, serde_json::from_str(&text).unwrap_or(Value::String(text)))
-    }
-    async fn post(&self, path: &str, body: Value) -> (u16, Value) {
-        self.send(reqwest::Method::POST, path, Some(body)).await
-    }
-}
-
-async fn wait_for(url: &str) {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    loop {
-        if reqwest::get(url).await.is_ok() {
-            return;
-        }
-        assert!(Instant::now() < deadline, "hub did not start: {url}");
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-}
 
 /// Serve `dir` over HTTP (with Range support) on a free port; returns the base URL.
 async fn file_server(dir: &Path) -> String {
@@ -152,13 +41,6 @@ async fn wait_pack(hub: &Hub, id: &str, until: &[&str]) -> Value {
 async fn start_hub() -> Hub {
     // Windows accounts are often named like this, and the data folder lives under them.
     let root = temp_dir("hub-Đorđe-Ћирић");
-    let (tls, local, install, beacon) = (free_port(), free_port(), free_port(), free_port());
-    std::env::set_var("ZAKLON_TLS_PORT", tls.to_string());
-    std::env::set_var("ZAKLON_LOCAL_PORT", local.to_string());
-    std::env::set_var("ZAKLON_INSTALL_PORT", install.to_string());
-    std::env::set_var("ZAKLON_BEACON_PORT", beacon.to_string());
-    std::env::set_var("ZAKLON_IGNORE_BATTERY", "1");
-    std::env::set_var("ZAKLON_LOOPBACK_ONLY", "1");
 
     // A small test catalog served by a local file server.
     let files = temp_dir("files");
@@ -208,19 +90,7 @@ async fn start_hub() -> Hub {
     });
     std::fs::create_dir_all(root.join("catalog")).unwrap();
     std::fs::write(root.join("catalog/catalog.json"), catalog.to_string()).unwrap();
-
-    let hub = zaklon_hub::Hub::open(&root).unwrap();
-    tokio::spawn(async move { hub.run().await.unwrap() });
-    let h = Hub {
-        local: format!("http://127.0.0.1:{local}"),
-        tls: format!("https://127.0.0.1:{tls}"),
-        install: format!("http://127.0.0.1:{install}"),
-        beacon_port: beacon,
-        root,
-        http: reqwest::Client::builder().no_proxy().build().unwrap(),
-    };
-    wait_for(&format!("{}/api/status", h.local)).await;
-    h
+    run_hub(root).await
 }
 
 // ---- the test -------------------------------------------------------------------

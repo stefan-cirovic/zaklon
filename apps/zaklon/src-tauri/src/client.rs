@@ -12,6 +12,7 @@ use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{DigitallySignedStruct, SignatureScheme};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use zaklon_pake::{FinishRequest, Refusal, StartReply, StartRequest};
 
 const LINK_FILE: &str = "hub-link.json";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(4);
@@ -342,18 +343,12 @@ impl ClientState {
             return Err("unsupported pairing code version".into());
         }
         let client = pinned_client(&payload.fp)?;
-        let nonce: String = {
-            use rand::RngCore;
-            let mut b = [0u8; 16];
-            rand::thread_rng().fill_bytes(&mut b);
-            b.iter().map(|x| format!("{x:02x}")).collect()
-        };
         let body = serde_json::json!({
             "code": payload.code,
             "password": password,
             "device_name": device_name,
             "platform": std::env::consts::OS,
-            "nonce": nonce,
+            "nonce": pair_nonce(),
         });
         let mut last_err = String::from("no hosts in pairing code");
         // Each host twice: a second try with the same nonce recovers a lost reply.
@@ -366,35 +361,113 @@ impl ClientState {
                     let text = res.text().await.unwrap_or_default();
                     if status.is_success() {
                         let paired: Paired = serde_json::from_str(&text).map_err(|e| format!("bad reply: {e}"))?;
-                        if paired.fingerprint != payload.fp {
-                            return Err("hub fingerprint changed during pairing".into());
-                        }
-                        let link = HubLink {
-                            hosts: payload.hosts.clone(),
-                            port: payload.port,
-                            fingerprint: payload.fp.clone(),
-                            hub_id: paired.hub_id,
-                            hub_name: paired.hub_name,
-                            device_id: paired.device_id,
-                            device_token: paired.device_token,
-                            last_host: Some(host.clone()),
-                        };
-                        self.store(Some(link))?;
-                        *self.reach() = Reach::default();
-                        self.reached();
-                        return Ok(self.summary());
+                        return self.keep_link(paired, payload.hosts.clone(), payload.port, payload.fp.clone(), host);
                     }
                     // The hub answered but refused: report its message and stop trying other hosts.
-                    let msg = serde_json::from_str::<serde_json::Value>(&text)
-                        .ok()
-                        .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(String::from))
-                        .unwrap_or_else(|| format!("hub replied {status}"));
-                    return Err(msg);
+                    return Err(refusal(&text, status));
                 }
                 Err(e) => last_err = format!("{host}: {}", short_err(&e)),
             }
         }
         Err(last_err)
+    }
+
+    /// Pair with a hub found on the network ("Find hubs"). A discovery answer
+    /// proves nothing (any device on the Wi-Fi can send one), so the
+    /// certificate is not taken from it. The phone connects accepting any
+    /// certificate, notes the one that brought the hub's answer, and checks
+    /// with the 6-digit code (SPAKE2, see the zaklon-pake crate) that the hub
+    /// showing that code holds that certificate. Only then does it send the
+    /// household password, over a connection pinned to that certificate.
+    pub async fn pair_found(
+        &self,
+        host: String,
+        port: u16,
+        code: String,
+        password: String,
+        device_name: String,
+    ) -> Result<LinkSummary, String> {
+        let code = code.trim();
+        if code.len() != 6 || !code.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(Refusal::WrongCode.to_string());
+        }
+        let base = format!("https://{host}:{port}");
+
+        // 1. Any certificate; the hub proves below that the one we got is its own.
+        let phone = zaklon_pake::Phone::start(code);
+        let open = pairing_client(Arc::new(SeenVerifier { seen: Arc::default() }))?;
+        let res = open
+            .post(format!("{base}{}", zaklon_pake::START_PATH))
+            .json(&StartRequest { msg: zaklon_pake::to_hex(phone.message()) })
+            .send()
+            .await
+            .map_err(|e| format!("{host}: {}", short_err(&e)))?;
+        // The certificate of the connection this very answer came on.
+        let seen = res
+            .extensions()
+            .get::<reqwest::tls::TlsInfo>()
+            .and_then(|info| info.peer_certificate())
+            .map(zaklon_pake::fingerprint_of)
+            .ok_or("the hub's certificate could not be read")?;
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(refusal(&text, status));
+        }
+        let reply: StartReply = serde_json::from_str(&text).map_err(|e| format!("bad reply: {e}"))?;
+
+        // 2. Nothing more is sent unless the hub proved that certificate with the code.
+        let proof = answer_hub(phone, &reply, &seen)?;
+
+        // 3. The password goes only to that certificate.
+        let fingerprint = zaklon_pake::to_hex(&seen);
+        let pinned = pairing_client(Arc::new(PinVerifier { fingerprint: fingerprint.clone() }))?;
+        let body = FinishRequest {
+            session: reply.session,
+            proof,
+            password,
+            device_name,
+            platform: Some(std::env::consts::OS.into()),
+            nonce: Some(pair_nonce()),
+        };
+        let mut last_err = String::new();
+        // Twice: a second try with the same nonce recovers a lost reply.
+        for _ in 0..2 {
+            match pinned.post(format!("{base}{}", zaklon_pake::FINISH_PATH)).json(&body).send().await {
+                Ok(res) => {
+                    let status = res.status();
+                    let text = res.text().await.unwrap_or_default();
+                    if !status.is_success() {
+                        return Err(refusal(&text, status));
+                    }
+                    let paired: Paired = serde_json::from_str(&text).map_err(|e| format!("bad reply: {e}"))?;
+                    return self.keep_link(paired, vec![host.clone()], port, fingerprint, &host);
+                }
+                Err(e) => last_err = format!("{host}: {}", short_err(&e)),
+            }
+        }
+        Err(last_err)
+    }
+
+    /// Keep what a pairing gave, if the hub names the certificate the phone pinned.
+    fn keep_link(&self, paired: Paired, hosts: Vec<String>, port: u16, fingerprint: String, host: &str) -> Result<LinkSummary, String> {
+        if paired.fingerprint != fingerprint {
+            return Err("hub fingerprint changed during pairing".into());
+        }
+        let link = HubLink {
+            hosts,
+            port,
+            fingerprint,
+            hub_id: paired.hub_id,
+            hub_name: paired.hub_name,
+            device_id: paired.device_id,
+            device_token: paired.device_token,
+            last_host: Some(host.to_string()),
+        };
+        self.store(Some(link))?;
+        *self.reach() = Reach::default();
+        self.reached();
+        Ok(self.summary())
     }
 
     /// Download from the hub into `dest`, resuming a `.part` file left by an
@@ -790,8 +863,11 @@ impl ServerCertVerifier for PinVerifier {
     }
 }
 
-/// Accepts any certificate and remembers its fingerprint; used only to read
-/// the public status of whatever answers at an address (see `other_hub_at`).
+/// Accepts any certificate (the server must still hold its key) and remembers
+/// its fingerprint. Used to read the public status of whatever answers at an
+/// address (see `other_hub_at`), and for the first step of pairing with a hub
+/// found on the network, where the hub then proves the certificate is its
+/// own (see `pair_found`).
 #[derive(Debug)]
 struct SeenVerifier {
     seen: Arc<Mutex<Option<String>>>,
@@ -848,6 +924,54 @@ fn pinned_client(fingerprint: &str) -> Result<reqwest::Client, String> {
         .no_proxy()
         .build()
         .map_err(|e| e.to_string())
+}
+
+/// A client for one step of pairing with a hub found on the network. It
+/// reports the certificate of the connection each answer came on, and
+/// follows no redirects: the answer must come from the address that was asked.
+fn pairing_client(verifier: Arc<dyn ServerCertVerifier>) -> Result<reqwest::Client, String> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let tls = rustls::ClientConfig::builder()
+        .dangerous()
+        .with_custom_certificate_verifier(verifier)
+        .with_no_client_auth();
+    reqwest::Client::builder()
+        .use_preconfigured_tls(tls)
+        .tls_info(true)
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(CONNECT_TIMEOUT)
+        .timeout(REQUEST_TIMEOUT)
+        .no_proxy()
+        .build()
+        .map_err(|e| e.to_string())
+}
+
+/// The hub's answer to the phone's first pairing message, checked against
+/// `seen`, the certificate of the connection it came on. Returns the phone's
+/// proof for the last step; an error means nothing more may be sent.
+fn answer_hub(phone: zaklon_pake::Phone, reply: &StartReply, seen: &zaklon_pake::Fingerprint) -> Result<String, String> {
+    let hex = |s: &str| zaklon_pake::from_hex(s).ok_or_else(|| Refusal::BadMessage.to_string());
+    let proof = phone
+        .check(&hex(&reply.msg)?, &hex(&reply.check)?, &hex(&reply.proof)?, seen)
+        .map_err(|r| r.to_string())?;
+    Ok(zaklon_pake::to_hex(&proof))
+}
+
+/// Random value a pairing request is sent with; repeating the request with
+/// it returns the same result (for a reply that got lost).
+fn pair_nonce() -> String {
+    use rand::RngCore;
+    let mut b = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut b);
+    zaklon_pake::to_hex(&b)
+}
+
+/// The hub's reason for refusing, or its status when it gave none.
+fn refusal(text: &str, status: reqwest::StatusCode) -> String {
+    serde_json::from_str::<serde_json::Value>(text)
+        .ok()
+        .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(String::from))
+        .unwrap_or_else(|| format!("hub replied {status}"))
 }
 
 /// Said when a Zaklon hub with a different identity keeps answering where
@@ -1132,6 +1256,102 @@ mod tests {
         assert!(state.read_store("hub-link").is_err());
         assert!(state.write_store("parked", &"x".repeat(STORE_MAX + 1)).is_err());
         assert_eq!(part_path(Path::new("/m/model.gguf")), Path::new("/m/model.gguf.part"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// What a hub (or whatever answers in its place) with `code` and the
+    /// certificate `own` replies to the phone's first message.
+    fn hub_reply(code: &str, phone: &zaklon_pake::Phone, own: &zaklon_pake::Fingerprint) -> StartReply {
+        let a = zaklon_pake::hub_answer(code, phone.message(), own).unwrap();
+        let hex = zaklon_pake::to_hex;
+        StartReply { session: "run".into(), msg: hex(&a.msg), check: hex(&a.check), proof: hex(&a.proof) }
+    }
+
+    #[test]
+    fn a_hub_found_on_the_network_must_prove_the_certificate_the_phone_saw() {
+        let (hub, relay) = ([1u8; 32], [2u8; 32]);
+        // The hub showing the same code, on the connection the phone got: go on.
+        let phone = zaklon_pake::Phone::start("123456");
+        let reply = hub_reply("123456", &phone, &hub);
+        assert_eq!(answer_hub(phone, &reply, &hub).unwrap().len(), 64);
+        // A mistyped code.
+        let phone = zaklon_pake::Phone::start("123457");
+        let reply = hub_reply("123456", &phone, &hub);
+        assert_eq!(answer_hub(phone, &reply, &hub).unwrap_err(), "wrong pairing code");
+        // The right code, passed on by a device that answered with its own
+        // certificate: the hub's proof is for another one.
+        let phone = zaklon_pake::Phone::start("123456");
+        let reply = hub_reply("123456", &phone, &hub);
+        assert!(answer_hub(phone, &reply, &relay).unwrap_err().contains("in place of the hub"));
+        // A device that knows neither the code nor the hub's key.
+        let phone = zaklon_pake::Phone::start("123456");
+        let reply = hub_reply("654321", &phone, &relay);
+        assert_eq!(answer_hub(phone, &reply, &relay).unwrap_err(), "wrong pairing code");
+        // Not even hex.
+        let phone = zaklon_pake::Phone::start("123456");
+        let mut reply = hub_reply("123456", &phone, &hub);
+        reply.proof = "zz".into();
+        assert_eq!(answer_hub(phone, &reply, &hub).unwrap_err(), "bad pairing message");
+        // The app has words for both refusals (they arrive as plain text).
+        let errors = include_str!("../../../../ui/src/errors.ts");
+        assert!(errors.contains("/wrong pairing code/"));
+        assert!(errors.contains("/answered in place of the hub/"));
+        assert!(Refusal::NotTheHub.to_string().contains("answered in place of the hub"));
+    }
+
+    /// The whole "Find hubs" pairing with a real hub on this computer.
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn pairs_with_a_hub_found_on_the_network() {
+        use serde_json::{json, Value};
+
+        let root = temp("found-hub");
+        let free = || std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port();
+        let (tls, local) = (free(), free());
+        let config = json!({ "hub_id": "found-hub", "port": tls, "local_port": local, "install_port": free(), "beacon_port": free(), "auto_update_check": false });
+        std::fs::create_dir_all(root.join("household")).unwrap();
+        std::fs::write(root.join("household/hub.json"), config.to_string()).unwrap();
+        // Listen on 127.0.0.1 only: no DNS-SD, and no firewall question.
+        std::env::set_var("ZAKLON_LOOPBACK_ONLY", "1");
+        let hub = zaklon_hub::Hub::open(&root).unwrap();
+        tokio::spawn(async move {
+            let _ = hub.run().await;
+        });
+        let laptop = reqwest::Client::builder().no_proxy().build().unwrap();
+        let base = format!("http://127.0.0.1:{local}");
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while laptop.get(format!("{base}/api/status")).send().await.is_err() {
+            assert!(Instant::now() < deadline, "the hub did not start");
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        let status: Value = laptop.get(format!("{base}/api/status")).send().await.unwrap().json().await.unwrap();
+        let fingerprint = status["fingerprint"].as_str().unwrap().to_string();
+        let r = laptop.post(format!("{base}/api/setup")).json(&json!({ "password": "correct horse" })).send().await.unwrap();
+        assert_eq!(r.status().as_u16(), 204);
+        let pair: Value = laptop.post(format!("{base}/api/pair/start")).send().await.unwrap().json().await.unwrap();
+        let code = pair["code"].as_str().unwrap().to_string();
+        let wrong = if code == "000000" { "111111" } else { "000000" };
+
+        let dir = temp("found-phone");
+        let phone = ClientState::load(dir.clone(), dir.join("cache"));
+        async fn try_pair(phone: &ClientState, port: u16, code: &str, password: &str) -> Result<LinkSummary, String> {
+            phone.pair_found("127.0.0.1".into(), port, code.into(), password.into(), "Ana's phone".into()).await
+        }
+        // A wrong code stops before the password is sent.
+        assert_eq!(try_pair(&phone, tls, wrong, "correct horse").await.unwrap_err(), "wrong pairing code");
+        assert!(!phone.summary().linked);
+        // The right code with a wrong password.
+        assert_eq!(try_pair(&phone, tls, &code, "not the password").await.unwrap_err(), "wrong household password");
+        // Both right (the third and last try of this code): paired and pinned.
+        let link = try_pair(&phone, tls, &code, "correct horse").await.unwrap();
+        assert!(link.linked);
+        assert_eq!(link.hosts, ["127.0.0.1"]);
+        assert_eq!(phone.link().unwrap().fingerprint, fingerprint);
+        let me = phone.request("GET".into(), "/api/me".into(), None).await.unwrap();
+        assert_eq!(me.status, 200, "{}", me.body);
+        assert!(me.body.contains("Ana's phone"));
+        // The code is used up.
+        assert!(try_pair(&phone, tls, &code, "correct horse").await.unwrap_err().contains("invalid or expired"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

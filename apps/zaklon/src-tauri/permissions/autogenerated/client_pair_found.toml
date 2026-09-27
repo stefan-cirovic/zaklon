@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-client-pair-found"
+description = "Enables the client_pair_found command without any pre-configured scope."
+commands.allow = ["client_pair_found"]
+
+[[permission]]
+identifier = "deny-client-pair-found"
+description = "Denies the client_pair_found command without any pre-configured scope."
+commands.deny = ["client_pair_found"]

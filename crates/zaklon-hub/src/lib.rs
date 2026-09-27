@@ -46,6 +46,21 @@ pub use zaklon_core::config::{BEACON_PORT, INSTALL_PORT, LOCAL_PORT};
 pub struct PairingSession {
     pub expires_at: Instant,
     pub failed_attempts: u8,
+    /// Code checks from "Find hubs" waiting for the phone's answer, by run
+    /// id. Each one took one of the code's attempts, so there are never more
+    /// than those.
+    pub runs: HashMap<String, PakeRun>,
+}
+
+/// One code check from "Find hubs" (SPAKE2, see the zaklon-pake crate): the
+/// hub has answered the phone's first message and waits for its proof.
+#[derive(Debug, Clone)]
+pub struct PakeRun {
+    pub started: Instant,
+    /// The address that started it.
+    pub ip: IpAddr,
+    /// The proof the phone must send back.
+    pub expect: [u8; 32],
 }
 
 /// Failed pairing attempts. Each network address is blocked on its own after
@@ -101,6 +116,19 @@ impl PairingFailures {
         }
     }
 
+    /// Takes back one failure from `ip`. A code check from "Find hubs" counts
+    /// as failed when it starts (only the phone learns whether the code was
+    /// right) and is taken back when the phone pairs with it.
+    pub fn forgive(&mut self, ip: IpAddr) {
+        if let Some(entry) = self.by_ip.get_mut(&ip) {
+            entry.0 = entry.0.saturating_sub(1);
+            if entry.0 == 0 {
+                self.by_ip.remove(&ip);
+            }
+        }
+        self.total = self.total.saturating_sub(1);
+    }
+
     /// A new code on the laptop starts the total over; blocked addresses stay
     /// blocked until their time runs out.
     pub fn reset_total(&mut self) {
@@ -122,6 +150,7 @@ pub struct HubState {
     pub pairing_failures: Mutex<PairingFailures>,
     /// Recent successful pairings by the phone's nonce, so a phone whose
     /// reply got lost can ask again and get the same answer (no ghost device).
+    /// The text is what the repeat must match: the code, or the code check.
     pub recent_pairs: Mutex<HashMap<String, (Instant, String, api::Paired)>>,
     /// Setting or changing the household password and turning on backup
     /// encryption happen one at a time, so the password and the backup key
@@ -357,6 +386,21 @@ mod tests {
         assert!(!f.is_blocked(good, now), "other phones can still pair");
         // The block runs out.
         assert!(!f.is_blocked(bad, now + PairingFailures::IP_BLOCK));
+    }
+
+    #[test]
+    fn a_pairing_that_succeeds_is_not_held_against_the_address() {
+        let mut f = PairingFailures::default();
+        let now = Instant::now();
+        let ip: IpAddr = "192.168.1.50".parse().unwrap();
+        for _ in 1..PairingFailures::MAX_PER_IP {
+            f.record(ip, now);
+            f.forgive(ip);
+        }
+        assert_eq!(f.record(ip, now), PairingFailure::Counted, "only the failures count");
+        f.forgive(ip);
+        f.forgive(ip);
+        assert!(f.by_ip.is_empty() && f.total == 0, "never below zero");
     }
 
     #[test]

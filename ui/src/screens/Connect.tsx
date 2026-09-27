@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { clientDiscover, clientPair, type DiscoveredHub, type PairPayload } from "../api";
+import { clientDiscover, clientPair, clientPairFound, type DiscoveredHub, type PairPayload } from "../api";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
 import { securityCode } from "../format";
@@ -14,7 +14,6 @@ export default function Connect({ t, lang, setLang, onLinked, notice }: Props) {
   const [hubs, setHubs] = useState<DiscoveredHub[] | null>(null);
   const [picked, setPicked] = useState<DiscoveredHub | null>(null);
   const [code, setCode] = useState("");
-  const [matches, setMatches] = useState(false);
   const [password, setPassword] = useState("");
   const [deviceName, setDeviceName] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -51,30 +50,28 @@ export default function Connect({ t, lang, setLang, onLinked, notice }: Props) {
   };
 
   // A hub found on the network is only a suggestion: anyone on the Wi-Fi can
-  // answer. The person must confirm the security code matches the laptop's
-  // screen before the password is sent. (The QR code carries it already.)
-  const fromDiscovery = payload === null && picked !== null;
-  const effective: PairPayload | null =
-    payload ??
-    (picked && code.length === 6 && matches
-      ? { v: 1, hosts: [picked.host], port: picked.port, fp: picked.fp, code, name: picked.name, install_port: 8480 }
-      : null);
+  // answer. The phone checks it with the code from the laptop before the
+  // password is sent (pair_found in client.rs). The QR code carries the hub's
+  // certificate itself.
+  const found = payload === null ? picked : null;
+  const ready = payload !== null || (found !== null && code.length === 6);
 
   const reset = () => {
     setPayload(null);
     setPicked(null);
     setCode("");
-    setMatches(false);
     setErr(null);
   };
 
   const doPair = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!effective) return;
+    if (!ready) return;
     setBusy(true);
     setErr(null);
+    const name = deviceName.trim() || t("defaultPhoneName");
     try {
-      await clientPair(effective, password, deviceName.trim() || t("defaultPhoneName"));
+      if (payload) await clientPair(payload, password, name);
+      else if (found) await clientPairFound(found, code, password, name);
       onLinked();
     } catch (ex) {
       setErr(errText(t, ex));
@@ -99,7 +96,7 @@ export default function Connect({ t, lang, setLang, onLinked, notice }: Props) {
       </div>
       {notice && <p className="warn" role="alert">{notice}</p>}
 
-      {!effective && (
+      {!payload && (
         <div className="stack">
           <button className="btn" onClick={doScan}>{t("scanQr")}</button>
           <button className="btn secondary" onClick={doDiscover} disabled={busy}>{t("findHubs")}</button>
@@ -112,7 +109,7 @@ export default function Connect({ t, lang, setLang, onLinked, notice }: Props) {
                   aria-pressed={picked?.host === h.host}
                   onClick={() => {
                     setPicked(h);
-                    setMatches(false);
+                    setErr(null);
                   }}
                 >
                   <div>
@@ -124,40 +121,46 @@ export default function Connect({ t, lang, setLang, onLinked, notice }: Props) {
               ))}
             </div>
           )}
-          {fromDiscovery && picked && (
-            <div className="panel stack">
-              <label className="field">
-                {t("pairCodeEntry")}
-                <input type="text" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
-              </label>
-              <p>
-                {t("securityCode")}: <strong className="sec-code">{securityCode(picked.fp)}</strong>
-              </p>
-              <label className="check-line">
-                <input type="checkbox" checked={matches} onChange={(e) => setMatches(e.target.checked)} />
-                <span>{t("securityMatches")}</span>
-              </label>
-            </div>
-          )}
         </div>
       )}
 
-      {effective && (
+      {(payload || found) && (
         <form className="stack" onSubmit={doPair}>
           <div className="panel">
             <div className="label">{t("hubStatus")}</div>
-            <div className="value" style={{ fontSize: 18 }}>{effective.name || effective.hosts[0]}</div>
+            <div className="value" style={{ fontSize: 18 }}>{payload ? payload.name || payload.hosts[0] : found?.name || found?.host}</div>
           </div>
+          {found && (
+            <div className="stack">
+              <label className="field">
+                {t("pairCodeEntry")}
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                  required
+                  autoFocus
+                />
+              </label>
+              <p className="muted" style={{ fontSize: 14 }}>{t("pairCodeCheck")}</p>
+              <p className="muted" style={{ fontSize: 14 }}>
+                {t("securityCode")}: <strong className="sec-code">{securityCode(found.fp)}</strong>
+              </p>
+            </div>
+          )}
           <label className="field">
             {t("password")}
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus autoComplete="current-password" />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus={payload !== null} autoComplete="current-password" />
           </label>
           <label className="field">
             {t("deviceName")}
             <input type="text" value={deviceName} onChange={(e) => setDeviceName(e.target.value)} maxLength={60} placeholder={t("deviceNameHint")} />
           </label>
           <div className="row actions">
-            <button className="btn" disabled={busy || !password}>{t("pairNow")}</button>
+            <button className="btn" disabled={busy || !password || !ready}>{t("pairNow")}</button>
             <button type="button" className="btn secondary" onClick={reset}>{t("cancel")}</button>
           </div>
         </form>

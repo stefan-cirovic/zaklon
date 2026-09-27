@@ -11,6 +11,7 @@
     "allow-app-restart",
     "allow-client-state",
     "allow-client-pair",
+    "allow-client-pair-found",
     "allow-client-request",
     "allow-client-forget",
     "allow-client-discover",

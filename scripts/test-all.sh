@@ -10,10 +10,10 @@ echo "== interface build (includes type check)"
 pnpm --filter ui build
 
 echo "== clippy"
-cargo clippy -p zaklon-core -p zaklon-hub -p zaklon-app --all-targets -- -D warnings
+cargo clippy -p zaklon-core -p zaklon-pake -p zaklon-hub -p zaklon-app --all-targets -- -D warnings
 
 echo "== unit + hub end-to-end tests"
-cargo test -p zaklon-core -p zaklon-hub -p zaklon-app
+cargo test -p zaklon-core -p zaklon-pake -p zaklon-hub -p zaklon-app
 
 echo "== phone offline logic"
 node ui/e2e/unit/offline.check.mts

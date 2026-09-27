@@ -17,6 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 zaklon-core = { path = "../zaklon-core" }
+zaklon-pake = { path = "../zaklon-pake" }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true

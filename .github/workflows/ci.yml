@@ -46,10 +46,10 @@ jobs:
         run: pnpm --filter ui build
 
       - name: Clippy
-        run: cargo clippy -p zaklon-core -p zaklon-hub -p zaklon-app --all-targets -- -D warnings
+        run: cargo clippy -p zaklon-core -p zaklon-pake -p zaklon-hub -p zaklon-app --all-targets -- -D warnings
 
       - name: Unit and hub end-to-end tests
-        run: cargo test -p zaklon-core -p zaklon-hub
+        run: cargo test -p zaklon-core -p zaklon-pake -p zaklon-hub
 
       - name: Desktop app tests
         run: cargo test -p zaklon-app

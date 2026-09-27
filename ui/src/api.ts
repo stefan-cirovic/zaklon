@@ -204,7 +204,19 @@ export function clientState(): Promise<LinkSummary> {
 }
 
 export async function clientPair(payload: PairPayload, password: string, deviceName: string): Promise<LinkSummary> {
-  const link = await invoke<LinkSummary>("client_pair", { payload, password, deviceName });
+  return linked(await invoke<LinkSummary>("client_pair", { payload, password, deviceName }));
+}
+
+/**
+ * Pair with a hub found on the network. The phone first checks with the
+ * 6-digit code that the hub it reached is the laptop showing that code, and
+ * only then sends the password (see client.rs, pair_found).
+ */
+export async function clientPairFound(hub: DiscoveredHub, code: string, password: string, deviceName: string): Promise<LinkSummary> {
+  return linked(await invoke<LinkSummary>("client_pair_found", { host: hub.host, port: hub.port, code, password, deviceName }));
+}
+
+async function linked(link: LinkSummary): Promise<LinkSummary> {
   markOnline();
   // Back with the hub it left: shopping list changes set aside then are sent now.
   await adoptParked(link.hub_id).catch(() => 0);

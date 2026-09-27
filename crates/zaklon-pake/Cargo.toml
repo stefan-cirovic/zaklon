@@ -1,0 +1,18 @@
+[package]
+name = "zaklon-pake"
+description = "Pairing a phone with a hub it found on the network: SPAKE2 on the pairing code, bound to the hub's TLS certificate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+# Used by the hub and by the phone app (Android too), so it stays small: no
+# database, no TLS, no async runtime.
+[dependencies]
+serde.workspace = true
+sha2.workspace = true
+spake2 = "0.4"
+hkdf = "0.12"
+hmac = "0.12"
+subtle = "2"

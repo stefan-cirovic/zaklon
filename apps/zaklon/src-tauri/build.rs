@@ -7,6 +7,7 @@ const COMMANDS: &[&str] = &[
     "app_restart",
     "client_state",
     "client_pair",
+    "client_pair_found",
     "client_request",
     "client_forget",
     "client_discover",
