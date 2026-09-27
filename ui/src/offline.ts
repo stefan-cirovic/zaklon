@@ -183,8 +183,10 @@ async function flushOnce(send: (method: string, path: string, body: string | nul
       }
     }
     const res = await send(item.method, item.path, body); // throws when the hub is still out of reach
-    if (res.status >= 500 || res.status === 408 || res.status === 429) {
-      // The hub is busy or had a problem: keep the change and try again later.
+    if (res.status >= 500 || res.status === 408 || res.status === 429 || res.status === 401 || res.status === 403) {
+      // The hub is busy or had a problem, or did not accept this phone (it
+      // may have been reinstalled; unlinking sets the changes aside): keep
+      // the change and try again later.
       throw new Error(`hub replied ${res.status}`);
     }
     if (res.status < 300 && offlineId) {

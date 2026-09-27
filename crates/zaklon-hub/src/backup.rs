@@ -350,6 +350,123 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A failed final swap (the restored folder cannot be moved into place)
+    /// puts the old household folder back and reports the failure.
+    /// Windows only: a directory holding a file that is open without sharing
+    /// cannot be deleted or renamed there.
+    #[cfg(windows)]
+    #[test]
+    fn a_failed_swap_puts_the_old_data_back() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let root = std::env::temp_dir().join(format!("zaklon-backup-test-{}", uuid::Uuid::new_v4()));
+        let cfg = Config::load_or_init(&root).unwrap();
+        let db = Db::open(&cfg.db_path()).unwrap();
+        db.set_setting("marker", "before").unwrap();
+        let zip = create(&cfg, &db, &cfg.backups_dir(), false).unwrap();
+        db.set_setting("marker", "current").unwrap();
+        drop(db);
+        stage_restore(&cfg, &zip).unwrap();
+
+        // A leftover "household.new" with a file held open and not shared:
+        // the cleanup cannot remove it, and the finished folder cannot be
+        // renamed into place.
+        let fresh = root.join("household.new");
+        std::fs::create_dir_all(fresh.join("tls")).unwrap();
+        let lock = std::fs::OpenOptions::new().write(true).create(true).share_mode(0).open(fresh.join("tls").join("lock")).unwrap();
+
+        let result = finish_pending_restore(&root);
+        drop(lock);
+        let err = result.expect_err("the swap cannot succeed while the folder is locked");
+        assert!(err.contains("swapping in the restored data"), "{err}");
+
+        // The old data is back where it belongs, untouched.
+        let db = Db::open(&cfg.db_path()).unwrap();
+        assert_eq!(db.get_setting("marker").unwrap().as_deref(), Some("current"));
+        drop(db);
+        assert!(cfg.config_path().is_file());
+        // Nothing is left under the "before restore" name: it went back.
+        assert!(!std::fs::read_dir(cfg.backups_dir()).unwrap().flatten().any(|e| e.file_name().to_string_lossy().starts_with("household-before-restore-")));
+        // The failure is reported (Err above). The restore still shows as
+        // pending, but its database and settings were already moved into
+        // "household.new", so the next start discards it as incomplete: the
+        // household must stage the backup again.
+        assert!(restore_pending(&root));
+        assert!(!root.join(PENDING).join("household.db").exists());
+        assert!(finish_pending_restore(&root).is_err(), "the next start discards the emptied restore");
+        assert!(!restore_pending(&root));
+        let db = Db::open(&cfg.db_path()).unwrap();
+        assert_eq!(db.get_setting("marker").unwrap().as_deref(), Some("current"));
+        drop(db);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Entries that try to leave the unpacking folder are never written.
+    #[test]
+    fn a_backup_cannot_write_outside_the_pending_folder() {
+        let base = std::env::temp_dir().join(format!("zaklon-backup-test-{}", uuid::Uuid::new_v4()));
+        let root = base.join("root");
+        let cfg = Config::load_or_init(&root).unwrap();
+        let db = Db::open(&cfg.db_path()).unwrap();
+        let good = create(&cfg, &db, &cfg.backups_dir(), false).unwrap();
+        drop(db);
+
+        // The real backup's files plus some hostile names.
+        let build = |extra: &[&str]| -> PathBuf {
+            let path = base.join(format!("evil-{}.zip", uuid::Uuid::new_v4()));
+            let mut src = zip::ZipArchive::new(std::fs::File::open(&good).unwrap()).unwrap();
+            let mut out = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+            let opts = zip::write::SimpleFileOptions::default();
+            for name in extra {
+                out.start_file(*name, opts).unwrap();
+                out.write_all(b"pwned").unwrap();
+            }
+            for i in 0..src.len() {
+                let mut e = src.by_index(i).unwrap();
+                let name = e.name().to_string();
+                let mut bytes = Vec::new();
+                e.read_to_end(&mut bytes).unwrap();
+                out.start_file(name, opts).unwrap();
+                out.write_all(&bytes).unwrap();
+            }
+            out.finish().unwrap();
+            path
+        };
+        let outside = |root: &Path| -> Vec<PathBuf> {
+            [
+                base.join("evil.txt"),
+                base.join("x"),
+                root.join("evil.txt"),
+                root.join("x"),
+                root.join("household").join("evil.txt"),
+                root.join(PENDING).join("x"),
+                root.join(format!("{PENDING}.tmp")).join("x"),
+                root.join(PENDING).join("evil.txt"),
+                root.join(PENDING).join("abs.txt"),
+            ]
+            .into_iter()
+            .filter(|p| p.exists())
+            .collect()
+        };
+
+        let evil = build(&["../evil.txt", "tls/../x", "../../evil.txt", "tls/../../evil.txt", "tls\\..\\..\\evil.txt", "/abs.txt", "household/../../evil.txt"]);
+        let staged = stage_restore(&cfg, &evil);
+        assert!(staged.is_ok(), "the hostile names are skipped, the rest restores: {staged:?}");
+        assert_eq!(outside(&root), Vec::<PathBuf>::new(), "nothing written outside");
+        let tls: Vec<String> = std::fs::read_dir(root.join(PENDING).join("tls")).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        assert!(tls.iter().all(|n| n != "x" && !n.contains("..")), "{tls:?}");
+
+        // "tls/.." names the pending folder itself: the file cannot be
+        // created, so the restore fails, but nothing is written anywhere and
+        // the earlier staged restore is kept.
+        let evil = build(&["tls/.."]);
+        assert!(stage_restore(&cfg, &evil).is_err());
+        assert_eq!(outside(&root), Vec::<PathBuf>::new());
+        assert!(!root.join(format!("{PENDING}.tmp")).exists(), "the half-unpacked folder is removed");
+        assert!(restore_pending(&root), "the earlier staged restore still waits");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn automatic_backups_keep_seven() {
         let root = std::env::temp_dir().join(format!("zaklon-backup-test-{}", uuid::Uuid::new_v4()));

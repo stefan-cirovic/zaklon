@@ -335,6 +335,60 @@ async fn full_hub_flow() {
     assert_eq!(r.status().as_u16(), 403);
     let r = as_phone(reqwest::Method::POST, "/api/password").json(&json!({ "new_password": "hijacked!!" })).send().await.unwrap();
     assert_eq!(r.status().as_u16(), 403);
+    // Nor anything that touches this computer's data, network or drives.
+    let laptop_only: &[(reqwest::Method, &str, Value)] = &[
+        (reqwest::Method::GET, "/api/backups", Value::Null),
+        (reqwest::Method::POST, "/api/backups", json!({ "dir": "" })),
+        (reqwest::Method::POST, "/api/backups/restore", json!({ "path": "C:\\nothing.zip" })),
+        (reqwest::Method::POST, "/api/updates/settings", json!({ "enabled": false })),
+        (reqwest::Method::GET, "/api/hotspot", Value::Null),
+        (reqwest::Method::POST, "/api/hotspot/start", json!({})),
+        (reqwest::Method::POST, "/api/hotspot/stop", json!({})),
+        (reqwest::Method::GET, "/api/firewall", Value::Null),
+        (reqwest::Method::POST, "/api/firewall/allow", json!({})),
+        (reqwest::Method::POST, "/api/export/cancel", json!({})),
+        (reqwest::Method::POST, "/api/packs/import", json!({ "dir": hub.root.display().to_string() })),
+    ];
+    for (method, path, body) in laptop_only {
+        let mut req = as_phone(method.clone(), path);
+        if !body.is_null() {
+            req = req.json(body);
+        }
+        let r = req.send().await.unwrap();
+        assert_eq!(r.status().as_u16(), 403, "a phone must not reach {method} {path}");
+    }
+    // Other websites in the laptop's browser are refused on the local port too:
+    // a foreign origin, the opaque "null" origin (sandboxed pages, file://) and
+    // a request the browser marks as cross-site.
+    for (name, value) in [("origin", "http://evil.example"), ("origin", "null"), ("sec-fetch-site", "cross-site")] {
+        for (method, path) in [(reqwest::Method::POST, "/api/backups"), (reqwest::Method::POST, "/api/export/cancel"), (reqwest::Method::GET, "/api/backups")] {
+            let mut req = hub.http.request(method.clone(), format!("{}{path}", hub.local)).header(name, value);
+            if method == reqwest::Method::POST {
+                req = req.json(&json!({ "dir": "" }));
+            }
+            let r = req.send().await.unwrap();
+            assert_eq!(r.status().as_u16(), 403, "{name}: {value} must not reach {method} {path}");
+        }
+    }
+    // A lookalike of the hub's own origin on another port is foreign as well.
+    let port = hub.local.rsplit(':').next().unwrap().parse::<u16>().unwrap();
+    let r = hub
+        .http
+        .post(format!("{}/api/export/cancel", hub.local))
+        .header("origin", format!("http://127.0.0.1:{}", port.wrapping_add(1)))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status().as_u16(), 403, "another local port is another site");
+    // The hub's own page is still let in, and no backup was made by the refused requests.
+    let r = hub.http.get(format!("{}/api/backups", hub.local)).header("origin", hub.local.as_str()).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 200);
+    let backups: Value = r.json().await.unwrap();
+    // (The hub's own daily backup may be there; a hand-made one must not.)
+    assert!(
+        backups["backups"].as_array().unwrap().iter().all(|b| b["automatic"] == true),
+        "refused requests made no backup: {backups}"
+    );
 
     // 10. Supplies from the phone, with history naming the phone.
     let r = as_phone(reqwest::Method::POST, "/api/items")

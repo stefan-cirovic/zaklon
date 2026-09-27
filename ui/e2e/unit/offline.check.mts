@@ -83,6 +83,32 @@ assert.equal(off.offlineState().waiting, 1, "kept after 503");
 await off.flush(async () => ({ status: 404, body: "" }));
 assert.equal(off.offlineState().waiting, 0, "dropped after 404");
 
+// A "bought" for an entry the hub no longer has (404) is dropped, and the
+// changes after it are still sent.
+store.clear();
+off.queue("POST", "/api/shopping/gone/bought", null);
+off.queue("POST", "/api/shopping/r/dismiss", null);
+const seen: string[] = [];
+await off.flush(async (_m, path) => {
+  seen.push(path);
+  return { status: path.includes("gone") ? 404 : 204, body: "" };
+});
+assert.deepEqual(seen, ["/api/shopping/gone/bought", "/api/shopping/r/dismiss"]);
+assert.equal(off.offlineState().waiting, 0, "dropped after 404, the rest sent");
+
+// A 401 (token not accepted) keeps the changes: the phone may be paired
+// again, and unlinking sets them aside for the same hub.
+off.queue("POST", "/api/shopping/s/bought", null);
+off.queue("POST", "/api/shopping/t/dismiss", null);
+let unauthorized = 0;
+await assert.rejects(off.flush(async () => {
+  unauthorized++;
+  return { status: 401, body: "" };
+}));
+assert.equal(unauthorized, 1, "stops at the first refusal");
+assert.equal(off.offlineState().waiting, 2, "401 keeps the queue");
+store.clear();
+
 // Leaving the hub forgets its data, but sets waiting changes aside for it.
 off.remember("/api/items", "[]");
 off.queue("POST", "/api/shopping/z/dismiss", null);

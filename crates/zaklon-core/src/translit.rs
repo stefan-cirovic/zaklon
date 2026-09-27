@@ -295,6 +295,38 @@ mod tests {
     }
 
     #[test]
+    fn latin_capitals_to_cyrillic() {
+        assert_eq!(latin_to_cyrillic("NJEGOŠ"), "ЊЕГОШ");
+        assert_eq!(latin_to_cyrillic("Njegoš"), "Његош");
+        assert_eq!(latin_to_cyrillic("NjEGOŠ"), "ЊЕГОШ");
+        assert_eq!(latin_to_cyrillic("DŽEP i LJILJANA"), "ЏЕП и ЉИЉАНА");
+        assert_eq!(latin_to_cyrillic("Džep"), "Џеп");
+    }
+
+    #[test]
+    fn foreign_words_keep_letters_without_a_serbian_counterpart() {
+        // Current behaviour: letters with a Serbian counterpart are converted,
+        // w/q/x/y are kept, so English words come out mixed. That is fine for
+        // search folding (both sides fold the same way) but not for display.
+        assert_eq!(latin_to_cyrillic("Wi-Fi mreža"), "Wи-Фи мрежа");
+        assert_eq!(latin_to_cyrillic("xy"), "xy");
+        assert_eq!(fold("Wi-Fi"), fold("wi-fi"));
+    }
+
+    #[test]
+    fn pangram_round_trips() {
+        // Contains every letter of the Serbian alphabet.
+        let cyr = "Љубазни фењерџија чађавог лица хоће да ми покаже штос";
+        let lat = "Ljubazni fenjerdžija čađavog lica hoće da mi pokaže štos";
+        assert_eq!(cyrillic_to_latin(cyr), lat);
+        assert_eq!(latin_to_cyrillic(lat), cyr);
+        assert_eq!(latin_to_cyrillic(&cyrillic_to_latin(cyr)), cyr);
+        assert_eq!(cyrillic_to_latin(&latin_to_cyrillic(lat)), lat);
+        let upper = cyr.to_uppercase();
+        assert_eq!(latin_to_cyrillic(&cyrillic_to_latin(&upper)), upper);
+    }
+
+    #[test]
     fn candidates_cover_missing_diacritics() {
         let c = cyrillic_candidates("secer", 12);
         assert_eq!(c[0], "сецер");
