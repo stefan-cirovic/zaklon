@@ -48,7 +48,7 @@ pub struct PairingSession {
     /// Attempts taken, from every address together.
     pub failed_attempts: u8,
     /// Attempts taken by each address: one address may take only some of
-    /// them (see `api.rs`), so a device that is not the phone being paired
+    /// them (see `api/pairing.rs`), so a device that is not the phone being paired
     /// cannot use them all up on its own.
     pub attempts_by_ip: HashMap<IpAddr, u8>,
     /// The pairing QR code's secret (see `zaklon_core::pairing::pairing_secret`):

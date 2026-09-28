@@ -63,7 +63,7 @@ const KNOWN: [RegExp, Key][] = [
 ];
 
 /**
- * The hub's error codes: every code in ERROR_CODES in the hub's api.rs, plus
+ * The hub's error codes: every code in ERROR_CODES in the hub's api/error.rs, plus
  * the ones error_code() falls back to by status. A hub test reads this list
  * and fails when a code is missing. "errGeneric" means there are no better
  * words than "Something went wrong." (in English the hub's text follows).
