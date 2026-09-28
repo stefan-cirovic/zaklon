@@ -1,7 +1,8 @@
 //! The Zaklon map against a real hub: tiles from the map archives (a map
 //! pack from Add-ons and the world overview that comes with the app, the
 //! most detailed first, tile by tile), the fonts and icons of its style, a
-//! map pack put in place by hand, and who may read all this.
+//! map pack put in place by hand, who may read all this, and the
+//! household's home location with "find a place".
 //!
 //! Run with: `cargo test -p zaklon-hub --test map -- --nocapture`
 
@@ -88,7 +89,13 @@ async fn the_map_comes_from_the_hub_most_detailed_first() {
     std::fs::create_dir_all(assets.join("sprites")).unwrap();
     std::fs::write(assets.join("sprites/dark.json"), br#"{"icon":{}}"#).unwrap();
     std::fs::write(assets.join("sprites/dark@2x.png"), b"\x89PNG").unwrap();
-    std::fs::write(assets.join("cities.tsv"), b"secret\n").unwrap();
+    std::fs::write(
+        assets.join("cities.tsv"),
+        "Belgrade\tBelgrade\tBeograd\tCentral Serbia\tRS\t44.8040\t20.4651\t1273651\n\
+         Novi Sad\tNovi Sad\t\tVojvodina\tRS\t45.2517\t19.8369\t215400\n\
+         Belgrade\tBelgrade\t\tMontana\tUS\t45.7760\t-111.1769\t8029\n",
+    )
+    .unwrap();
 
     // The world map from Add-ons (zoom 0-3, without tile 1/1/1), put in the
     // hub's maps folder by hand before the hub starts; and one of the wrong
@@ -199,4 +206,45 @@ async fn the_map_comes_from_the_hub_most_detailed_first() {
     map_until(&hub, "the world map is noticed", |m| m["tiles"]["detailed"] == true).await;
     map_until(&hub, "and checked", |m| m["world"]["status"] == "installed").await;
     assert_eq!(tile_text(&hub, 3, 4, 2).await, (200, "world 3/4/2".into()));
+
+    // 7. The home location: one for the household, set on the laptop or a phone.
+    let as_phone = |method: Method, path: &str| phone.request(method, format!("{}{path}", hub.tls)).bearer_auth(&token);
+    assert_eq!(hub.get("/api/home-location").await, (200, json!({ "home": null })));
+    let (st, set) = hub
+        .send(Method::PUT, "/api/home-location", Some(json!({ "lat": 44.8040123456, "lon": 20.4651, "label": "Belgrade, Central Serbia\n", "source": "place" })))
+        .await;
+    assert_eq!(st, 200, "{set}");
+    assert_eq!((set["home"]["lat"].as_f64(), set["home"]["lon"].as_f64()), (Some(44.804012), Some(20.4651)));
+    assert_eq!(set["home"]["label"], "Belgrade, Central Serbia");
+    assert_eq!(set["home"]["set_by"], "laptop");
+    let seen: Value = as_phone(Method::GET, "/api/home-location").send().await.unwrap().json().await.unwrap();
+    assert_eq!(seen["home"]["label"], "Belgrade, Central Serbia", "every device sees it");
+    assert_eq!(hub.get("/api/map").await.1["home"]["lat"], 44.804012, "the map knows it too");
+    let r = as_phone(Method::PUT, "/api/home-location").json(&json!({ "lat": 45.2517, "lon": 19.8369, "source": "gps" })).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 200, "a phone may set it");
+    let (_, home) = hub.get("/api/home-location").await;
+    assert_eq!((home["home"]["source"].as_str(), home["home"]["set_by"].as_str()), (Some("gps"), Some("Ana's phone")));
+    assert!(home["home"].get("label").is_none(), "the old name does not stay with the new place");
+    for (lat, lon) in [(91.0, 20.0), (-90.5, 0.0), (45.0, 180.5), (45.0, -181.0)] {
+        let (st, e) = hub.send(Method::PUT, "/api/home-location", Some(json!({ "lat": lat, "lon": lon }))).await;
+        assert_eq!((st, e["code"].as_str()), (400, Some("bad_location")), "{lat} {lon}");
+    }
+    assert_eq!(hub.get("/api/home-location").await.1["home"]["source"], "gps", "a refused place changes nothing");
+    let r = phone.get(format!("{}/api/home-location", hub.tls)).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 401, "not for a device that is not paired");
+    assert_eq!(as_phone(Method::DELETE, "/api/home-location").send().await.unwrap().status().as_u16(), 204);
+    assert_eq!(hub.get("/api/home-location").await.1, json!({ "home": null }));
+
+    // 8. "Find a place", by any of its names, the larger first.
+    let (st, found) = hub.get("/api/map/places?q=beograd").await;
+    assert_eq!(st, 200, "{found}");
+    assert_eq!(found[0]["name"], "Belgrade");
+    assert_eq!(found[0]["name_sr"], "Beograd");
+    assert_eq!(found[0]["country"], "RS");
+    let (_, found) = hub.get("/api/map/places?q=Belgrade").await;
+    assert_eq!(found.as_array().unwrap().iter().map(|p| p["country"].as_str().unwrap()).collect::<Vec<_>>(), ["RS", "US"]);
+    assert_eq!(hub.get("/api/map/places?q=n").await.1, json!([]), "too short");
+    let r = as_phone(Method::GET, "/api/map/places?q=novi%20sad").send().await.unwrap();
+    assert_eq!(r.json::<Value>().await.unwrap()[0]["name"], "Novi Sad");
+    assert_eq!(hub.get("/api/map").await.1["places"], true);
 }

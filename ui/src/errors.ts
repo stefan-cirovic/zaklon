@@ -81,6 +81,7 @@ const CODES: Record<string, Key> = {
   bad_quantity: "errBadQuantity",
   several_batches: "errSeveralBatches",
   bad_barcode: "errBadBarcode",
+  bad_location: "errBadLocation",
   not_found: "errNotFound",
   bad_category: "errGeneric",
   internal: "errGeneric",

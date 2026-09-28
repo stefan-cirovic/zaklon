@@ -16,6 +16,9 @@ import Firewall from "../components/Firewall";
 import { UpdateBanner } from "../components/Updates";
 import { DriveTile } from "../components/AddonViews";
 import { Icon, type IconName } from "../components/Icon";
+import ZaklonMap from "../components/ZaklonMap";
+import { homeText, useMapInfo } from "../components/MapPart";
+import type { MapInfo } from "../map/info";
 
 type T = (k: Key) => string;
 type Props = {
@@ -49,9 +52,10 @@ const RECENT = 3;
 
 /**
  * Home: the household at a glance, using the whole window. The hub in one
- * line at the top, then what needs attention, then the assistant, the
- * supplies, the library and add-ons, and the tools. A phone away from home
- * shows its copy of the supplies and conversations, marked as old.
+ * line at the top, then the assistant, what needs attention in the supplies
+ * with the home on the map beside it, the library and add-ons, and the
+ * tools. A phone away from home shows its copy of the supplies and
+ * conversations, marked as old.
  */
 export default function Home({ status, statusAt, error, t, lang, go, phone, pinned }: Props) {
   const up = !!status && !error;
@@ -128,6 +132,8 @@ export default function Home({ status, statusAt, error, t, lang, go, phone, pinn
       return false;
     }
   }, live ? (mapsBusy ? BUSY_EVERY : MAPS_EVERY) : null);
+  // The Zaklon map and the household's home on it.
+  const { info: mapInfo, err: mapErr } = useMapInfo(t, live);
 
   // No data at all: say so instead of "nothing expires", which would read as all is well.
   const unavailable = sum === null && (sumFailed || (!canLoad && !!error));
@@ -167,6 +173,7 @@ export default function Home({ status, statusAt, error, t, lang, go, phone, pinn
       <div className="home-grid">
         <AssistantCard t={t} go={go} chats={chats} failed={chatsFailed} saved={chatsSaved} />
         <SuppliesCard t={t} sum={sum} shop={shop} unavailable={unavailable} note={suppliesNote} reload={reload} />
+        <HomeMapCard t={t} lang={lang} info={mapInfo} unreachable={away || (!!mapErr && !mapInfo)} />
         <AddonsCard t={t} lang={lang} cat={cat} maps={maps} failed={catFailed} away={away} go={go} />
         <QuickAccess t={t} pinned={pinned} />
       </div>
@@ -666,6 +673,29 @@ function AddonsCard({
         </ul>
       )}
       {failed && <p className="muted home-note">{t("showingLastKnown")}</p>}
+    </section>
+  );
+}
+
+/**
+ * The household's home on the map, at about a town's size. Without a home
+ * location the map shows the world, with a button to set it.
+ */
+function HomeMapCard({ t, lang, info, unreachable }: { t: T; lang: Lang; info: MapInfo | null; unreachable: boolean }) {
+  const id = useId();
+  const home = info?.home ?? null;
+  return (
+    <section className="panel left home-card home-map" aria-labelledby={id}>
+      <CardHead id={id} icon="maps" title={t("homeMapTitle")} href="#maps" link={t("openMaps")} />
+      <ZaklonMap t={t} lang={lang} info={info} home={home} start="home" compact label={t("homeMapTitle")}>
+        {unreachable && !info && <p className="zmap-note warn">{t("mapUnreachable")}</p>}
+        {info && !home && (
+          <a className="btn small zmap-set-home" href="#maps/home">
+            {t("homeLocationSet")}
+          </a>
+        )}
+      </ZaklonMap>
+      {home && <p className="muted home-map-place">{homeText(home)}</p>}
     </section>
   );
 }

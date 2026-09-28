@@ -80,6 +80,7 @@ const ERROR_CODES: &[(&str, &str)] = &[
     ("several batches", "several_batches"),
     ("unknown category", "bad_category"),
     ("bad barcode", "bad_barcode"),
+    ("home location needs", "bad_location"),
     ("no such", "not_found"),
     ("no file", "not_found"),
     ("unauthorized", "unauthorized"),
@@ -310,6 +311,8 @@ mod error_code_tests {
             (NOT_FOUND, "no such conversation", "not_found"),
             (BAD, "the outcome must be done or canceled", "other"),
             (BAD, "ask something first", "question_empty"),
+            (BAD, "a home location needs a latitude between -90 and 90", "bad_location"),
+            (BAD, "a home location needs a longitude between -180 and 180", "bad_location"),
         ];
         let sources = hub_sources();
         for (status, msg, code) in messages {

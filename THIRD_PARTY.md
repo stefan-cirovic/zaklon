@@ -13,12 +13,25 @@ Zaklon runs several independent programs as separate processes, includes some th
 | zxing-cpp (its Android library, `io.github.zxing-cpp:android`) | Reads barcodes and QR codes on phones, on the phone itself | Apache-2.0 | Bundled in the Android app | https://github.com/zxing-cpp/zxing-cpp |
 | AndroidX (among them CameraX, the camera view of the barcode scanner), Material Components for Android, and the libraries these use (among them Kotlin, Guava and Dagger) | Android app libraries | Apache-2.0 | Bundled in the Android app | https://developer.android.com/jetpack/androidx |
 | NSIS | Windows installer | zlib/libpng | The Windows installer is built with it | https://nsis.sourceforge.io |
+| MapLibre GL JS | Draws the Zaklon map | BSD-3-Clause | Bundled with the interface (loaded when a map is first shown) | https://github.com/maplibre/maplibre-gl-js |
+| Protomaps basemap style (`@protomaps/basemaps`) | The map's layers, in Zaklon's own colors | BSD-3-Clause (code), CC0 (design) | Bundled with the interface | https://github.com/protomaps/basemaps |
+| pmtiles (Rust crate) | Reads the map's tile archives on the hub | MIT or Apache-2.0 | Compiled into the hub | https://github.com/stadiamaps/pmtiles-rs |
+| go-pmtiles (`pmtiles` tool) | Cuts the world overview from the world map when the app is built | BSD-3-Clause | Used only by `scripts/fetch-map-assets.sh`, not shipped | https://github.com/protomaps/go-pmtiles |
 
 ## Fonts
 
 | Font | Role | License | Source |
 |---|---|---|---|
 | Sora (Light 300, Latin subset, bundled with the interface via `@fontsource/sora`) | The "ZAKLON" wordmark | SIL Open Font License 1.1 | https://github.com/sora-xor/sora-font |
+| Noto Sans (Regular, Medium, Italic, Devanagari), as map glyphs from `protomaps/basemaps-assets`, in the installer's map assets | The Zaklon map's labels | SIL Open Font License 1.1 | https://github.com/protomaps/basemaps-assets |
+
+## Map assets (in the Windows installer, made by `scripts/fetch-map-assets.sh`)
+
+| Asset | License | Attribution |
+|---|---|---|
+| World overview (zoom 0 to 5), cut from the Protomaps basemap build | ODbL 1.0 (map data); the low zoom levels come from Natural Earth (public domain) | © OpenStreetMap contributors; shown on the map as "Protomaps © OpenStreetMap" with a link to openstreetmap.org/copyright. The style is Zaklon's own colors on the Protomaps design. |
+| Map icons (sprites) from `protomaps/basemaps-assets` | MIT | Derived from tangrams/icons, Copyright (c) 2017 Mapzen |
+| List of places for "find a place" (GeoNames cities5000, trimmed, with Serbian names from GeoNames' alternate names) | CC BY 4.0 | GeoNames (geonames.org) |
 
 ## Content packs (downloaded on request)
 
@@ -36,6 +49,7 @@ The knowledge packs are ZIM files published by Kiwix (openZIM).
 | Gardenology plant encyclopedia (ZIM) | CC BY-SA 3.0 | Gardenology.org contributors |
 | Kiwix guide collections: safe water, first aid and medicine, food preparation (ZIM) | Various; see each document | Various authors, collected by Kiwix |
 | Map data | ODbL 1.0 | © OpenStreetMap contributors |
+| World map for the Zaklon map (Protomaps basemap build, PMTiles) | ODbL 1.0 | © OpenStreetMap contributors; tiles built by Protomaps (https://protomaps.com) |
 | Map region list and region names (bundled in `crates/zaklon-core/catalog/comaps-*.json`, Serbian names converted to Latin script) | Apache-2.0 | CoMaps contributors |
 | AI models (Qwen3.5 0.8B, 2B, 4B, 9B) | Apache-2.0 | Qwen team, Alibaba Cloud; GGUF conversions by ggml-org (0.8B) and Unsloth (2B, 4B, 9B) |
 

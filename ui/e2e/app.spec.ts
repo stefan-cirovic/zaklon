@@ -503,8 +503,9 @@ test("shopping: bought goes to Put away, which adds a dated batch", async ({ pag
 
 test("maps: the phone steps show the hub address, and the world is searchable", async ({ page }) => {
   await ensureSetUp(page);
-  await page.goto("/#maps");
+  await page.goto("/#maps/navigation");
   await expect(page.getByRole("heading", { name: "Maps", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Navigation" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: "Maps on a phone" })).toBeVisible();
   await expect(page.locator("code.url").first()).toHaveText(/^http:\/\/.+:\d+\/$/);
   await expect(page.getByText(/added to the hub with the first map/)).toBeVisible();
@@ -531,7 +532,8 @@ test("maps: the phone steps show the hub address, and the world is searchable", 
   await expect(page.locator('[data-entry="map:Montenegro"]')).toBeVisible();
   await expect(page.locator('[data-entry^="map:Germany"]')).toHaveCount(1);
   await page.getByRole("link", { name: "Open Maps" }).click();
-  await expect(page).toHaveURL(/#maps$/);
+  await expect(page).toHaveURL(/#maps\/navigation$/);
+  await expect(page.getByRole("heading", { name: "Maps on a phone" })).toBeVisible();
 });
 
 test("settings: accent color is remembered, password can be changed, hub facts and privacy are shown", async ({ page }) => {
@@ -794,7 +796,7 @@ test("a download that the hub accepts without a body is not reported as an error
     asked = true;
     return route.fulfill({ status: 202, body: "" });
   });
-  await page.goto("/#maps");
+  await page.goto("/#maps/navigation");
   await page.getByRole("searchbox", { name: /Search a country/ }).fill("montenegro");
   await page.locator(".map-country").filter({ hasText: /^Montenegro/ }).getByRole("button", { name: "Download" }).click();
   await expect.poll(() => asked).toBe(true);

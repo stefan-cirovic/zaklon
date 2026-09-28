@@ -14,13 +14,14 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
 
 use bytes::Bytes;
 use pmtiles::{AsyncBackend, AsyncPmTilesReader, BackendResponse, Compression, DirEntry, Directory, DirectoryCache, PmtResult, TileCoord, TileId};
 
 use crate::downloads::Downloads;
+use crate::gazetteer::{Gazetteer, PLACES_FILE};
 
 /// Where the map assets are: `ZAKLON_MAP_ASSETS` when set (development and
 /// tests), else the `map-assets` folder next to the program, where the
@@ -32,6 +33,15 @@ pub fn map_assets_dir() -> Option<PathBuf> {
     }
     let dir = std::env::current_exe().ok()?.parent()?.join(MAP_ASSETS_FOLDER);
     dir.is_dir().then_some(dir)
+}
+
+/// Map archives to show besides the packs, for development and screenshots:
+/// `ZAKLON_EXTRA_MAPS`, paths separated by `;`. They are only read, never
+/// checked, moved or deleted (a copy of the world map elsewhere on the disk).
+fn extra_archives() -> Vec<PathBuf> {
+    std::env::var_os("ZAKLON_EXTRA_MAPS")
+        .map(|v| v.to_string_lossy().split(';').map(str::trim).filter(|p| !p.is_empty()).map(PathBuf::from).collect())
+        .unwrap_or_default()
 }
 
 /// The map assets' folder next to the program.
@@ -119,6 +129,8 @@ pub struct Tiles {
     downloads: Arc<Downloads>,
     assets: Option<PathBuf>,
     opened: tokio::sync::Mutex<Opened>,
+    /// The places for "find a place", read the first time they are needed.
+    gazetteer: OnceLock<Option<Gazetteer>>,
 }
 
 impl Tiles {
@@ -126,7 +138,27 @@ impl Tiles {
         if let Some(dir) = &assets {
             tracing::info!(dir = %dir.display(), "map assets");
         }
-        Arc::new(Self { downloads, assets, opened: tokio::sync::Mutex::new(Opened::default()) })
+        Arc::new(Self { downloads, assets, opened: tokio::sync::Mutex::new(Opened::default()), gazetteer: OnceLock::new() })
+    }
+
+    /// The places for "find a place", from the map assets (None without
+    /// them). Read the first time: blocking.
+    pub fn gazetteer(&self) -> Option<&Gazetteer> {
+        self.gazetteer
+            .get_or_init(|| {
+                let path = self.assets.as_ref()?.join(PLACES_FILE);
+                match Gazetteer::load(&path) {
+                    Ok(g) => {
+                        tracing::info!(places = g.len(), "list of places read");
+                        Some(g)
+                    }
+                    Err(e) => {
+                        tracing::warn!(path = %path.display(), "no list of places: {e}");
+                        None
+                    }
+                }
+            })
+            .as_ref()
     }
 
     /// The map assets' folder, if there is one.
@@ -142,8 +174,10 @@ impl Tiles {
             Some(Source { kind, pack, path, size: meta.len(), modified: meta.modified().ok() })
         };
         let packs = self.downloads.map_archives().into_iter().filter_map(|(id, path)| found(Kind::Pack, Some(id), path));
+        // For development: archives outside the library, only read (see `extra_archives`).
+        let extra = extra_archives().into_iter().filter_map(|path| found(Kind::Pack, None, path));
         let overview = self.assets.as_ref().and_then(|dir| found(Kind::Overview, None, dir.join(OVERVIEW_FILE)));
-        packs.chain(overview).collect()
+        packs.chain(extra).chain(overview).collect()
     }
 
     /// The archives in use, opening them again when what is on disk changed
@@ -482,6 +516,39 @@ mod tests {
         assert_eq!(text(find_tile(only, 1, 0, 0).await).unwrap(), "overview 1/0/0");
         assert!(text(find_tile(only, 3, 4, 2).await).is_none());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The tile at zoom `z` that holds a place.
+    fn tile_of(lat: f64, lon: f64, z: u8) -> (u32, u32) {
+        let n = f64::from(1u32 << z);
+        let x = ((lon + 180.0) / 360.0 * n).floor();
+        let r = lat.to_radians();
+        let y = ((1.0 - (r.tan() + 1.0 / r.cos()).ln() / std::f64::consts::PI) / 2.0 * n).floor();
+        (x as u32, y as u32)
+    }
+
+    /// The real world map (138 GB), where there is a copy: ZAKLON_WORLD_PMTILES
+    /// names it, and it is only read. On the build machine:
+    /// `ZAKLON_WORLD_PMTILES=E:/ZaklonDev/maps/protomaps-world-20260928.pmtiles
+    /// cargo test -p zaklon-hub --lib world_map -- --ignored`
+    #[tokio::test]
+    #[ignore = "needs a copy of the world map (ZAKLON_WORLD_PMTILES)"]
+    async fn the_world_map_has_the_streets_of_belgrade() {
+        let Some(path) = std::env::var_os("ZAKLON_WORLD_PMTILES").map(PathBuf::from) else { return };
+        let world = open(&path, Kind::Pack).await;
+        assert_eq!((world.min_zoom, world.max_zoom, world.encoding), (0, 15, Some("gzip")));
+        for z in [0, 5, 10, 14, 15] {
+            let (x, y) = tile_of(44.8176, 20.4569, z);
+            let Found::Tile(t) = find_tile(std::slice::from_ref(&world), z, x, y).await else { panic!("no tile {z}/{x}/{y}") };
+            let mut data = Vec::new();
+            std::io::Read::read_to_end(&mut flate2::read::GzDecoder::new(&t.data[..]), &mut data).unwrap();
+            let has = |layer: &str| data.windows(layer.len()).any(|w| w == layer.as_bytes());
+            assert!(has("earth") && has("places"), "{z}/{x}/{y}");
+            if z >= 14 {
+                assert!(has("roads") && has("buildings"), "streets and buildings at {z}/{x}/{y}");
+            }
+        }
+        assert!(summarize(&[world]).detailed);
     }
 
     #[tokio::test]

@@ -258,6 +258,13 @@ const en: HelpContent = {
         ],
       },
       {
+        id: "map",
+        title: "Home on the map",
+        body: [
+          { p: "Beside what needs attention (below it on a phone) is the household's home on the Zaklon map. Without a home location the map shows the whole world and a **Set home location** button. See [Your home location](#help/maps/home-location)." },
+        ],
+      },
+      {
         id: "addons",
         title: "Library and add-ons",
         body: [
@@ -551,23 +558,48 @@ const en: HelpContent = {
 
   maps: {
     title: "Maps",
-    summary: "Offline maps of the world: the hub downloads them once, and phones show them in the CoMaps app.",
+    summary: "The Zaklon map of the world with your home on it, and CoMaps for finding the way on phones.",
     open: { href: "#maps", label: "Open Maps" },
     sections: [
       {
         id: "how",
         title: "How it works",
         body: [
-          { p: "Maps come in pieces: countries, and regions of large countries. The hub downloads the pieces you choose once, and phones get them from the hub over Wi-Fi, without internet. On phones, maps are shown by **CoMaps**, a free map app that the hub provides too." },
+          { p: "The Maps screen has two parts. **Zaklon map** shows the world from the hub, without internet, on the laptop and on phones at home, with your home on it. **Navigation** sets up **CoMaps**, a free map app for phones that finds the way and keeps working away from home." },
+        ],
+      },
+      {
+        id: "map",
+        title: "The Zaklon map",
+        body: [
+          { p: "Drag the map to move it, and zoom with the mouse wheel, two fingers or the **+** and **−** buttons. The house button goes back to your home; the globe shows the whole world. Labels are in the app's language where the map has names in it." },
+          { p: "Zaklon comes with an overview of the whole world: countries, borders and larger cities. For towns, streets and buildings, download **the world map** in the Maps folder of [Add-ons](#addons/maps). It is very large (about 138 GB), so it needs a big disk and time; the download continues after interruptions and restarts, and the map shows it as soon as it is checked." },
+          { note: "Map data © OpenStreetMap contributors. The credit in the map's corner leads to the details. The map never asks the internet for anything: everything it shows comes from the hub." },
+        ],
+      },
+      {
+        id: "home-location",
+        title: "Your home location",
+        body: [
+          { p: "The household has one home location, kept on the hub. Every device sees it: Home shows it on the map, and the Zaklon map opens there." },
+          {
+            steps: [
+              "Open [Maps](#maps) and choose **Set home location** (or **Change**).",
+              "On a phone, **Use this phone's location** asks the phone where it is; the first time, the phone asks whether Zaklon may know it. Or type your town into **Find a town or city** and choose it from the list.",
+              "Tap the map to put the mark right on your home; another tap moves it.",
+              "Choose **Save home location**.",
+            ],
+          },
+          { note: "The home location stays on the hub and is never sent anywhere. **Remove** clears it. If the phone may not use its location, allow it in the phone's settings (Apps › Zaklon › Permissions › Location), or find your town by name instead." },
         ],
       },
       {
         id: "download",
-        title: "Download maps on the hub",
+        title: "Maps for phones on the hub",
         body: [
           {
             steps: [
-              "Open [Maps](#maps) and search for a country or region.",
+              "Open [Navigation](#maps/navigation) on the Maps screen and search for a country or region.",
               "Choose **Download**. For a large country, open its regions to download only some of them.",
               "Downloads continue after interruptions. On the laptop, **Remove** deletes a map.",
             ],
@@ -581,8 +613,8 @@ const en: HelpContent = {
         body: [
           {
             steps: [
-              "Install CoMaps from the hub: on the phone, open [Maps](#maps) and tap **Install CoMaps**, or scan its QR code on the laptop's Maps screen. The app comes to the hub with the first map you download.",
-              "In CoMaps, open Settings (top right), enter the address shown on the Maps screen under **Custom Map Server** and tap **Save**. On the phone, **Copy address** copies it for you.",
+              "Install CoMaps from the hub: on the phone, open [Navigation](#maps/navigation) on the Maps screen and tap **Install CoMaps**, or scan its QR code on the laptop's Maps screen. The app comes to the hub with the first map you download.",
+              "In CoMaps, open Settings (top right), enter the address shown under **Navigation** under **Custom Map Server** and tap **Save**. On the phone, **Copy address** copies it for you.",
               "Download maps in CoMaps as usual, starting with the world overview (about 60 MB). They now come from the hub, even without internet.",
             ],
           },

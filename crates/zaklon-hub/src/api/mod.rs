@@ -11,6 +11,7 @@ mod assistant;
 mod auth;
 mod basemap;
 mod error;
+mod home;
 mod household;
 mod maps;
 mod memory;
@@ -137,6 +138,8 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/maps/{country}/download", post(maps_country_download))
         .route("/api/maps/{country}", axum::routing::delete(maps_country_remove))
         .route("/api/map", get(basemap::map_info))
+        .route("/api/map/places", get(home::places_search))
+        .route("/api/home-location", get(home::home_get).put(home::home_set).delete(home::home_clear))
         .route("/tiles/{z}/{x}/{file}", get(basemap::tile))
         .route("/map/fonts/{fontstack}/{range}", get(basemap::glyphs))
         .route("/map/sprites/{file}", get(basemap::sprite))

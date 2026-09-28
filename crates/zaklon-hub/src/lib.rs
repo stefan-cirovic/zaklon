@@ -13,6 +13,7 @@ pub mod discovery;
 pub mod downloads;
 pub mod export;
 pub mod firewall;
+pub mod gazetteer;
 pub mod hotspot;
 pub mod install;
 pub mod kiwix;

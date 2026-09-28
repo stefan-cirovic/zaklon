@@ -1018,8 +1018,9 @@ fn short_err(e: &reqwest::Error) -> String {
 // Library articles are HTML pages with images and styles, shown in a frame.
 // The frame cannot add the device token or pin the hub certificate, so the app
 // runs a tiny read-only proxy on 127.0.0.1 that does both. It only forwards
-// GET /<secret>/kiwix/... ; the random secret keeps other apps on the phone
-// from using it.
+// GET /<secret>/kiwix/... and the Zaklon map's tiles, fonts and icons
+// (/<secret>/tiles/..., /<secret>/map/...); the random secret keeps other
+// apps on the phone from using it.
 
 impl ClientState {
     /// Start the proxy on first use and return its base URL.
@@ -1038,10 +1039,10 @@ impl ClientState {
         };
         let me = self.clone();
         let prefix = format!("/{secret}");
-        let app = axum::Router::new().fallback(move |uri: axum::http::Uri| {
+        let app = axum::Router::new().fallback(move |uri: axum::http::Uri, headers: axum::http::HeaderMap| {
             let me = me.clone();
             let prefix = prefix.clone();
-            async move { me.proxy(uri, &prefix).await }
+            async move { me.proxy(uri, headers, &prefix).await }
         });
         tokio::spawn(async move {
             if let Err(e) = axum::serve(listener, app).await {
@@ -1053,7 +1054,7 @@ impl ClientState {
         Ok(b)
     }
 
-    async fn proxy(&self, uri: axum::http::Uri, prefix: &str) -> axum::response::Response {
+    async fn proxy(&self, uri: axum::http::Uri, headers: axum::http::HeaderMap, prefix: &str) -> axum::response::Response {
         use axum::http::{header, StatusCode};
         use axum::response::IntoResponse;
         let full = uri.path_and_query().map(|p| p.as_str()).unwrap_or("/");
@@ -1063,7 +1064,10 @@ impl ClientState {
         }
         let path_only = rest.split('?').next().unwrap_or(rest).to_ascii_lowercase();
         let escapes = path_only.contains("..") || path_only.contains("%2e") || path_only.contains('\\') || path_only.contains("%5c");
-        if !(rest.starts_with("/kiwix/") || rest.starts_with("/kiwix-lat/")) || escapes {
+        // The map's pieces are fetched by the map's own code (not a frame):
+        // the answer must say the app's page may read it.
+        let map_part = rest.starts_with("/tiles/") || rest.starts_with("/map/");
+        if !(rest.starts_with("/kiwix/") || rest.starts_with("/kiwix-lat/") || map_part) || escapes {
             return StatusCode::NOT_FOUND.into_response();
         }
         let Some(link) = self.link() else {
@@ -1073,11 +1077,12 @@ impl ClientState {
         let hosts = Self::ordered_hosts(&link);
         for host in hosts {
             let url = format!("https://{}:{}{}", host, link.port, rest);
-            let sent = client
-                .get(&url)
-                .header("authorization", format!("Bearer {}", link.device_token))
-                .send()
-                .await;
+            let mut request = client.get(&url).header("authorization", format!("Bearer {}", link.device_token));
+            // A tile the web view has already: the hub answers "not modified".
+            if let Some(tag) = headers.get(header::IF_NONE_MATCH).filter(|_| map_part) {
+                request = request.header(header::IF_NONE_MATCH, tag.clone());
+            }
+            let sent = request.send().await;
             let Ok(res) = sent else { continue };
             let status = StatusCode::from_u16(res.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
             let header_str = |name: &str, dflt: &str| {
@@ -1086,9 +1091,10 @@ impl ClientState {
             let ctype = header_str("content-type", "application/octet-stream");
             let cache = header_str("cache-control", "no-cache");
             // Security headers from the hub (the sandbox CSP for articles) must
-            // reach the web view too.
+            // reach the web view too, and how a map tile is compressed (it
+            // comes as it is stored) and which version it is.
             let passthrough: Vec<(header::HeaderName, header::HeaderValue)> =
-                [header::CONTENT_SECURITY_POLICY, header::X_CONTENT_TYPE_OPTIONS]
+                [header::CONTENT_SECURITY_POLICY, header::X_CONTENT_TYPE_OPTIONS, header::CONTENT_ENCODING, header::ETAG]
                     .into_iter()
                     .filter_map(|name| {
                         let value = res.headers().get(name.as_str())?.to_str().ok()?;
@@ -1099,6 +1105,9 @@ impl ClientState {
                 Ok(body) => {
                     let mut out = (status, [(header::CONTENT_TYPE, ctype), (header::CACHE_CONTROL, cache)], body).into_response();
                     out.headers_mut().extend(passthrough);
+                    if map_part {
+                        out.headers_mut().insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, header::HeaderValue::from_static("*"));
+                    }
                     out
                 }
                 Err(_) => StatusCode::BAD_GATEWAY.into_response(),

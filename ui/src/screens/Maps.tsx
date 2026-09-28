@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { api } from "../api";
 import type { Key, Lang } from "../i18n";
@@ -9,9 +9,60 @@ import { countryState, SUGGESTED, type Country, type MapsReply } from "../maps";
 import ConfirmButton from "../components/ConfirmButton";
 import Qr from "../components/Qr";
 import HelpLink from "../components/HelpLink";
+import MapPart from "../components/MapPart";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 type T = (k: Key) => string;
+
+/** The two parts of the screen, in the address after "#maps/". */
+type Part = "map" | "navigation";
+
+/** "#maps" and "#maps/home": the Zaklon map (the second with the home location open); "#maps/navigation": CoMaps. */
+function routeOf(hash: string): { part: Part; home: boolean } {
+  const sub = hash.replace(/^#/, "").split("/")[1] ?? "";
+  return { part: sub === "navigation" ? "navigation" : "map", home: sub === "home" };
+}
+
+/**
+ * Maps: the Zaklon map (the world from the hub, the household's home on
+ * it) and Navigation (CoMaps on phones, with maps from the hub, for finding
+ * the way and for when a phone is away from home).
+ */
+export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: boolean }) {
+  const [route, setRoute] = useState(() => routeOf(location.hash));
+  useEffect(() => {
+    const onHash = () => setRoute(routeOf(location.hash));
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  const show = (part: Part) => {
+    const hash = part === "map" ? "#maps" : "#maps/navigation";
+    if (location.hash !== hash) history.replaceState(history.state, "", hash);
+    setRoute({ part, home: false });
+  };
+  const parts: [Part, Key][] = [
+    ["map", "mapsZaklonMap"],
+    ["navigation", "mapsNavigation"],
+  ];
+  return (
+    <div className={"stack maps-screen" + (route.part === "map" ? " map-part" : "")}>
+      <div className="page-head">
+        <div className="title-line">
+          <h1>{t("maps")}</h1>
+          <HelpLink t={t} topic="maps" section={route.part === "navigation" ? "phone" : undefined} />
+        </div>
+      </div>
+      <div className="segmented maps-parts" role="tablist" aria-label={t("maps")}>
+        {parts.map(([part, key]) => (
+          <button key={part} type="button" role="tab" aria-selected={route.part === part} className={route.part === part ? "active" : ""} onClick={() => show(part)}>
+            {t(key)}
+          </button>
+        ))}
+      </div>
+      {route.part === "map" ? <MapPart t={t} lang={lang} isHub={isHub} homeOpen={route.home} /> : <Navigation t={t} lang={lang} isHub={isHub} />}
+    </div>
+  );
+}
 
 /** Clipboard, with a fallback for web views that do not allow it. */
 async function copyText(text: string): Promise<boolean> {
@@ -31,7 +82,8 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: boolean }) {
+/** CoMaps for phones: the app and the maps of every country, from the hub. */
+function Navigation({ t, lang, isHub }: { t: T; lang: Lang; isHub: boolean }) {
   const [copied, setCopied] = useState(false);
   const [data, setData] = useState<MapsReply | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -101,14 +153,8 @@ export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: bool
   const appReady = data?.app.status === "installed";
 
   return (
-    <div className="stack">
-      <div className="page-head">
-        <div className="title-line">
-          <h1>{t("maps")}</h1>
-          <HelpLink t={t} topic="maps" />
-        </div>
-        <p className="muted">{t("mapsIntro")}</p>
-      </div>
+    <div className="stack" role="tabpanel">
+      <p className="muted" style={{ margin: 0 }}>{t("mapsIntro")}</p>
       {err && <p className="error" role="alert">{err}</p>}
       {!data && !err && <p className="muted">{t("aiLoading")}</p>}
 

@@ -10,6 +10,58 @@ const LANG = process.env.SHOT_LANG ?? "sr";
 const SIZE = process.env.SHOT_SIZE?.match(/^(\d+)x(\d+)$/);
 test.skip(!DIR, "set ZAKLON_SHOTS_DIR to take screenshots");
 
+test("map shots", async ({ page }, info) => {
+  // The Zaklon map, best with the real map assets (ZAKLON_MAP_ASSETS) and
+  // the world map in the test hub's library.
+  test.setTimeout(180000);
+  if (SIZE && info.project.name === "laptop") await page.setViewportSize({ width: Number(SIZE[1]), height: Number(SIZE[2]) });
+  const file = (name: string) => join(DIR ?? "", `${LANG}-${info.project.name}-${name}.png`);
+  await page.addInitScript((l) => localStorage.setItem("zaklon.lang", l), LANG);
+  await page.goto("/#settings");
+  const setup = page.getByText(/Set up your household|Podesi domaćinstvo/);
+  if (await setup.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await page.locator('input[type="password"]').nth(0).fill("correct horse");
+    await page.locator('input[type="password"]').nth(1).fill("correct horse");
+    await page.locator("form button.btn").click();
+    await page.waitForTimeout(800);
+  }
+  const settle = (ms = 5000) => page.waitForTimeout(ms);
+  await page.request.delete("/api/home-location");
+  await page.goto("/#home");
+  await settle();
+  await page.screenshot({ path: file("map-home-nohome"), fullPage: true });
+  await page.goto("/#maps");
+  await settle();
+  await page.screenshot({ path: file("map-world"), fullPage: false });
+  await page.goto("/#maps/home");
+  await page.locator(".home-loc input[type=search]").fill("novi sad");
+  await page.waitForTimeout(1200);
+  await page.screenshot({ path: file("map-find-place"), fullPage: false });
+  await page.locator(".home-loc-result").first().click();
+  await settle();
+  await page.screenshot({ path: file("map-chosen"), fullPage: false });
+  await page.locator(".home-loc .btn").first().click();
+  await page.waitForTimeout(1000);
+  await page.goto("/#home");
+  await settle(7000);
+  await page.screenshot({ path: file("map-home"), fullPage: true });
+  await page.goto("/#maps");
+  await settle(7000);
+  await page.screenshot({ path: file("map-maps-home"), fullPage: false });
+  // Closer in, and farther out.
+  for (const [name, clicks, button] of [["map-streets", 4, "zmap-btn:nth-child(1)"], ["map-region", 7, "zmap-btn:nth-child(2)"]] as const) {
+    for (let i = 0; i < clicks; i++) {
+      await page.locator(`.map-part .${button}`).click();
+      await page.waitForTimeout(400);
+    }
+    await settle(6000);
+    await page.screenshot({ path: file(name), fullPage: false });
+  }
+  await page.goto("/#maps/navigation");
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: file("map-navigation"), fullPage: true });
+});
+
 test("shots", async ({ page }, info) => {
   test.setTimeout(120000);
   if (SIZE && info.project.name === "laptop") await page.setViewportSize({ width: Number(SIZE[1]), height: Number(SIZE[2]) });

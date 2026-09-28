@@ -3,6 +3,11 @@
 // ZAKLON_HUB_EXE points at another build (e.g. with a different CARGO_TARGET_DIR).
 // ZAKLON_E2E_PORT_BASE moves the ports (default 28480: install 28480, local
 // 28481, TLS 28484, beacon 28485), so two test runs on one machine do not meet.
+// The map's assets are a tiny stand-in for what scripts/fetch-map-assets.sh
+// makes (e2e/fixtures/map-assets: the world at zoom 0-1 from the Protomaps
+// basemap, map data © OpenStreetMap contributors, ODbL; one range of Noto Sans
+// glyphs, OFL; a few places from GeoNames, CC BY 4.0), unless ZAKLON_MAP_ASSETS
+// names the real ones (for screenshots).
 import { spawn } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,6 +27,7 @@ const child = spawn(exe, ["--root", root], {
     ZAKLON_INSTALL_PORT: String(base),
     ZAKLON_BEACON_PORT: String(base + 5),
     ZAKLON_IGNORE_BATTERY: "1",
+    ZAKLON_MAP_ASSETS: process.env.ZAKLON_MAP_ASSETS || resolve(import.meta.dirname, "fixtures/map-assets"),
   },
 });
 const stop = () => child.kill();

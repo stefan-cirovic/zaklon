@@ -22,7 +22,7 @@ Zaklon (Serbian for "shelter") is a free, open-source, offline-first home base. 
 - Android client (Android 9+) installed from the hub over local Wi-Fi.
 - Pairing over the home router or a Wi-Fi network created by the laptop.
 - Library: offline knowledge packs (Kiwix ZIM) with full-text search.
-- Maps: offline maps via CoMaps, with map files and the CoMaps APK served by the hub.
+- Maps: the Zaklon map (the world from the hub, the household's home on it) and offline navigation on phones via CoMaps, with map files and the CoMaps APK served by the hub.
 - Supplies: household inventory with barcode scanning, expiry dates, places, running-low and shopping lists, change history.
 - Profiles: shared household space plus a private space per person (optional personal password).
 - Assistant: local AI on the hub and a smaller model on the phone; library search with sources; inventory questions and edits (with confirmation); simple memory; opt-in online research.
@@ -132,7 +132,9 @@ The hub in one line (name, reachable, battery level and charging state, paired d
 Installed packs, unified full-text search across packs (via kiwix-serve), reader view, "Open in assistant" from any article. Packs are served from the hub; a phone can optionally download a pack for use away from the hub.
 
 ### Maps
-Explains and launches CoMaps. The hub serves the CoMaps APK and map files in the layout CoMaps expects as a custom map server, so phones download maps without internet. The whole world is offered in pieces (countries, and regions of large countries) exactly as CoMaps publishes them; the Serbia map is part of the Serbian starter set.
+Two parts. **Zaklon map**: a dark map in the app's colors (MapLibre GL JS with the Protomaps basemap style, labels in the app's language, "Protomaps © OpenStreetMap" always in view), drawn from the hub: the hub reads PMTiles archives and serves `/tiles/{z}/{x}/{y}.mvt` from all of them behind one address (a map pack from Add-ons, the whole world as one 138 GB pack, and the world overview at zoom 0-5 that ships in the installer and the phone app), the most detailed first, tile by tile, and the style's fonts and icons. A map pack found in its place with the right name and size is shown at once and checked in the background. The household's home location is kept on the hub: any paired device reads it, the laptop and phones set it (the phone's GPS after a tap, then a town found by name in GeoNames' list, then a tap on the map); it is never sent anywhere. Home shows it on the map beside what needs attention. Nothing of the map comes from the internet at runtime.
+
+**Navigation** explains and launches CoMaps. The hub serves the CoMaps APK and map files in the layout CoMaps expects as a custom map server, so phones download maps without internet. The whole world is offered in pieces (countries, and regions of large countries) exactly as CoMaps publishes them; the Serbia map is part of the Serbian starter set.
 
 ### Supplies
 List and grid views, filters by category/place/expiry, search. Add item manually or by scanning a barcode with the phone camera; unknown barcodes are named once and remembered locally. Consume/add quantity with one tap; running-low and shopping lists; history view; CSV export.

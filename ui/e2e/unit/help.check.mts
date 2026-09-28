@@ -24,6 +24,8 @@ assert.ok(
   SCREENS.includes("supplies") && CATEGORIES.includes("backups") && SETTINGS.includes("network/hotspot") && FOLDERS.includes("health") && FOLDERS.includes("models"),
   "the app's lists were read",
 );
+const MAPS_PARTS = [...src("screens/Maps.tsx").matchAll(/sub === "(\w+)"/g)].map((m) => m[1]);
+assert.deepEqual(MAPS_PARTS.sort(), ["home", "navigation"], "the parts of the Maps screen were read");
 
 type Block = { p: string } | { steps: string[] } | { list: string[] } | { note: string } | { warn: string };
 type Section = { id: string; title: string; body: Block[] };
@@ -52,6 +54,10 @@ function checkHref(href: string, where: string) {
   } else if (tab === "addons") {
     assert.equal(b, undefined, `${where}: ${href}`);
     if (a !== undefined) assert.ok(FOLDERS.includes(a), `${where}: no Add-ons folder "${a}" (${href})`);
+  } else if (tab === "maps") {
+    // The parts of the Maps screen (routeOf in screens/Maps.tsx).
+    assert.equal(b, undefined, `${where}: ${href}`);
+    if (a !== undefined) assert.ok(MAPS_PARTS.includes(a), `${where}: no part "${a}" of Maps (${href})`);
   } else {
     assert.equal(a, undefined, `${where}: ${href} has no places of its own`);
   }

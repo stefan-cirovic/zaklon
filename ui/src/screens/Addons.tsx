@@ -428,7 +428,7 @@ export default function Addons({ t, lang, isHub }: Props) {
       <>
         {here.id === "maps" && (
           <p className="muted folder-note">
-            {t("mapsPhoneNote")} <a href="#maps">{t("openMaps")}</a>
+            {t("mapsPhoneNote")} <a href="#maps/navigation">{t("openMaps")}</a>
           </p>
         )}
         {entries.length === 0 ? (

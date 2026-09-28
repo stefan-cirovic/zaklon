@@ -16,6 +16,7 @@ use axum::{
 use serde::Serialize;
 
 use super::error::ApiError;
+use super::home::{read_home, HomeLocation};
 use super::Caller;
 use crate::tiles::{self, Found};
 use crate::HubState;
@@ -45,6 +46,10 @@ pub(super) struct MapReply {
     sprites: bool,
     /// The largest map pack of the catalog (the world map), if any.
     world: Option<PackView>,
+    /// "Find a place" has its list of places.
+    places: bool,
+    /// The household's home, if it was set.
+    home: Option<HomeLocation>,
 }
 
 pub(super) async fn map_info(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<MapReply>, ApiError> {
@@ -62,7 +67,14 @@ pub(super) async fn map_info(State(state): State<Arc<HubState>>, _caller: Caller
             let st = state.downloads.state_of(&p.id).unwrap_or_else(|| zaklon_core::catalog::PackState::not_installed(p.size));
             PackView { id: p.id.clone(), size: p.size, status: st.status, bytes_done: st.bytes_done, bytes_total: st.bytes_total }
         });
-    Ok(Json(MapReply { tiles: summary, glyphs: has("fonts"), sprites: has("sprites"), world }))
+    Ok(Json(MapReply {
+        tiles: summary,
+        glyphs: has("fonts"),
+        sprites: has("sprites"),
+        world,
+        places: has(crate::gazetteer::PLACES_FILE),
+        home: read_home(&state)?,
+    }))
 }
 
 /// `/tiles/{z}/{x}/{y}.mvt`: a vector tile, gzip-compressed as it is

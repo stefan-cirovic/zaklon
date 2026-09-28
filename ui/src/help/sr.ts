@@ -258,6 +258,13 @@ const sr: HelpContent = {
         ],
       },
       {
+        id: "map",
+        title: "Dom na mapi",
+        body: [
+          { p: "Pored onoga što zahteva pažnju (ispod toga na telefonu) je dom domaćinstva na Zaklon mapi. Bez lokacije doma mapa prikazuje ceo svet i dugme **Postavi lokaciju doma**. Vidi [Lokacija tvog doma](#help/maps/home-location)." },
+        ],
+      },
+      {
         id: "addons",
         title: "Biblioteka i dodaci",
         body: [
@@ -551,23 +558,48 @@ const sr: HelpContent = {
 
   maps: {
     title: "Mape",
-    summary: "Mape sveta bez interneta: hub ih preuzme jednom, a telefoni ih prikazuju u aplikaciji CoMaps.",
+    summary: "Zaklon mapa sveta sa tvojim domom na njoj, i CoMaps za snalaženje na telefonima.",
     open: { href: "#maps", label: "Otvori Mape" },
     sections: [
       {
         id: "how",
         title: "Kako radi",
         body: [
-          { p: "Mape su podeljene na delove: države, a velike države i na regione. Hub jednom preuzme delove koje izabereš, a telefoni ih dobijaju od huba preko WiFi-ja, bez interneta. Na telefonima mape prikazuje **CoMaps**, besplatna aplikacija za mape koju takođe daje hub." },
+          { p: "Ekran Mape ima dva dela. **Zaklon mapa** prikazuje svet sa huba, bez interneta, na laptopu i na telefonima kod kuće, sa tvojim domom na njoj. **Navigacija** podešava **CoMaps**, besplatnu aplikaciju za mape na telefonu koja pronalazi put i radi i van kuće." },
+        ],
+      },
+      {
+        id: "map",
+        title: "Zaklon mapa",
+        body: [
+          { p: "Mapu pomeraš prevlačenjem, a uvećavaš i umanjuješ točkićem miša, sa dva prsta ili dugmadima **+** i **−**. Dugme s kućicom vraća mapu na tvoj dom, a globus prikazuje ceo svet. Nazivi su na jeziku aplikacije gde ih mapa ima." },
+          { p: "Uz Zaklon stiže pregled celog sveta: države, granice i veći gradovi. Za mesta, ulice i zgrade preuzmi **mapu sveta** u folderu Mape u [Dodacima](#addons/maps). Veoma je velika (oko 138 GB), pa joj treba veliki disk i vreme; preuzimanje se nastavlja posle prekida i ponovnog pokretanja, a mapa je prikazuje čim je proverena." },
+          { note: "Podaci mapa © OpenStreetMap saradnici. Oznaka u uglu mape vodi do detalja. Mapa nikada ništa ne traži od interneta: sve što prikazuje stiže sa huba." },
+        ],
+      },
+      {
+        id: "home-location",
+        title: "Lokacija tvog doma",
+        body: [
+          { p: "Domaćinstvo ima jednu lokaciju doma, sačuvanu na hubu. Vide je svi uređaji: Početna je prikazuje na mapi, a Zaklon mapa se otvara na njoj." },
+          {
+            steps: [
+              "Otvori [Mape](#maps) i izaberi **Postavi lokaciju doma** (ili **Promeni**).",
+              "Na telefonu **Koristi lokaciju ovog telefona** pita telefon gde je; prvi put telefon pita da li Zaklon sme da je zna. Ili upiši svoje mesto u **Pronađi mesto ili grad** i izaberi ga sa spiska.",
+              "Dodirni mapu da oznaku staviš tačno na svoj dom; novi dodir je pomera.",
+              "Izaberi **Sačuvaj lokaciju doma**.",
+            ],
+          },
+          { note: "Lokacija doma ostaje na hubu i nikada se nikud ne šalje. **Ukloni** je briše. Ako telefon ne sme da koristi lokaciju, dozvoli je u podešavanjima telefona (Aplikacije › Zaklon › Dozvole › Lokacija) ili umesto toga pronađi svoje mesto po imenu." },
         ],
       },
       {
         id: "download",
-        title: "Preuzimanje mapa na hub",
+        title: "Mape za telefone na hubu",
         body: [
           {
             steps: [
-              "Otvori [Mape](#maps) i potraži državu ili region.",
+              "Otvori [Navigaciju](#maps/navigation) na ekranu Mape i potraži državu ili region.",
               "Izaberi **Preuzmi**. Kod velike države otvori njene regione da preuzmeš samo neke.",
               "Preuzimanja se nastavljaju posle prekida. Na laptopu **Ukloni** briše mapu.",
             ],
@@ -581,8 +613,8 @@ const sr: HelpContent = {
         body: [
           {
             steps: [
-              "Instaliraj CoMaps sa huba: na telefonu otvori [Mape](#maps) i pritisni **Instaliraj CoMaps**, ili skeniraj QR kod sa ekrana Mape na laptopu. Aplikacija stiže na hub zajedno sa prvom mapom koju preuzmeš.",
-              "U aplikaciji CoMaps otvori Settings (gore desno), pod **Custom Map Server** upiši adresu sa ekrana Mape i pritisni **Save**. Na telefonu je možeš kopirati dugmetom **Kopiraj adresu**.",
+              "Instaliraj CoMaps sa huba: na telefonu otvori [Navigaciju](#maps/navigation) na ekranu Mape i pritisni **Instaliraj CoMaps**, ili skeniraj QR kod sa ekrana Mape na laptopu. Aplikacija stiže na hub zajedno sa prvom mapom koju preuzmeš.",
+              "U aplikaciji CoMaps otvori Settings (gore desno), pod **Custom Map Server** upiši adresu iz dela **Navigacija** i pritisni **Save**. Na telefonu je možeš kopirati dugmetom **Kopiraj adresu**.",
               "Preuzimaj mape u CoMaps kao i obično, prvo osnovnu mapu sveta (oko 60 MB). Sada stižu sa huba, i bez interneta.",
             ],
           },
