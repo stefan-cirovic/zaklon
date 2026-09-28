@@ -108,7 +108,13 @@ p { margin: 0 0 12px; }
   opacity: 0; transform: translateY(3px); transition: opacity 180ms ease, transform 180ms ease;
 }
 .nav-brand:focus-visible { outline-offset: -3px; }
-@media (max-width: 899px) { .nav-brand .wordmark { display: none; } }
+@media (max-width: 899px) {
+  .nav-brand { width: 44px; }
+  .nav-brand .mark { width: 28px; height: 28px; }
+  .nav-brand .wordmark { display: none; }
+  /* Five items and the logo on a phone: a smaller label keeps "Domaćinstvo" whole. */
+  .nav-items.five button { font-size: 11px; padding-left: 0; padding-right: 0; }
+}
 @media (min-width: 900px) {
   /* Laptop: the logo well inside the left end, the items in the middle of the bar. */
   .nav { display: grid; grid-template-columns: 1fr auto 1fr; height: calc(var(--bar-height) + env(safe-area-inset-bottom)); padding: 0 16px env(safe-area-inset-bottom); }
@@ -126,7 +132,7 @@ p { margin: 0 0 12px; }
 @media (prefers-reduced-motion: reduce) {
   .nav-brand .mark, .nav-brand .wordmark { transition: none; }
 }
-@media (max-width: 380px) { .nav-items button { font-size: 11px; } .nav-brand { width: 44px; } }
+@media (max-width: 380px) { .nav-items button { font-size: 11px; } .nav-items.five button { font-size: 10px; } .nav-brand { width: 40px; } }
 
 /* Panels and controls */
 .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }

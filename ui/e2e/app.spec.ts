@@ -272,6 +272,16 @@ test("tools: every tool is listed, and one can be pinned to the bar for the whol
   expect((await (await page.request.get("/api/pinned-tool")).json()).tool).toBe("library");
   await page.reload();
   expect(await barItems(page)).toEqual(["Home", "Assistant", "Library", "Tools", "Household"]);
+  // Five items: none is cut short, in Serbian either (the longest is "Domaćinstvo").
+  await page.goto("/#household");
+  await page.locator("select").first().selectOption("sr");
+  await expect(page.locator("nav").getByRole("button", { name: "Domaćinstvo" })).toBeVisible();
+  const cut = await page.evaluate(() =>
+    [...document.querySelectorAll(".nav-label")].filter((l) => l.scrollWidth > l.clientWidth + 1).map((l) => l.textContent),
+  );
+  expect(cut, "labels cut short in the bar").toEqual([]);
+  await page.locator("select").first().selectOption("en");
+  await page.goto("/#tools");
 
   await page.getByRole("button", { name: "Unpin: Library" }).click();
   await expect(page.locator("nav").getByRole("button", { name: "Library" })).toHaveCount(0);

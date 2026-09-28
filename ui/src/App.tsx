@@ -408,7 +408,7 @@ export default function App() {
       {!setupOnly && (
         <nav className="nav" aria-label={t("mainNav")}>
           <BrandLink label={t("zaklonWebsite")} />
-          <div className="nav-items">
+          <div className={"nav-items" + (bar.length > 4 ? " five" : "")}>
             {bar.map((x) => (
               <button
                 key={x.id}
