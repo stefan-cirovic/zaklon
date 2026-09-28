@@ -339,8 +339,8 @@ function SuppliesCard({
   const [adding, setAdding] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   // Added from here: on the list at once, before the list from the hub (or the phone's copy) shows it.
-  const [added, setAdded] = useState<{ id: string; at: number }[]>([]);
-  const waiting = added.filter((a) => Date.now() - a.at < ADDED_KEEP && !shop?.some((e) => e.status === "open" && e.item_id === a.id)).map((a) => a.id);
+  const [added, setAdded] = useState<string[]>([]);
+  const waiting = added.filter((id) => !shop?.some((e) => e.status === "open" && e.item_id === id));
   const listed = (item: Item) => waiting.includes(item.id) || (shop !== null && onShoppingList(shop, item));
 
   const all = sum ? needsAttention(sum) : [];
@@ -358,7 +358,8 @@ function SuppliesCard({
       await api("/api/shopping", {
         json: { text: item.name, quantity: quantity > 0 ? Math.round(quantity * 1000) / 1000 : null, unit: item.unit, item_id: item.id },
       });
-      setAdded((list) => [...list.filter((a) => a.id !== item.id), { id: item.id, at: Date.now() }]);
+      setAdded((list) => [...list.filter((id) => id !== item.id), item.id]);
+      setTimeout(() => setAdded((list) => list.filter((id) => id !== item.id)), ADDED_KEEP);
       reload();
     } catch (e) {
       setErr(errText(t, e));
