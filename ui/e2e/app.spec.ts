@@ -1010,6 +1010,8 @@ test("home: what downloads, new versions and the library's drive (states simulat
   await card.getByRole("link", { name: "Open Add-ons" }).click();
   await expect(page).toHaveURL(/#addons$/);
   await expect(page.getByRole("heading", { name: "Add-ons", exact: true })).toBeVisible();
+  // A screen showing downloads asks again every few seconds: stop the made-up answers before the page closes.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 test("home: warnings come first: the firewall, and a hub that stopped answering (simulated)", async ({ page }) => {

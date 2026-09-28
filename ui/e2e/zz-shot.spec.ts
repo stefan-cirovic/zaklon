@@ -308,4 +308,6 @@ test("home shots", async ({ page }, info) => {
   await page.reload();
   await page.waitForTimeout(1500);
   await page.screenshot({ path: file("home-busy"), fullPage: true });
+  // Home asks every few seconds while something downloads: stop the made-up answers before the page closes.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
