@@ -259,8 +259,8 @@ test("tools: every tool is listed, and one can be pinned to the bar for the whol
     await expect(page.locator(".tool-card", { hasText: name }).first()).toBeVisible();
   }
   await expect(page.getByText(/expiry dates and a shopping list/).first()).toBeVisible();
-  // Supplies is about food, water and health, and listed under each.
-  await expect(page.locator(".tool-card", { hasText: "Supplies" })).toHaveCount(3);
+  // Supplies (food and medicines) is listed under Food and under Health and first aid.
+  await expect(page.locator(".tool-card", { hasText: "Supplies" })).toHaveCount(2);
   // Only the tools: Help is in Settings now.
   await expect(page.locator(".topic-grid").getByRole("link", { name: /^Help/ })).toHaveCount(0);
   expect(await barItems(page)).toEqual(["Home", "Assistant", "Tools", "Settings"]);
@@ -320,10 +320,11 @@ test("tools: sorted by topic; a topic shows its tools, and its guides open Add-o
   // The same topics as the folders of Add-ons, then Downloads (Add-ons itself).
   await expect(page.locator(".topic-panel h2")).toHaveText(["Health and first aid", "Water", "Food", "Garden", "Power", "Build and install", "Knowledge", "Maps", "Downloads"]);
   const topic = (name: string) => page.getByRole("region", { name, exact: true });
-  // Each with a line on what it is about, and its tools.
+  // Each with a line on what it is about, and its tools (a topic may have none yet, only guides).
   const water = topic("Water");
   await expect(water).toContainText("Finding, cleaning and storing safe drinking water.");
-  await expect(water.locator(".tool-title")).toHaveText(["Supplies"]);
+  await expect(water.locator(".tool-card")).toHaveCount(0);
+  await expect(topic("Health and first aid").locator(".tool-title")).toHaveText(["Supplies"]);
   await expect(topic("Food").locator(".tool-title")).toHaveText(["Supplies"]);
   await expect(topic("Knowledge").locator(".tool-title")).toHaveText(["Library"]);
   await expect(topic("Maps").locator(".tool-title")).toHaveText(["Maps"]);

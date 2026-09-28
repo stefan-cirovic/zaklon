@@ -23,7 +23,7 @@ export const TOOL_SECTIONS = [
  * icon in components/Icon.tsx.
  */
 export const TOOLS = [
-  { id: "supplies", title: "supplies", desc: "toolSuppliesDesc", category: ["food", "water", "health"] },
+  { id: "supplies", title: "supplies", desc: "toolSuppliesDesc", category: ["food", "health"] },
   { id: "library", title: "library", desc: "toolLibraryDesc", category: "knowledge" },
   { id: "maps", title: "maps", desc: "toolMapsDesc", category: "maps" },
   { id: "addons", title: "addons", desc: "toolAddonsDesc", category: "downloads" },
