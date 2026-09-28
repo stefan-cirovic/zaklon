@@ -17,9 +17,9 @@ export function fmtQty(n: number): string {
   return new Intl.NumberFormat(locale(), { maximumFractionDigits: 3 }).format(n);
 }
 
-/** A number with the language's separators and at most `digits` decimals: "1,234.5" / "1.234,5". */
-export function fmtNum(n: number, digits = 0): string {
-  return new Intl.NumberFormat(locale(), { maximumFractionDigits: digits }).format(n);
+/** A number with the language's separators and at most `digits` decimals (at least `min`): "1,234.5" / "1.234,5". */
+export function fmtNum(n: number, digits = 0, min = 0): string {
+  return new Intl.NumberFormat(locale(), { maximumFractionDigits: digits, minimumFractionDigits: min }).format(n);
 }
 
 /**

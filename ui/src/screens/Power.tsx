@@ -335,6 +335,8 @@ export default function Power({ t, lang }: Props) {
   const monthsShort = t("pwMonthsShort").split(",");
   const region = regionOf(p.region);
   const tableSun = sunOf(p.region, p.month);
+  /** Sun hours always with their tenths: "2.0 h" beside "2.7 h". */
+  const hrs = (h: number) => fmtNum(h, 2, 1);
 
   /** Show a change and save it a moment later (a draft is saved only when asked). */
   const change = (next: Plan) => {
@@ -393,7 +395,7 @@ export default function Power({ t, lang }: Props) {
   const n0 = (x: number) => fmtNum(x);
   const n2 = (x: number) => fmtNum(x, 2);
   const used = res.lineWh.filter((w) => w > 0);
-  const perWatt = `(${fmtNum(p.sunHours, 1)} × ${n2(PANEL_DERATE)} × ${n2(CHARGE_EFF[p.battery])})`;
+  const perWatt = `(${hrs(p.sunHours)} × ${n2(PANEL_DERATE)} × ${n2(CHARGE_EFF[p.battery])})`;
   const formulas: [Key, string][] = [
     ["pwF1", `${used.length > 1 && used.length <= 8 ? `${used.map(n0).join(" + ")} = ` : ""}${n0(res.loadWh)} Wh`],
     ["pwF2", `${n0(res.acWh)} ÷ ${n2(p.inverterEff)} + ${n0(res.dcWh)} = ${n0(res.fromBatteryWh)} Wh`],
@@ -403,7 +405,7 @@ export default function Power({ t, lang }: Props) {
     [
       "pwF6",
       inv
-        ? `${n2(INVERTER_HEADROOM)} × ${n0(inv.loadW)} = ${n0(inv.continuousW)} W; ${n0(inv.loadW)} + ${n0(inv.peakW - inv.loadW)} = ${n0(inv.peakW)} W → ${inv.sizeW ? `${n0(inv.sizeW)} W` : "–"}`
+        ? `${n2(INVERTER_HEADROOM)} × ${n0(inv.loadW)} = ${n0(up(inv.continuousW))} W; ${n0(inv.loadW)} + ${n0(inv.peakW - inv.loadW)} = ${n0(up(inv.peakW))} W → ${inv.sizeW ? `${n0(inv.sizeW)} W` : "–"}`
         : t("pwNoInverter"),
     ],
   ];
@@ -442,6 +444,19 @@ export default function Power({ t, lang }: Props) {
               </button>
             )}
           </div>
+        </div>
+      )}
+      {res.loadWh > 0 && (
+        // The answer first where it would otherwise be far below (one column: phones and smaller laptops).
+        <div className="pw-answer-top">
+          <p className="pw-summary">{summary}</p>
+          <button
+            type="button"
+            className="link-btn"
+            onClick={() => document.getElementById(`${id}-results`)?.scrollIntoView({ block: "start", behavior: "smooth" })}
+          >
+            {t("pwSeeDetails")}
+          </button>
         </div>
       )}
       <div className="pw-layout">
@@ -520,7 +535,7 @@ export default function Power({ t, lang }: Props) {
                             <NumInput label={`${t("pwHoursA")}: ${name}`} lang={lang} unit="h" value={l.hours} min={0} max={24} onChange={(v) => setLine(l.k, { hours: v })} />
                           )}
                         </td>
-                        <td data-label={t("pwColRunsOn")}>
+                        <td className="pw-runs" data-label={t("pwColRunsOn")}>
                           <select
                             aria-label={`${t("pwColRunsOn")}: ${name}`}
                             value={l.dc ? "dc" : "ac"}
@@ -680,7 +695,7 @@ export default function Power({ t, lang }: Props) {
                 <NumInput label={t("pwSunHours")} lang={lang} unit="h" value={p.sunHours} min={0.1} max={12} onChange={(v) => change({ ...p, sunHours: v })} />
                 {p.sunHours !== tableSun && (
                   <button type="button" className="link-btn pw-hint" onClick={() => change({ ...p, sunHours: tableSun })}>
-                    {fill(t("pwSunTable"), { h: fmtNum(tableSun, 1) })}
+                    {fill(t("pwSunTable"), { h: hrs(tableSun) })}
                   </button>
                 )}
               </div>
@@ -698,11 +713,11 @@ export default function Power({ t, lang }: Props) {
               <p className="pw-summary">{summary}</p>
               <div className="pw-stats">
                 <Stat label={t("pwBatteryNeed")} value={`${fmtNum(up(res.batteryAh))} Ah`} sub={fill(t("pwBatteryAt"), { v: p.volts })}>
-                  <span>{fill(t("pwBatteryMore"), { wh: fmtNum(up(res.batteryWh, 10)), used: fmtNum(up(res.usableWh, 10)), pct: fmtNum(p.usable * 100) })}</span>
+                  <span>{fill(t("pwBatteryMore"), { wh: fmtNum(up(res.batteryWh)), used: fmtNum(up(res.usableWh)), pct: fmtNum(p.usable * 100) })}</span>
                   <span>{fill(t("pwBatteryPack"), { pack: packText })}</span>
                 </Stat>
                 <Stat label={t("pwPanels")} value={`${fmtNum(res.panelsW)} W`}>
-                  <span>{fill(t("pwPanelsKeep"), { month: months[p.month - 1], h: fmtNum(p.sunHours, 1) })}</span>
+                  <span>{fill(t("pwPanelsKeep"), { month: months[p.month - 1], h: hrs(p.sunHours) })}</span>
                   <span>{fill(t("pwPanelsRefill"), { w: fmtNum(up(res.refillW, PANEL_STEP)) })}</span>
                 </Stat>
                 <Stat label={t("pwInverter")} value={inv ? (inv.sizeW ? `${fmtNum(inv.sizeW)} W` : `> ${fmtNum(5000)} W`) : "–"}>
@@ -731,11 +746,11 @@ export default function Power({ t, lang }: Props) {
                       type="button"
                       className={"pw-month" + (p.month === i + 1 ? " active" : "")}
                       aria-pressed={p.month === i + 1}
-                      aria-label={`${months[i]}: ${fmtNum(h, 1)} h, ${fmtNum(up(byMonth[i], PANEL_STEP))} W`}
+                      aria-label={`${months[i]}: ${hrs(h)} h, ${fmtNum(up(byMonth[i], PANEL_STEP))} W`}
                       onClick={() => pickMonth(i + 1)}
                     >
                       <span className="pw-month-name">{monthsShort[i]}</span>
-                      <span>{fmtNum(h, 1)} h</span>
+                      <span>{hrs(h)} h</span>
                       <span className="pw-month-w">{fmtNum(up(byMonth[i], PANEL_STEP))} W</span>
                     </button>
                   ))}
