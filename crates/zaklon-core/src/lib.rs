@@ -3,6 +3,7 @@
 
 pub mod catalog;
 pub mod config;
+pub mod conversations;
 pub mod dates;
 pub mod db;
 pub mod lang;

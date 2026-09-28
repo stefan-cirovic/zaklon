@@ -40,6 +40,8 @@ const KNOWN: [RegExp, Key][] = [
   [/did not start in time|could not start the AI engine|AI engine replied|AI engine returned an empty answer|stopped answering|^AI engine:/i, "errAiEngine"],
   [/ask something first/i, "askSomething"],
   [/question is too long/i, "errQuestionLong"],
+  [/conversation is too long/i, "errConversationFull"],
+  [/hub stopped before the answer was finished/i, "errAnswerLost"],
   [/assistant is busy/i, "errAiBusy"],
   [/note is too long/i, "errNoteLong"],
   [/remembers too much/i, "errNotesFull"],
@@ -118,6 +120,7 @@ const CODES: Record<string, Key> = {
   ai_busy: "errAiBusy",
   question_too_long: "errQuestionLong",
   question_empty: "askSomething",
+  conversation_full: "errConversationFull",
   note_too_long: "errNoteLong",
   notes_full: "errNotesFull",
 };

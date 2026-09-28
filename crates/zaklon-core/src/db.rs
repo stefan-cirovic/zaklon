@@ -80,6 +80,7 @@ impl Db {
         conn.execute_batch(SCHEMA).context("applying schema")?;
         conn.execute_batch(crate::supplies::SCHEMA).context("applying supplies schema")?;
         conn.execute_batch(crate::memory::SCHEMA).context("applying memory schema")?;
+        conn.execute_batch(crate::conversations::SCHEMA).context("applying conversations schema")?;
         crate::supplies::migrate(&conn).context("migrating supplies")?;
         Ok(Self { conn: Mutex::new(conn), path: Some(path.to_path_buf()) })
     }
@@ -89,6 +90,7 @@ impl Db {
         conn.execute_batch(SCHEMA)?;
         conn.execute_batch(crate::supplies::SCHEMA)?;
         conn.execute_batch(crate::memory::SCHEMA)?;
+        conn.execute_batch(crate::conversations::SCHEMA)?;
         crate::supplies::migrate(&conn)?;
         Ok(Self { conn: Mutex::new(conn), path: None })
     }
@@ -226,9 +228,16 @@ impl Db {
         Ok(conn.execute("UPDATE devices SET name = ?1 WHERE id = ?2", params![name, id])? > 0)
     }
 
+    /// Remove a paired device, and with it its saved conversations.
     pub fn delete_device(&self, id: &str) -> Result<bool> {
         let conn = self.lock();
-        Ok(conn.execute("DELETE FROM devices WHERE id = ?1", params![id])? > 0)
+        let tx = conn.unchecked_transaction()?;
+        let removed = tx.execute("DELETE FROM devices WHERE id = ?1", params![id])? > 0;
+        if removed {
+            crate::conversations::delete_owned(&tx, id)?;
+        }
+        tx.commit()?;
+        Ok(removed)
     }
 
     pub fn count_devices(&self) -> Result<i64> {
@@ -292,6 +301,7 @@ pub fn prepare_foreign(path: &Path) -> Result<()> {
     conn.execute_batch(SCHEMA).context("applying schema")?;
     conn.execute_batch(crate::supplies::SCHEMA).context("applying supplies schema")?;
     conn.execute_batch(crate::memory::SCHEMA).context("applying memory schema")?;
+    conn.execute_batch(crate::conversations::SCHEMA).context("applying conversations schema")?;
     crate::supplies::migrate(&conn).context("migrating supplies")?;
     Ok(())
 }
@@ -357,6 +367,9 @@ pub fn restore_into(target: &Path, backup: &Path, access: RestoreAccess<'_>) -> 
             _ => copy_rows(&tx, table, "backup", "", &[])?,
         }
     }
+    // Conversations belong to a device: those of devices that may not
+    // connect after this restore go.
+    crate::conversations::drop_orphans(&tx)?;
     tx.commit()?;
     Ok(())
 }
@@ -494,6 +507,46 @@ mod tests {
         let db = Db::open(&current).unwrap();
         assert_eq!(device_ids(&db), ["paired-now"]);
         assert_eq!(db.list_notes().unwrap().len(), 1);
+        drop(db);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Conversations come back with the backup, but only those of the
+    /// laptop and of the phones that may connect after the restore.
+    #[test]
+    fn a_restore_brings_back_the_conversations_of_devices_that_may_connect() {
+        use crate::conversations::LAPTOP;
+        let dir = temp_folder("restore-conversations");
+        let backup = dir.join("backup.db");
+        let db = Db::open(&backup).unwrap();
+        db.insert_device(&device("still-paired"), "still-paired-hash").unwrap();
+        db.insert_device(&device("gone-since"), "gone-since-hash").unwrap();
+        db.add_turn(LAPTOP, None, "The laptop's", "a1").unwrap();
+        db.add_turn("still-paired", None, "Still paired", "a2").unwrap();
+        db.add_turn("gone-since", None, "Gone since", "a3").unwrap();
+        drop(db);
+        let current = dir.join("current.db");
+        let db = Db::open(&current).unwrap();
+        db.insert_device(&device("still-paired"), "still-paired-hash").unwrap();
+        db.add_turn(LAPTOP, None, "Asked after the backup", "a4").unwrap();
+        drop(db);
+        prepare_foreign(&backup).unwrap();
+        let titles = |db: &Db, owner: &str| db.list_conversations(owner, None).unwrap().into_iter().map(|c| c.title).collect::<Vec<_>>();
+
+        let kept = dir.join("kept.db");
+        restore_into(&kept, &backup, RestoreAccess::Keep { current: &current, settings: &["household_password_hash"] }).unwrap();
+        let db = Db::open(&kept).unwrap();
+        assert_eq!(titles(&db, LAPTOP), ["The laptop's"]);
+        assert_eq!(titles(&db, "still-paired"), ["Still paired"]);
+        assert!(titles(&db, "gone-since").is_empty(), "that phone may not connect, so its conversations are not kept");
+        let turns: i64 = db.lock().query_row("SELECT COUNT(*) FROM conversation_turns", [], |r| r.get(0)).unwrap();
+        assert_eq!(turns, 2, "no turns are left without their conversation");
+        drop(db);
+
+        let taken = dir.join("taken.db");
+        restore_into(&taken, &backup, RestoreAccess::Take).unwrap();
+        let db = Db::open(&taken).unwrap();
+        assert_eq!(titles(&db, "gone-since"), ["Gone since"], "the backup's phones come with it");
         drop(db);
         let _ = std::fs::remove_dir_all(&dir);
     }
