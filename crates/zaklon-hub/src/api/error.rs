@@ -42,7 +42,6 @@ const ERROR_CODES: &[(&str, &str)] = &[
     ("formatted as FAT32", "fat32"),
     ("checksum mismatch", "checksum"),
     ("expiry must be a date", "bad_date"),
-    ("must be a date", "bad_date"),
     ("name is required", "name_required"),
     ("text is required", "text_required"),
     ("that name is reserved", "name_reserved"),
@@ -140,31 +139,88 @@ mod error_code_tests {
     const FORBIDDEN: StatusCode = StatusCode::FORBIDDEN;
     const NOT_FOUND: StatusCode = StatusCode::NOT_FOUND;
 
-    /// The source of the hub and its core, without the code table and these
-    /// tests, so a message counts as sent only if the code really sends it.
-    /// Folders inside (such as src/api) are read too.
+    /// One source file split for `hub_sources`: its code before its first test
+    /// module (`#[cfg(test)] mod name { .. }`; test modules sit at the end of
+    /// every file here), and the names of the test modules it keeps in files
+    /// of their own (`#[cfg(test)] mod name;`).
+    fn split_off_tests(text: &str) -> (&str, Vec<&str>) {
+        const TEST_ONLY: &str = "#[cfg(test)]";
+        let mut test_files = Vec::new();
+        for (at, _) in text.match_indices(TEST_ONLY) {
+            // A test-only function or import is not a module; look further.
+            let Some(module) = text[at + TEST_ONLY.len()..].trim_start().strip_prefix("mod ") else { continue };
+            let (name, rest) = module.split_at(module.find(|c: char| !(c.is_alphanumeric() || c == '_')).unwrap_or(module.len()));
+            match rest.trim_start().chars().next() {
+                Some('{') => return (&text[..at], test_files),
+                Some(';') => test_files.push(name),
+                _ => {}
+            }
+        }
+        (text, test_files)
+    }
+
+    /// The source of the hub and its core without test code and without the
+    /// code table, so a message counts as sent only if the hub really sends
+    /// it, not if only a test mentions it. Folders inside (such as src/api)
+    /// are read too.
     fn hub_sources() -> String {
-        let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        let mut all = String::new();
-        let mut dirs: Vec<std::path::PathBuf> = ["zaklon-core/src", "zaklon-hub/src"].iter().map(|d| crates.join(d)).collect();
+        use std::path::{Path, PathBuf};
+        let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut files: Vec<(PathBuf, String)> = Vec::new();
+        let mut dirs: Vec<PathBuf> = ["zaklon-core/src", "zaklon-hub/src"].iter().map(|d| crates.join(d)).collect();
         while let Some(dir) = dirs.pop() {
             for e in std::fs::read_dir(dir).unwrap().flatten() {
                 if e.path().is_dir() {
                     dirs.push(e.path());
-                    continue;
-                }
-                let text = std::fs::read_to_string(e.path()).unwrap();
-                match (text.find("const ERROR_CODES"), text.find("mod error_code_tests")) {
-                    (Some(table), Some(tests)) => {
-                        let after_table = table + text[table..].find("];").unwrap();
-                        all.push_str(&text[..table]);
-                        all.push_str(&text[after_table..tests]);
-                    }
-                    _ => all.push_str(&text),
+                } else {
+                    let text = std::fs::read_to_string(e.path()).unwrap();
+                    files.push((e.path(), text));
                 }
             }
         }
+        // Files that are test modules as a whole, such as assistant/test_util.rs.
+        let mut test_files: Vec<PathBuf> = Vec::new();
+        for (path, text) in &files {
+            let module_dir = match path.file_name().and_then(|n| n.to_str()) {
+                Some("mod.rs" | "lib.rs" | "main.rs") => path.parent().unwrap().to_path_buf(),
+                _ => path.with_extension(""),
+            };
+            test_files.extend(split_off_tests(text).1.iter().map(|name| module_dir.join(format!("{name}.rs"))));
+        }
+        let mut all = String::new();
+        for (path, text) in &files {
+            if test_files.contains(path) {
+                continue;
+            }
+            let code = split_off_tests(text).0;
+            match code.find("const ERROR_CODES") {
+                Some(table) => {
+                    all.push_str(&code[..table]);
+                    all.push_str(&code[table + code[table..].find("];").unwrap()..]);
+                }
+                None => all.push_str(code),
+            }
+        }
         all
+    }
+
+    /// Test code is left out, so a message only a test mentions does not
+    /// count as sent: test modules at the end of a file, and whole files that
+    /// are test modules.
+    #[test]
+    fn hub_sources_leave_out_test_code() {
+        let file = "fn sends() { bad(\"a real message\") }\n#[cfg(test)]\nfn helper() {}\n#[cfg(test)]\nmod helpers;\nfn more() {}\n\
+                    #[cfg(test)]\nmod tests {\n    fn t() { bad(\"only a test says this\") }\n}\n";
+        let (code, test_files) = split_off_tests(file);
+        assert!(code.contains("a real message") && code.contains("fn helper") && code.contains("fn more"), "{code}");
+        assert!(!code.contains("only a test says this"), "{code}");
+        assert_eq!(test_files, ["helpers"]);
+
+        let sources = hub_sources();
+        assert!(sources.contains("fn error_code("), "the hub's code is read");
+        assert!(!sources.contains("fn every_message_gets_its_code"), "a test module was read");
+        assert!(!sources.contains("Helpers shared by the assistant's tests"), "assistant/test_util.rs was read");
+        assert!(!sources.contains("(\"wrong household password\", \"wrong_password\")"), "the code table was read");
     }
 
     /// Every code the hub can send: the table's, and those that come from
@@ -285,30 +341,6 @@ mod error_code_tests {
             .map(|(key, _)| key.trim().trim_matches(|c| c == '"' || c == '\''))
             .collect();
         let missing: Vec<&str> = hub_codes().into_iter().filter(|c| !ui.contains(c)).collect();
-        assert!(missing.is_empty(), "add these codes to CODES in ui/src/errors.ts: {missing:?}");
-    }
-
-    /// The app translates codes with the table `CODES` in ui/src/errors.ts;
-    /// a code missing there would show up as "Something went wrong".
-    #[test]
-    fn every_code_has_a_translation_in_the_app() {
-        let src = include_str!("../../../../ui/src/errors.ts");
-        let table = &src[src.find("const CODES").expect("CODES in errors.ts")..];
-        let table = &table[table.find('{').expect("start of CODES") + 1..table.find("};").expect("end of CODES")];
-        let mapped: std::collections::HashSet<&str> =
-            table.lines().filter_map(|l| l.split_once(':')).map(|(code, _)| code.trim().trim_matches('"')).collect();
-        let by_status = [
-            StatusCode::BAD_REQUEST,
-            StatusCode::UNAUTHORIZED,
-            StatusCode::FORBIDDEN,
-            StatusCode::NOT_FOUND,
-            StatusCode::TOO_MANY_REQUESTS,
-            StatusCode::INTERNAL_SERVER_ERROR,
-        ]
-        .map(|s| error_code(s, ""));
-        let mut missing: Vec<&str> =
-            ERROR_CODES.iter().map(|(_, code)| *code).chain(by_status).filter(|code| !mapped.contains(code)).collect();
-        missing.dedup();
         assert!(missing.is_empty(), "add these codes to CODES in ui/src/errors.ts: {missing:?}");
     }
 
