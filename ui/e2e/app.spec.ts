@@ -699,16 +699,17 @@ test("assistant: a model that needs more memory than the computer has is marked 
   await expect(model).toHaveValue("qwen35-2b");
   const big = model.locator('option[value="qwen35-9b"]');
   await expect(big).toHaveText(/9B · needs more memory$/);
-  await expect(big).toBeDisabled();
+  // Playwright does not count an option as disabled; the property says it.
+  await expect(big).toHaveJSProperty("disabled", true);
   await expect(model.locator('option[value="qwen35-2b"]')).toHaveText(/2B · recommended$/);
-  await expect(model.locator('option[value="qwen35-2b"]')).toBeEnabled();
+  await expect(model.locator('option[value="qwen35-2b"]')).toHaveJSProperty("disabled", false);
 
   // The same on Household > AI assistant.
   await page.goto("/#household/assistant");
   const pick = page.getByRole("combobox", { name: "Model" });
   await expect(pick).toHaveValue("qwen35-2b");
   await expect(pick.locator('option[value="qwen35-9b"]')).toHaveText(/needs more memory$/);
-  await expect(pick.locator('option[value="qwen35-9b"]')).toBeDisabled();
+  await expect(pick.locator('option[value="qwen35-9b"]')).toHaveJSProperty("disabled", true);
   await expect(page.getByText(/Recommended for this computer with .*: AI model for phones \(Qwen3\.5 2B\)/)).toBeVisible();
   expect(chosen).toBeNull();
 
