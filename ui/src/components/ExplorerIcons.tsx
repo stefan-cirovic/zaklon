@@ -3,9 +3,10 @@ import type { ReactNode } from "react";
 /**
  * Icons of the Add-ons screen, which looks like a file explorer: folders with
  * what is inside drawn on them, drives, and the toolbar's line icons. Drawn on
- * a 24 px grid like components/Icon.tsx.
+ * a 24 px grid like components/Icon.tsx. The glyphs of the topics (see
+ * topics.ts) mark the same categories on the Tools screen.
  */
-export type Glyph = "book" | "health" | "garden" | "skills" | "layers" | "chip" | "map" | "program";
+export type Glyph = "book" | "health" | "water" | "food" | "garden" | "power" | "build" | "chip" | "map" | "program" | "download";
 
 const GLYPHS: Record<Glyph, ReactNode> = {
   book: (
@@ -15,6 +16,18 @@ const GLYPHS: Record<Glyph, ReactNode> = {
     </>
   ),
   health: <path d="M9.5 4.5h5v5h5v5h-5v5h-5v-5h-5v-5h5z" />,
+  water: (
+    <>
+      <path d="M12 3.8c-2.9 3.7-5.6 7-5.6 10.1a5.6 5.6 0 0 0 11.2 0c0-3.1-2.7-6.4-5.6-10.1z" />
+      <path d="M9.4 14.2a2.7 2.7 0 0 0 2.4 2.6" />
+    </>
+  ),
+  food: (
+    <>
+      <path d="M3.5 12h17a8.5 7 0 0 1-17 0z" />
+      <path d="M8.5 9c-1-1.2 1-2.3 0-3.5M12 9c-1-1.2 1-2.3 0-3.5M15.5 9c-1-1.2 1-2.3 0-3.5" />
+    </>
+  ),
   garden: (
     <>
       <path d="M12 20.5v-9" />
@@ -22,13 +35,8 @@ const GLYPHS: Record<Glyph, ReactNode> = {
       <path d="M12 14.5c0-3.5 2.5-6 7-6 0 3.5-2.5 6-7 6z" />
     </>
   ),
-  skills: <path d="M15 4.2a4.3 4.3 0 0 0-4.9 5.9l-5.6 5.6a2 2 0 0 0 2.8 2.8l5.6-5.6A4.3 4.3 0 0 0 18.8 7l-2.6 2.6-2.5-.6-.6-2.5z" />,
-  layers: (
-    <>
-      <path d="M4 8.5 12 4.5l8 4-8 4z" />
-      <path d="m4 12.5 8 4 8-4M4 16.5l8 4 8-4" />
-    </>
-  ),
+  power: <path d="M13.5 3.5 5.5 13.5h6l-1 7 8-10h-6z" />,
+  build: <path d="M15 4.2a4.3 4.3 0 0 0-4.9 5.9l-5.6 5.6a2 2 0 0 0 2.8 2.8l5.6-5.6A4.3 4.3 0 0 0 18.8 7l-2.6 2.6-2.5-.6-.6-2.5z" />,
   chip: (
     <>
       <rect x="7" y="7" width="10" height="10" rx="1.5" />
@@ -45,6 +53,12 @@ const GLYPHS: Record<Glyph, ReactNode> = {
     <>
       <rect x="3.5" y="5" width="17" height="14" rx="1.5" />
       <path d="M3.5 9h17M7.5 12.5l2.5 2-2.5 2M12 16.5h4" />
+    </>
+  ),
+  download: (
+    <>
+      <path d="M12 4v10.5M7.5 10 12 14.5l4.5-4.5" />
+      <path d="M4.5 15v4.5h15V15" />
     </>
   ),
 };

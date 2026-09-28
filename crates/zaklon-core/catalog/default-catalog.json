@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-28",
+  "generated": "2026-09-29",
   "packs": [
     {
       "id": "wikipedia-sr-maxi",
@@ -13,7 +13,9 @@
         "sr": "Cela srpska Vikipedija sa slikama."
       },
       "category": "knowledge",
-      "topic": "reference",
+      "topics": [
+        "knowledge"
+      ],
       "version": "2026-09-14",
       "size": 11819209331,
       "languages": [
@@ -49,7 +51,9 @@
         "sr": "Cela srpska Vikipedija bez slika."
       },
       "category": "knowledge",
-      "topic": "reference",
+      "topics": [
+        "knowledge"
+      ],
       "version": "2026-09-14",
       "size": 6897076901,
       "languages": [
@@ -83,7 +87,9 @@
         "sr": "Uvodi svih članaka srpske Vikipedije. Malo i brzo."
       },
       "category": "knowledge",
-      "topic": "reference",
+      "topics": [
+        "knowledge"
+      ],
       "version": "2026-09-14",
       "size": 2029773550,
       "languages": [
@@ -117,7 +123,9 @@
         "sr": "Srpski Vikirečnik: definicije, prevodi, gramatika."
       },
       "category": "knowledge",
-      "topic": "reference",
+      "topics": [
+        "knowledge"
+      ],
       "version": "2026-07-14",
       "size": 332858392,
       "languages": [
@@ -153,7 +161,9 @@
         "sr": "Svi medicinski članci engleske Vikipedije, odabrani u projektu WikiProject Medicine."
       },
       "category": "knowledge",
-      "topic": "health",
+      "topics": [
+        "health"
+      ],
       "version": "2026-04-11",
       "size": 2215520569,
       "languages": [
@@ -190,7 +200,9 @@
         "sr": "Uputstva korak po korak za popravku telefona, laptopova, aparata i drugog."
       },
       "category": "knowledge",
-      "topic": "skills",
+      "topics": [
+        "build"
+      ],
       "version": "2025-12-21",
       "size": 3570695757,
       "languages": [
@@ -227,7 +239,9 @@
         "sr": "Uvodi svih članaka engleske Vikipedije."
       },
       "category": "knowledge",
-      "topic": "reference",
+      "topics": [
+        "knowledge"
+      ],
       "version": "2026-09-09",
       "size": 14386799064,
       "languages": [
@@ -263,7 +277,9 @@
         "sr": "Cela engleska Vikipedija bez slika. Veliko."
       },
       "category": "knowledge",
-      "topic": "reference",
+      "topics": [
+        "knowledge"
+      ],
       "version": "2026-06-17",
       "size": 52690706555,
       "languages": [
@@ -297,7 +313,10 @@
         "sr": "Praktični vodiči kako da nađeš, filtriraš i dezinfikuješ vodu za piće."
       },
       "category": "knowledge",
-      "topic": "health",
+      "topics": [
+        "water",
+        "health"
+      ],
       "version": "2024-08",
       "size": 20924451,
       "languages": [
@@ -334,7 +353,9 @@
         "sr": "Priručnici za prvu pomoć i lečenje kad lekar nije dostupan."
       },
       "category": "knowledge",
-      "topic": "health",
+      "topics": [
+        "health"
+      ],
       "version": "2024-08",
       "size": 70179585,
       "languages": [
@@ -371,7 +392,9 @@
         "sr": "Vodiči za kuvanje, zimnicu, sušenje i bezbedno čuvanje hrane."
       },
       "category": "knowledge",
-      "topic": "garden",
+      "topics": [
+        "food"
+      ],
       "version": "2025-04",
       "size": 97822565,
       "languages": [
@@ -408,7 +431,9 @@
         "sr": "Uvodi svih medicinskih članaka engleske Vikipedije. Malo i brzo."
       },
       "category": "knowledge",
-      "topic": "health",
+      "topics": [
+        "health"
+      ],
       "version": "2026-04",
       "size": 162855323,
       "languages": [
@@ -445,7 +470,9 @@
         "sr": "Čemu služe uobičajeni lekovi, kako se piju i koja su neželjena dejstva, od britanske zdravstvene službe."
       },
       "category": "knowledge",
-      "topic": "health",
+      "topics": [
+        "health"
+      ],
       "version": "2026-09",
       "size": 15322705,
       "languages": [
@@ -482,7 +509,9 @@
         "sr": "Besplatni udžbenici i priručnici na srpskom sa Vikiknjiga, bez slika."
       },
       "category": "knowledge",
-      "topic": "reference",
+      "topics": [
+        "knowledge"
+      ],
       "version": "2026-07",
       "size": 7578861,
       "languages": [
@@ -518,7 +547,9 @@
         "sr": "Pitanja i odgovori sa Gardening Stack Exchange-a o gajenju povrća i voća, nezi biljaka, štetočinama i zemljištu."
       },
       "category": "knowledge",
-      "topic": "garden",
+      "topics": [
+        "garden"
+      ],
       "version": "2026-08",
       "size": 926805273,
       "languages": [
@@ -552,7 +583,12 @@
         "sr": "Pitanja i odgovori sa Sustainable Living Stack Exchange-a o štednji struje i vode, kompostiranju i manje otpada."
       },
       "category": "knowledge",
-      "topic": "skills",
+      "topics": [
+        "power",
+        "water",
+        "garden",
+        "build"
+      ],
       "version": "2026-08",
       "size": 27666982,
       "languages": [
@@ -586,7 +622,9 @@
         "sr": "Wiki enciklopedija baštenskih biljaka sa uslovima gajenja, negom i savetima za razmnožavanje."
       },
       "category": "knowledge",
-      "topic": "garden",
+      "topics": [
+        "garden"
+      ],
       "version": "2026-09",
       "size": 112499438,
       "languages": [
@@ -620,7 +658,9 @@
         "sr": "Provereni USDA vodič kako da bezbedno spremiš zimnicu: voće, povrće, meso, turšiju i džemove."
       },
       "category": "knowledge",
-      "topic": "garden",
+      "topics": [
+        "food"
+      ],
       "version": "2025-04",
       "size": 19787133,
       "languages": [

@@ -18,8 +18,12 @@ const src = (file: string) => readFileSync(new URL(`../../src/${file}`, import.m
 const SCREENS = ["home", "assistant", "tools", "settings", "help", ...[...src("tools.ts").matchAll(/\{ id: "(\w+)", title:/g)].map((m) => m[1])];
 const CATEGORIES = [...src("settings.ts").matchAll(/\{ id: "([\w-]+)", title: "\w+", desc:/g)].map((m) => m[1]);
 const SETTINGS = [...src("settings.ts").matchAll(/\{ id: "([\w-]+)", cat: "([\w-]+)"/g)].map((m) => `${m[2]}/${m[1]}`);
-const FOLDERS = [...src("addons.ts").matchAll(/\{ id: "(\w+)", name: "\w+", desc:/g)].map((m) => m[1]);
-assert.ok(SCREENS.includes("supplies") && CATEGORIES.includes("backups") && SETTINGS.includes("network/hotspot") && FOLDERS.includes("models"), "the app's lists were read");
+// The Add-ons folders: the topics (topics.ts), then AI models and programs (addons.ts).
+const FOLDERS = ["topics.ts", "addons.ts"].flatMap((f) => [...src(f).matchAll(/\{ id: "(\w+)", name: "\w+", desc:/g)].map((m) => m[1]));
+assert.ok(
+  SCREENS.includes("supplies") && CATEGORIES.includes("backups") && SETTINGS.includes("network/hotspot") && FOLDERS.includes("health") && FOLDERS.includes("models"),
+  "the app's lists were read",
+);
 
 type Block = { p: string } | { steps: string[] } | { list: string[] } | { note: string } | { warn: string };
 type Section = { id: string; title: string; body: Block[] };

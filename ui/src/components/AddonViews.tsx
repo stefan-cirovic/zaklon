@@ -101,8 +101,15 @@ function FolderTile({ t, s, open }: { t: T; s: FolderStat; open: (id: FolderId) 
   );
 }
 
-/** Packs and maps: cards, or a table with name, size, status and license. */
-export function Entries({ t, entries, view, showFolder, label }: { t: T; entries: Entry[]; view: ViewMode; showFolder: boolean; label: string }) {
+/**
+ * Packs and maps: cards, or a table with name, size, status and license. In a
+ * folder (`folder`) each shows that folder's icon; elsewhere (search results,
+ * the drive) the folders it is in are named, as a pack can be in several.
+ */
+export function Entries({ t, entries, view, folder, label }: { t: T; entries: Entry[]; view: ViewMode; folder?: FolderId; label: string }) {
+  const glyph = (e: Entry) => folderOf(folder ?? e.folders[0]).glyph;
+  const where = (e: Entry) => e.folders.map((f) => t(folderOf(f).name)).join(", ");
+  const showFolder = !folder;
   if (view === "details") {
     return (
       <div className="details entries" role="table" aria-label={label}>
@@ -117,13 +124,13 @@ export function Entries({ t, entries, view, showFolder, label }: { t: T; entries
           <div className="d-row entry-row" role="row" key={e.key} data-entry={e.key}>
             <div className="d-name" role="cell">
               <span className="entry-icon small">
-                <GlyphIcon glyph={folderOf(e.folder).glyph} size={18} />
+                <GlyphIcon glyph={glyph(e)} size={18} />
               </span>
               <span className="d-title">
                 <span className="entry-name">
                   {e.name} {e.recommended && <span className="badge ok">{t("recommended")}</span>}
                 </span>
-                <span className="muted d-sub" title={e.desc || undefined}>{showFolder ? t(folderOf(e.folder).name) : e.desc}</span>
+                <span className="muted d-sub" title={e.desc || undefined}>{showFolder ? where(e) : e.desc}</span>
               </span>
             </div>
             <div className="d-size" role="cell">{fmtBytes(e.size)}</div>
@@ -146,7 +153,7 @@ export function Entries({ t, entries, view, showFolder, label }: { t: T; entries
         <div className="item entry-tile" role="listitem" key={e.key} data-entry={e.key}>
           <div className="entry-head">
             <span className="entry-icon">
-              <GlyphIcon glyph={folderOf(e.folder).glyph} />
+              <GlyphIcon glyph={glyph(e)} />
             </span>
             <div className="entry-main">
               <div className="entry-name">
@@ -156,7 +163,7 @@ export function Entries({ t, entries, view, showFolder, label }: { t: T; entries
               <div className="muted small-text">
                 {fmtBytes(e.size)}
                 {e.meta && ` · ${e.meta}`}
-                {showFolder && ` · ${t(folderOf(e.folder).name)}`}
+                {showFolder && ` · ${where(e)}`}
               </div>
             </div>
           </div>

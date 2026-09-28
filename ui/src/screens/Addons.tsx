@@ -16,8 +16,9 @@ import {
   folderOf,
   folderStat,
   isFolderId,
-  packFolder,
+  packFolders,
   rootName,
+  upgradedFolder,
   WITH_BAR,
   type CatalogReply,
   type Entry,
@@ -33,9 +34,10 @@ type Props = { t: T; lang: Lang; isHub: boolean };
 
 /**
  * Where on the screen one is, as in a file explorer: the top ("This PC"), a
- * folder, the hub's drive with what is on it, or (laptop) a USB drive to copy
- * to or import from. It is part of the address (#addons/maps), so the
- * browser's and the phone's Back button go back to the top.
+ * folder (a topic, AI models or programs), the hub's drive with what is on
+ * it, or (laptop) a USB drive to copy to or import from. It is part of the
+ * address (#addons/maps), so the browser's and the phone's Back button go
+ * back to the top, and the Tools screen links to a topic's folder.
  */
 type Loc = { kind: "root" } | { kind: "folder"; id: FolderId } | { kind: "library" } | { kind: "drive"; letter: string };
 
@@ -47,7 +49,9 @@ function locFromHash(): Loc {
   if (tab !== "addons") return ROOT;
   if (a === "library") return { kind: "library" };
   if (a === "drive" && b && /^[A-Za-z]$/.test(b)) return { kind: "drive", letter: b.toUpperCase() };
-  if (isFolderId(a)) return { kind: "folder", id: a };
+  // A folder's old name leads to it too (main.tsx has usually put the new one in the address already).
+  const folder = upgradedFolder(a ?? "");
+  if (isFolderId(folder)) return { kind: "folder", id: folder };
   return ROOT;
 }
 
@@ -230,7 +234,7 @@ export default function Addons({ t, lang, isHub }: Props) {
     );
     return {
       key: p.id,
-      folder: packFolder(p),
+      folders: packFolders(p),
       name,
       desc: title(p.description),
       size: p.size,
@@ -285,7 +289,7 @@ export default function Addons({ t, lang, isHub }: Props) {
     const installedBytes = c.regions.reduce((sum, r) => sum + (r.status === "installed" ? r.size : 0), 0);
     return {
       key: `map:${c.id}`,
-      folder: "maps",
+      folders: ["maps"],
       name,
       desc: c.regions.length > 1 ? `${c.regions.length} ${t("mapsRegions")}` : "",
       size: c.size,
@@ -327,7 +331,7 @@ export default function Addons({ t, lang, isHub }: Props) {
   };
 
   const folderIndex = (id: FolderId) => FOLDERS.findIndex((f) => f.id === id);
-  const packEntries = (data?.packs ?? []).map(packEntry).sort((a, b) => folderIndex(a.folder) - folderIndex(b.folder));
+  const packEntries = (data?.packs ?? []).map(packEntry).sort((a, b) => folderIndex(a.folders[0]) - folderIndex(b.folders[0]));
   // Countries with something on the hub first, then the ones suggested for the language, then A to Z.
   const suggested = SUGGESTED[lang];
   const rank = (c: Country) => {
@@ -414,11 +418,12 @@ export default function Addons({ t, lang, isHub }: Props) {
         <h2 className="section-title">
           {t("searchResults")} <span className="muted">({results.length})</span>
         </h2>
-        {results.length === 0 ? <p className="muted">{t("noResults")}</p> : <Entries t={t} entries={results} view={view} showFolder label={t("searchResults")} />}
+        {results.length === 0 ? <p className="muted">{t("noResults")}</p> : <Entries t={t} entries={results} view={view} label={t("searchResults")} />}
       </section>
     );
   } else if (here.kind === "folder") {
-    const entries = all.filter((e) => e.folder === here.id);
+    // A pack about several topics is in the folder of each.
+    const entries = all.filter((e) => e.folders.includes(here.id));
     content = (
       <>
         {here.id === "maps" && (
@@ -429,7 +434,7 @@ export default function Addons({ t, lang, isHub }: Props) {
         {entries.length === 0 ? (
           <p className="muted">{here.id === "maps" && !maps ? t("aiLoading") : t("emptyFolder")}</p>
         ) : (
-          <Entries t={t} entries={entries} view={view} showFolder={false} label={heading} />
+          <Entries t={t} entries={entries} view={view} folder={here.id} label={heading} />
         )}
       </>
     );
@@ -438,7 +443,7 @@ export default function Addons({ t, lang, isHub }: Props) {
     content = (
       <>
         <div className="drive-grid">{libraryTile(false)}</div>
-        {onDisk.length === 0 ? <p className="muted">{t("nothingInstalled")}</p> : <Entries t={t} entries={onDisk} view={view} showFolder label={libName} />}
+        {onDisk.length === 0 ? <p className="muted">{t("nothingInstalled")}</p> : <Entries t={t} entries={onDisk} view={view} label={libName} />}
       </>
     );
   } else if (here.kind === "drive") {

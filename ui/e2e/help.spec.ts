@@ -47,7 +47,8 @@ test("help: opens from Settings, lists every topic, and a topic opens with its s
   await ensureSetUp(page);
   // Not among the tools any more: at the end of Settings' list.
   await page.goto("/#tools");
-  await expect(page.locator(".tool-grid").getByRole("link", { name: /^Help/ })).toHaveCount(0);
+  await expect(page.locator(".topic-grid .tool-card").first()).toBeVisible();
+  await expect(page.locator(".topic-grid").getByRole("link", { name: /^Help/ })).toHaveCount(0);
   await page.goto("/#settings");
   await page.getByRole("navigation", { name: "Categories" }).getByRole("link", { name: /^Help/ }).click();
   await expect(page).toHaveURL(/#help$/);

@@ -1,4 +1,5 @@
 import { makeT, type Key } from "./i18n";
+import { upgradedFolder } from "./addons";
 
 /**
  * Settings is laid out like Windows Settings: the categories in a list on the
@@ -96,11 +97,15 @@ export function settingsRoute(hash: string): { cat: string | null; setting: stri
 
 /**
  * Settings was called Household, at #household/... (its help page at
- * #help/household/...). An old address, from a bookmark or a link, leads to
- * the same place under the new name.
+ * #help/household/...), and two Add-ons folders had other names before the
+ * folders became the topics (#addons/reference, #addons/skills). An old
+ * address, from a bookmark or a link, leads to the same place under the new name.
  */
 export function upgradedHash(hash: string): string {
-  return hash.replace(/^#household(?=\/|$)/, "#settings").replace(/^#help\/household(?=\/|$)/, "#help/settings");
+  return hash
+    .replace(/^#household(?=\/|$)/, "#settings")
+    .replace(/^#help\/household(?=\/|$)/, "#help/settings")
+    .replace(/^#addons\/([\w-]+)/, (_, folder: string) => `#addons/${upgradedFolder(folder)}`);
 }
 
 /** Replace an old address in the address bar (without a new step in the history). */

@@ -67,12 +67,32 @@ const en: HelpContent = {
             list: [
               "**Home**: the hub's state and what needs attention, such as supplies that expire soon or run low.",
               "**Assistant**: ask questions in plain words.",
-              "**Tools**: every tool: [Supplies](#supplies), [Library](#library), [Maps](#maps) and [Add-ons](#addons).",
+              "**Tools**: every tool, sorted by topic, such as [Supplies](#supplies), [Library](#library), [Maps](#maps) and [Add-ons](#addons).",
               "**Settings**: phones, network, backups and the other settings, and this help at the end of its list.",
             ],
           },
           { p: "On the laptop, one tool can be pinned to the bar from the [Tools](#tools) screen. It then shows in the bar on every device in the household." },
           { p: "Every screen has a **How it works** link at the top that opens its page in this help." },
+        ],
+      },
+      {
+        id: "topics",
+        title: "Everything sorted by topic",
+        body: [
+          { p: "Zaklon sorts its tools and guides into the same topics on the [Tools](#tools) screen and in the folders of [Add-ons](#addons):" },
+          {
+            list: [
+              "**Health and first aid**: first aid, medicines and staying healthy.",
+              "**Water**: finding, cleaning and storing drinking water.",
+              "**Food**: recipes, storing food, canning and preserving.",
+              "**Garden**: growing vegetables, fruit, herbs and microgreens, and watering them.",
+              "**Power**: small solar setups, batteries and how much power you need.",
+              "**Build and install**: setting up solar, drip irrigation, rainwater tanks and pumps, and repair guides.",
+              "**Knowledge**: Wikipedia, books and dictionaries.",
+              "**Maps**: maps of every country.",
+            ],
+          },
+          { p: "On the Tools screen, each topic shows its tools and a **Guides for this topic** link, which opens the topic's folder in Add-ons, so the tools and the guides for a topic are in one place. A tool or a guide about more than one topic is under each of them." },
         ],
       },
     ],
@@ -578,7 +598,7 @@ const en: HelpContent = {
             list: [
               "**Devices and drives** shows the drive Zaklon keeps its library on (**Zaklon library**), how full it is and how much the add-ons take. Open it to see what is on it, largest first. Its bar turns red when the drive is nearly full.",
               "On the laptop, other drives, such as a USB drive, open with copying and importing set to that drive.",
-              "**Folders** hold the add-ons: Wikipedia and books, Health and first aid, Garden and food, Repair and skills, AI models, Maps and Programs.",
+              "**Folders** hold the add-ons by topic, the same topics as on the [Tools](#tools) screen: Health and first aid, Water, Food, Garden, Power, Build and install, Knowledge and Maps, then AI models and Programs. A guide about more than one topic is in the folder of each.",
               "The search box finds add-ons and countries in every folder. The buttons next to it switch between tiles and a details table.",
             ],
           },

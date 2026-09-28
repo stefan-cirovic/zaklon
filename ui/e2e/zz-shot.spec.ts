@@ -72,9 +72,11 @@ test("shots", async ({ page }, info) => {
   for (const [name, url, view] of [
     ["addons-x", "/#addons", "tiles"],
     ["addons-x-models", "/#addons/models", "tiles"],
-    ["addons-x-skills", "/#addons/skills", "tiles"],
+    ["addons-x-build", "/#addons/build", "tiles"],
+    ["addons-x-water", "/#addons/water", "tiles"],
     ["addons-x-details", "/#addons", "details"],
-    ["addons-x-reference-details", "/#addons/reference", "details"],
+    ["addons-x-knowledge-details", "/#addons/knowledge", "details"],
+    ["addons-x-health-details", "/#addons/health", "details"],
     ["addons-x-maps-details", "/#addons/maps", "details"],
     ["addons-x-library", "/#addons/library", "details"],
   ]) {

@@ -10,6 +10,26 @@ use serde::{Deserialize, Serialize};
 
 const BUNDLED: &str = include_str!("../catalog/default-catalog.json");
 
+/// The topics a pack can be about, in the order the Tools screen and the
+/// Add-ons folders show them: health and first aid, water, food (recipes,
+/// storing, canning), garden, power (small solar, batteries), build (setting
+/// up solar, irrigation, rainwater and pumps, and repairs), knowledge
+/// (encyclopedias, books, dictionaries) and maps.
+pub const TOPICS: [&str; 8] = ["health", "water", "food", "garden", "power", "build", "knowledge", "maps"];
+
+/// A pack's topics in a catalog from before a pack could have several,
+/// named after the old Add-ons folders: "reference" (Wikipedia and books),
+/// "health", "garden" (garden and food) and "skills" (repair and skills).
+fn legacy_topics(topic: &str) -> Vec<&str> {
+    match topic {
+        "reference" => vec!["knowledge"],
+        "garden" => vec!["garden", "food"],
+        "skills" => vec!["build"],
+        "" => vec![],
+        other => vec![other],
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Catalog {
     pub version: u32,
@@ -61,12 +81,14 @@ pub struct Pack {
     #[serde(default)]
     pub description: Localized,
     pub category: Category,
-    /// What a knowledge pack is about; the Add-ons screen shows it in the
-    /// folder of that name: "reference" (encyclopedias, dictionaries, books),
-    /// "health", "garden" (garden and food) or "skills" (repair and know-how).
-    /// Empty or unknown: the "Other knowledge" folder.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub topic: String,
+    /// What a knowledge pack or a map is about: one or more of [`TOPICS`],
+    /// the categories of the Tools screen. The Add-ons screen shows the pack
+    /// in the folder of each (a knowledge pack with none it knows goes to
+    /// "knowledge"). AI models and programs have none: they have folders of
+    /// their own. Catalogs from before this was a list name one `topic`;
+    /// [`Catalog::parse`] reads it as its list.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub topics: Vec<String>,
     pub version: String,
     pub size: u64,
     pub files: Vec<PackFile>,
@@ -227,9 +249,28 @@ impl Pack {
 }
 
 impl Catalog {
+    /// A catalog from its JSON. A pack from an older catalog, with one
+    /// `topic` and no `topics`, gets the topics that old one stands for; a
+    /// catalog may carry both, `topic` for older hubs and `topics` for this one.
+    pub fn parse(text: &str) -> serde_json::Result<Catalog> {
+        let mut v: serde_json::Value = serde_json::from_str(text)?;
+        if let Some(packs) = v.get_mut("packs").and_then(|p| p.as_array_mut()) {
+            for p in packs.iter_mut().filter_map(|p| p.as_object_mut()) {
+                if p.contains_key("topics") {
+                    continue;
+                }
+                if let Some(old) = p.get("topic").and_then(|t| t.as_str()) {
+                    let topics = legacy_topics(old).into_iter().map(serde_json::Value::from).collect();
+                    p.insert("topics".into(), serde_json::Value::Array(topics));
+                }
+            }
+        }
+        serde_json::from_value(v)
+    }
+
     /// The catalog compiled into the binary.
     pub fn bundled() -> Catalog {
-        serde_json::from_str(BUNDLED).expect("bundled catalog is valid JSON")
+        Self::parse(BUNDLED).expect("bundled catalog is valid JSON")
     }
 
     /// Bundled catalog, overridden by `<catalog_dir>/catalog.json` when that
@@ -238,7 +279,7 @@ impl Catalog {
     pub fn load(catalog_dir: &Path) -> Catalog {
         let bundled = Self::bundled();
         let path = catalog_dir.join("catalog.json");
-        let mut c = match std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Catalog>(&t).ok()) {
+        let mut c = match std::fs::read_to_string(&path).ok().and_then(|t| Self::parse(&t).ok()) {
             Some(c) if c.generated >= bundled.generated => c,
             _ => bundled,
         };
@@ -282,10 +323,25 @@ mod tests {
             }
         }
         assert!(c.pack("kiwix-tools").is_some());
-        // Every knowledge pack names the folder the Add-ons screen shows it in.
-        for p in c.packs.iter().filter(|p| p.category == Category::Knowledge) {
-            assert!(["reference", "health", "garden", "skills"].contains(&p.topic.as_str()), "no known topic for {}", p.id);
+        // Every knowledge pack names what it is about: the Tools screen's
+        // categories and the Add-ons folders it shows in. AI models and
+        // programs have folders of their own and no topics.
+        for p in &c.packs {
+            match p.category {
+                Category::Knowledge => assert!(!p.topics.is_empty(), "no topics for {}", p.id),
+                Category::Model | Category::App => assert!(p.topics.is_empty(), "{} is not about a topic", p.id),
+                Category::Maps => {}
+            }
+            for t in &p.topics {
+                assert!(TOPICS.contains(&t.as_str()), "unknown topic {t} for {}", p.id);
+            }
+            let mut seen = p.topics.clone();
+            seen.sort();
+            seen.dedup();
+            assert_eq!(seen.len(), p.topics.len(), "a topic twice for {}", p.id);
         }
+        // A guide about more than one thing is in more than one place.
+        assert!(c.packs.iter().any(|p| p.topics.len() > 1));
         for p in &c.packs {
             assert!(p.is_safe(), "unsafe pack {}", p.id);
             for f in &p.files {
@@ -301,6 +357,47 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn maps_are_about_maps() {
+        let dir = std::env::temp_dir().join(format!("zaklon-catalog-maps-{}", std::process::id()));
+        let c = Catalog::load(&dir);
+        let maps: Vec<&Pack> = c.packs.iter().filter(|p| p.category == Category::Maps).collect();
+        assert!(!maps.is_empty());
+        assert!(maps.iter().all(|p| p.topics == ["maps"]));
+        assert!(c.pack(crate::maps::COMAPS_APK_ID).unwrap().topics.is_empty(), "the map app is a program");
+    }
+
+    #[test]
+    fn topics_of_older_catalogs_are_read() {
+        let pack = |extra: &str| {
+            format!(
+                r#"{{"id":"p","title":{{"en":"P"}},"category":"knowledge"{extra},"version":"1","size":1,
+                   "files":[{{"path":"zim/p.zim","urls":["https://example.org/p.zim"],"sha256":"{}","size":1}}]}}"#,
+                "0".repeat(64)
+            )
+        };
+        let topics = |extra: &str| {
+            let text = format!(r#"{{"version":1,"generated":"2026-01-01","packs":[{}]}}"#, pack(extra));
+            Catalog::parse(&text).unwrap().packs[0].topics.clone()
+        };
+        // The old folders, as the topics they stand for.
+        assert_eq!(topics(r#","topic":"reference""#), ["knowledge"]);
+        assert_eq!(topics(r#","topic":"health""#), ["health"]);
+        assert_eq!(topics(r#","topic":"garden""#), ["garden", "food"]);
+        assert_eq!(topics(r#","topic":"skills""#), ["build"]);
+        assert_eq!(topics(r#","topic":"water""#), ["water"]);
+        assert!(topics(r#","topic":"""#).is_empty());
+        assert!(topics("").is_empty());
+        // The list wins when a catalog has both (the old field for older hubs).
+        assert_eq!(topics(r#","topic":"reference","topics":["water","health"]"#), ["water", "health"]);
+        // Written back as the list only.
+        let text = format!(r#"{{"version":1,"generated":"2026-01-01","packs":[{}]}}"#, pack(r#","topic":"skills""#));
+        let json = serde_json::to_value(Catalog::parse(&text).unwrap()).unwrap();
+        assert_eq!(json["packs"][0]["topics"], serde_json::json!(["build"]));
+        assert!(json["packs"][0].get("topic").is_none());
+        assert!(Catalog::parse("not json").is_err());
     }
 
     #[test]

@@ -1378,7 +1378,7 @@ mod tests {
             title: Localized { en: id.into(), sr: String::new() },
             description: Localized::default(),
             category: Category::Knowledge,
-            topic: String::new(),
+            topics: Vec::new(),
             version: version.into(),
             size: f.size,
             files: vec![f],

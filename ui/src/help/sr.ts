@@ -67,12 +67,32 @@ const sr: HelpContent = {
             list: [
               "**Početna**: stanje huba i ono što traži pažnju, na primer zalihe kojima uskoro ističe rok ili kojih ponestaje.",
               "**Asistent**: pitaj šta te zanima, običnim rečima.",
-              "**Alati**: svi alati: [Zalihe](#supplies), [Biblioteka](#library), [Mape](#maps) i [Dodaci](#addons).",
+              "**Alati**: svi alati, složeni po temama, na primer [Zalihe](#supplies), [Biblioteka](#library), [Mape](#maps) i [Dodaci](#addons).",
               "**Podešavanja**: telefoni, mreža, rezervne kopije i ostala podešavanja, a na kraju spiska i ova pomoć.",
             ],
           },
           { p: "Na laptopu se na ekranu [Alati](#tools) jedan alat može prikačiti na traku. Tada se pojavljuje u traci na svim uređajima u domaćinstvu." },
           { p: "Svaki ekran na vrhu ima vezu **Kako radi** koja otvara njegovu stranu u ovoj pomoći." },
+        ],
+      },
+      {
+        id: "topics",
+        title: "Sve je složeno po temama",
+        body: [
+          { p: "Zaklon slaže alate i vodiče u iste teme na ekranu [Alati](#tools) i u folderima [Dodataka](#addons):" },
+          {
+            list: [
+              "**Zdravlje i prva pomoć**: prva pomoć, lekovi i briga o zdravlju.",
+              "**Voda**: kako naći, prečistiti i čuvati vodu za piće.",
+              "**Hrana**: recepti, čuvanje hrane, zimnica i konzerviranje.",
+              "**Bašta**: gajenje povrća, voća, začinskog bilja i mikrozelenja, i zalivanje.",
+              "**Struja**: mali solarni sistemi, baterije i koliko ti struje treba.",
+              "**Ugradnja**: postavljanje solara, zalivanja kap po kap, sakupljanja kišnice i pumpi, i uputstva za popravke.",
+              "**Znanje**: Vikipedija, knjige i rečnici.",
+              "**Mape**: mape svih zemalja.",
+            ],
+          },
+          { p: "Na ekranu Alati svaka tema prikazuje svoje alate i vezu **Vodiči za ovu temu**, koja otvara folder te teme u Dodacima, pa su alati i vodiči za jednu temu na istom mestu. Alat ili vodič koji se tiče više tema nalazi se pod svakom od njih." },
         ],
       },
     ],
@@ -578,7 +598,7 @@ const sr: HelpContent = {
             list: [
               "**Uređaji i diskovi** prikazuju disk na kom Zaklon drži biblioteku (**Zaklon biblioteka**), koliko je pun i koliko zauzimaju dodaci. Otvori ga da vidiš šta je na njemu, od najvećeg. Traka postaje crvena kad je disk skoro pun.",
               "Na laptopu se drugi diskovi, na primer USB, otvaraju sa kopiranjem i uvozom podešenim na taj disk.",
-              "U **Folderima** su dodaci: Vikipedija i knjige, Zdravlje i prva pomoć, Bašta i hrana, Popravke i veštine, AI modeli, Mape i Programi.",
+              "U **Folderima** su dodaci po temama, istim kao na ekranu [Alati](#tools): Zdravlje i prva pomoć, Voda, Hrana, Bašta, Struja, Ugradnja, Znanje i Mape, a zatim AI modeli i Programi. Vodič koji se tiče više tema nalazi se u folderu svake od njih.",
               "Polje za pretragu nalazi dodatke i države u svim folderima. Dugmad pored njega menjaju prikaz između pločica i tabele sa detaljima.",
             ],
           },
