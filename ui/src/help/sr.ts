@@ -364,6 +364,7 @@ const sr: HelpContent = {
         title: "AI model",
         body: [
           { p: "Asistentu treba AI model, koji se jednom preuzme na laptopu. Kad ga nema, asistent nudi model preporučen za ovaj računar. Veći modeli bolje odgovaraju, ali su sporiji i traže više memorije. Model menjaš u samom Asistentu (polje **Model**) ili u [Domaćinstvo › AI asistent](#household/assistant)." },
+          { p: "Model kome treba više memorije nego što ovaj računar ima označen je sa **traži više memorije** i ne može da se izabere: usporio bi ceo računar. Kad nijedan model ne staje, asistent nije dostupan na ovom računaru, a biblioteka, mape, zalihe i telefoni i dalje rade. Kad AI kaže da trenutno nema dovoljno slobodne memorije, zatvori neke programe i pitaj ponovo." },
           { p: "AI se pokreće uz prvo pitanje i sam se gasi posle 20 minuta bez pitanja. Na laptopu možeš da ga ugasiš odmah, vezom **oslobodi memoriju sada**." },
         ],
       },

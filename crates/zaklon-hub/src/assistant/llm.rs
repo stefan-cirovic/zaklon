@@ -68,7 +68,7 @@ impl Assistant {
             "messages": messages,
             "stream": true,
             "max_tokens": 380,
-            "id_slot": slot,
+            "id_slot": self.slot(slot),
             "cache_prompt": true,
             "temperature": 0.3,
             "repeat_penalty": 1.1,

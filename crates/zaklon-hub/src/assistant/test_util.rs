@@ -27,9 +27,20 @@ pub(super) fn strings(list: &[&str]) -> Vec<String> {
 }
 
 pub(super) fn test_assistant() -> Arc<Assistant> {
+    assistant_with(zaklon_core::catalog::Catalog { version: 1, generated: String::new(), packs: Vec::new() })
+}
+
+/// An assistant whose catalog is the bundled one, with the AI models (none
+/// installed), on a computer with `ram` bytes of memory (all, available).
+pub(super) fn assistant_on(ram: (u64, u64)) -> Arc<Assistant> {
+    let ai = assistant_with(zaklon_core::catalog::Catalog::bundled());
+    *ai.test_ram.lock().unwrap() = Some(ram);
+    ai
+}
+
+fn assistant_with(catalog: zaklon_core::catalog::Catalog) -> Arc<Assistant> {
     let root = std::env::temp_dir().join(format!("zaklon-assistant-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
-    let catalog = zaklon_core::catalog::Catalog { version: 1, generated: String::new(), packs: Vec::new() };
     let downloads = Downloads::new(catalog, root.join("library"), root.join("state.json"));
     let library = Library::new(downloads.clone());
     Assistant::new(downloads, library, None)

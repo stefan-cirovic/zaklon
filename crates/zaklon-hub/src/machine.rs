@@ -43,6 +43,13 @@ pub fn hardware() -> Hardware {
     Hardware { cpu: cpu_name(), cores, ram_total, ram_free, os: os_name() }
 }
 
+/// The computer's memory in bytes: all of it, and what is available now
+/// (free, or holding only copies of files that can be dropped at once).
+/// Cheap; (0, 0) when it cannot be read.
+pub fn ram() -> (u64, u64) {
+    memory()
+}
+
 /// The processor's cores, as the AI engine cares about them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cores {

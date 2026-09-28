@@ -432,7 +432,8 @@ async fn full_hub_flow() {
     assert_eq!(st, 200);
     assert_eq!(ai["engine"], "missing", "{ai}");
     assert!(ai["models"].is_array(), "the test catalog has no models: {ai}");
-    assert!(ai["recommended"].as_str().unwrap().starts_with("qwen35-"));
+    // Only a model the catalog has is recommended, and only one that fits.
+    assert!(ai["recommended"].is_null(), "{ai}");
     let (st, _) = hub.post("/api/assistant/ask", json!({ "question": "   " })).await;
     assert_eq!(st, 400, "an empty question is refused");
     let (st, asked) = hub.post("/api/assistant/ask", json!({ "question": "Koliko traje pasulj?", "language": "sr" })).await;

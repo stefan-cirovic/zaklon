@@ -32,7 +32,7 @@ mod text;
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -246,6 +246,8 @@ pub struct Assistant {
     running: tokio::sync::Mutex<Option<Running>>,
     state: Mutex<EngineState>,
     port: AtomicU16,
+    /// How many slots the engine was started with (see `engine::start_slots`).
+    slots: AtomicU32,
     /// Seconds since `epoch` of the last question.
     last_used: AtomicU64,
     epoch: Instant,
@@ -262,6 +264,9 @@ pub struct Assistant {
     read_speed: Mutex<Option<(String, f64)>>,
     #[cfg(windows)]
     job: crate::kiwix::job::Job,
+    /// The computer's memory (all, available) as a test pretends it is.
+    #[cfg(test)]
+    test_ram: Mutex<Option<(u64, u64)>>,
     http: reqwest::Client,
     /// For online research only.
     web_http: reqwest::Client,
@@ -278,6 +283,7 @@ impl Assistant {
             running: tokio::sync::Mutex::new(None),
             state: Mutex::new(EngineState::Stopped),
             port: AtomicU16::new(0),
+            slots: AtomicU32::new(engine::SLOTS),
             last_used: AtomicU64::new(0),
             epoch: Instant::now(),
             answers: Mutex::new(HashMap::new()),
@@ -287,6 +293,8 @@ impl Assistant {
             read_speed: Mutex::new(None),
             #[cfg(windows)]
             job: crate::kiwix::job::Job::new(),
+            #[cfg(test)]
+            test_ram: Mutex::new(None),
             http: reqwest::Client::builder().no_proxy().connect_timeout(Duration::from_secs(5)).build().expect("http client"),
             web_http: crate::web::client(),
         })

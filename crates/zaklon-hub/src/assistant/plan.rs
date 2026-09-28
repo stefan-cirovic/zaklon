@@ -135,7 +135,7 @@ quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; categor
             "messages": messages,
             // Room for a long note; the grammar ends the output at the closing brace anyway.
             "max_tokens": 256,
-            "id_slot": if sr { SLOT_PLAN } else { SLOT_PLAN_EN },
+            "id_slot": self.slot(if sr { SLOT_PLAN } else { SLOT_PLAN_EN }),
             "cache_prompt": true,
             "temperature": 0.1,
             "chat_template_kwargs": { "enable_thinking": false },

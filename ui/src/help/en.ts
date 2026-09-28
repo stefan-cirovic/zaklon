@@ -364,6 +364,7 @@ const en: HelpContent = {
         title: "The AI model",
         body: [
           { p: "The assistant needs an AI model, downloaded once on the laptop. When there is none, the assistant offers the one recommended for this computer. Larger models answer better but are slower and need more memory. Change the model in the Assistant itself (the **Model** box) or in [Household › AI assistant](#household/assistant)." },
+          { p: "A model that needs more memory than this computer has is marked **needs more memory** and cannot be chosen: it would make the whole computer slow. When no model fits, the assistant is not available on this computer, and the library, maps, supplies and phones still work. When the AI says there is not enough free memory right now, close some programs and ask again." },
           { p: "The AI starts with the first question and stops by itself after 20 minutes without questions. On the laptop, **free the memory now** stops it at once." },
         ],
       },
