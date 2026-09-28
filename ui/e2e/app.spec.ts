@@ -799,7 +799,7 @@ test("updates: Home tells about a newer version; Household has the switch", asyn
   await noHorizontalScroll(page);
 });
 
-test("assistant memory: notes can be added and deleted by hand", async ({ page }) => {
+test("assistant memory: notes can be added and deleted by hand", async ({ page }, info) => {
   await ensureSetUp(page);
   await page.route("**/api/assistant", (route) =>
     route.fulfill({
@@ -811,7 +811,11 @@ test("assistant memory: notes can be added and deleted by hand", async ({ page }
   );
   const text = `The water tank holds 200 liters (${Date.now()})`;
   await page.goto("/#assistant");
+  // On a phone it is at the bottom of the conversations panel.
+  if (info.project.name === "phone") await page.getByRole("button", { name: "Conversations" }).click();
   await page.getByRole("button", { name: /What the assistant remembers/ }).click();
+  const panel = page.getByRole("dialog", { name: "What the assistant remembers" });
+  await expect(panel).toBeVisible();
   await page.getByRole("textbox", { name: "Add" }).fill(text);
   await page.getByRole("button", { name: "Add", exact: true }).click();
   const row = page.locator(".memory-row").filter({ hasText: text });
@@ -819,6 +823,9 @@ test("assistant memory: notes can be added and deleted by hand", async ({ page }
   await row.getByRole("button", { name: "Delete" }).click();
   await row.getByRole("button", { name: /Yes, delete/ }).click();
   await expect(row).toHaveCount(0);
+  // Escape closes the panel.
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
 });
 
 test("assistant: online research is off until switched on, and only for this conversation", async ({ page }) => {

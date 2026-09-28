@@ -152,7 +152,7 @@ export default function Household({ status, online, t, lang, setLang, refresh, i
       body = hub(
         <>
           <Anchor id="model"><AiModel t={t} lang={lang} isHub={isHub} /></Anchor>
-          <Anchor id="memory"><Memory t={t} version={0} expanded /></Anchor>
+          <Anchor id="memory"><Memory t={t} version={0} /></Anchor>
         </>,
       );
       break;

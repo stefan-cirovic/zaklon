@@ -5,9 +5,15 @@ import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
 import { useVisiblePoll, whenVisible } from "../poll";
 import { fmtBytes, fmtQty } from "../format";
+import { forget, onBackOnline } from "../offline";
+import { filterByTitle, toAnswer, type Answer, type Conversation, type SavedTurn, type Source, type Summary } from "../conversations";
 import Reader from "../components/Reader";
 import PhoneAi from "./PhoneAi";
 import Memory from "../components/Memory";
+import ConversationList from "../components/ConversationList";
+import ChatTitle from "../components/ChatTitle";
+import SidePanel from "../components/SidePanel";
+import { Icon } from "../components/Icon";
 
 type T = (k: Key) => string;
 type EngineState = "missing" | "no_model" | "stopped" | "starting" | "ready" | "failed";
@@ -21,39 +27,17 @@ type Overview = {
   models: ModelChoice[];
   books: number;
 };
-type Source = { n: number; title: string; web?: boolean; url: string; book_title_en: string; book_title_sr: string };
-type Proposal = {
-  action: "add" | "use" | "shopping" | "remember";
-  item_id: string | null;
-  name: string;
-  quantity: number;
-  unit: string;
-  category: string;
-  current: number | null;
-};
-type Answer = {
-  id: string;
-  from_supplies?: boolean;
-  proposal?: Proposal | null;
-  /** What happened to the proposal on this device. */
-  outcome?: "done" | "canceled";
-  question: string;
-  status: "searching" | "starting" | "thinking" | "done" | "failed";
-  text: string;
-  sources: Source[];
-  searched?: string[];
-  cited?: boolean;
-  grounded: boolean;
-  /** A fixed reply from the hub (a health question with no checked source), not from the model. */
-  fixed?: boolean;
-  language: string;
-  tokens_per_second: number;
-  error: string | null;
-};
 type PackState = { id: string; state: { status: string; bytes_done: number; bytes_total: number } };
+/** The open conversation could not be shown: not kept on this phone away from the hub, or the hub failed. */
+type Unshown = "notKept" | "failed" | null;
 
+/** A hub from before saved conversations: the conversation stays on this device, as it did then. */
 const STORE = "zaklon.chat";
 const KEEP = 20;
+/** The conversation open when the screen was left, opened again on return. */
+const OPEN = "zaklon.chat.open";
+/** How often the list is asked for again (a copy sent from another device shows up). */
+const LIST_EVERY = 30_000;
 
 function loadChat(): Answer[] {
   try {
@@ -71,6 +55,38 @@ function saveChat(list: Answer[]) {
   } catch {
     /* private mode: just for this session */
   }
+}
+
+function readOpen(): string | null {
+  try {
+    return localStorage.getItem(OPEN) || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeOpen(id: string | null) {
+  try {
+    if (id) localStorage.setItem(OPEN, id);
+    else localStorage.removeItem(OPEN);
+  } catch {
+    /* private mode: just for this session */
+  }
+}
+
+const NARROW = "(max-width: 899px)";
+
+/** A phone-sized screen: the list of conversations becomes a panel opened from the top. */
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.matchMedia(NARROW).matches);
+  useEffect(() => {
+    const m = window.matchMedia(NARROW);
+    const on = () => setNarrow(m.matches);
+    on();
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, []);
+  return narrow;
 }
 
 /** Models write **bold**; show it as bold, and "* item" lists with bullets. */
@@ -106,17 +122,32 @@ function AnswerText({ text, sources, open }: { text: string; sources: Source[]; 
 }
 
 export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; isHub: boolean; go: (tab: string) => void }) {
+  const narrow = useNarrow();
   const [ov, setOv] = useState<Overview | null>(null);
   const [hubDown, setHubDown] = useState(false);
-  const [chat, setChat] = useState<Answer[]>(loadChat);
-  // Answers restored from the last visit are not read out again.
-  const restored = useRef(new Set(chat.map((a) => a.id)));
+  // Saved conversations: whether the hub keeps them (null until known; an
+  // older hub does not), this device's list, and the one that is open.
+  const [saved, setSaved] = useState<boolean | null>(null);
+  const [list, setList] = useState<Summary[] | null>(null);
+  const [openId, setOpenId] = useState<string | null>(readOpen);
+  const [conv, setConv] = useState<Summary | null>(null);
+  const [unshown, setUnshown] = useState<Unshown>(null);
+  const [chat, setChat] = useState<Answer[]>([]);
+  // Answers shown from before (a saved conversation, the last visit) are not read out again.
+  const restored = useRef(new Set<string>());
+  // A conversation the screen already shows (it was just started here): not loaded again.
+  const shown = useRef<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [found, setFound] = useState<Summary[] | null>(null);
+  const [drawer, setDrawer] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [reader, setReader] = useState<Source | null>(null);
   const [downloads, setDownloads] = useState<PackState[]>([]);
   const [showPhone, setShowPhone] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const box = useRef<HTMLTextAreaElement | null>(null);
   const asking = useRef(false);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [memoryVersion, setMemoryVersion] = useState(0);
@@ -132,6 +163,22 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
     }
   }, []);
 
+  const loadList = useCallback(async () => {
+    try {
+      const l = await api<Summary[]>("/api/conversations");
+      // A hub from before saved conversations answers with its page, not a list.
+      if (!Array.isArray(l)) throw new SyntaxError("not a list");
+      setList(l);
+      setSaved(true);
+    } catch (e) {
+      if (e instanceof SyntaxError || (e instanceof ApiError && (e.status === 404 || e.status === 405))) {
+        setSaved(false);
+        setList([]);
+      }
+      // Out of reach with no copy on this phone: keep what is shown.
+    }
+  }, []);
+
   useEffect(() => {
     load();
     // Start loading the model now, so the first answer comes sooner.
@@ -139,6 +186,95 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
     // Once per visit to the screen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
+  useVisiblePoll(loadList, LIST_EVERY);
+  // A phone back home: the hub's assistant and the fresh list again.
+  useEffect(
+    () =>
+      onBackOnline(() => {
+        load();
+        loadList();
+      }),
+    [load, loadList],
+  );
+
+  // A hub without saved conversations: the conversation of the last visit, kept on this device.
+  useEffect(() => {
+    if (saved !== false) return;
+    const old = loadChat();
+    old.forEach((a) => restored.current.add(a.id));
+    setChat(old);
+    setOpenId(null);
+  }, [saved]);
+
+  const loadConversation = useCallback(async (id: string) => {
+    try {
+      const c = await api<Conversation>(`/api/conversations/${encodeURIComponent(id)}`);
+      if (!c || !Array.isArray(c.turns)) throw new SyntaxError("not a conversation");
+      // Another one was opened meanwhile.
+      if (shown.current !== id) return;
+      const answers = c.turns.map(toAnswer);
+      answers.filter((a) => a.status === "done" || a.status === "failed").forEach((a) => restored.current.add(a.id));
+      setConv(c);
+      setChat(answers);
+      setUnshown(null);
+    } catch (e) {
+      if (shown.current !== id) return;
+      setConv(null);
+      setChat([]);
+      if (e instanceof ApiError && e.status === 404) {
+        // Gone (deleted, or this phone was paired with another hub since): a new conversation instead.
+        shown.current = null;
+        setOpenId(null);
+        return;
+      }
+      setUnshown(isHub ? "failed" : "notKept");
+    }
+  }, [isHub]);
+
+  // Open the chosen conversation (or a new one), and remember it for the next visit.
+  useEffect(() => {
+    if (saved === false) return;
+    writeOpen(openId);
+    if (!openId) {
+      setConv(null);
+      setChat([]);
+      setUnshown(null);
+      return;
+    }
+    if (shown.current === openId) return;
+    shown.current = openId;
+    setChat([]);
+    loadConversation(openId);
+  }, [openId, saved, loadConversation]);
+
+  // Search: the hub looks in titles and questions; away from it, the titles on this phone.
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setFound(null);
+      return;
+    }
+    let alive = true;
+    const local = () => filterByTitle(list ?? [], q);
+    if (hubDown) {
+      setFound(local());
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const r = await api<Summary[]>(`/api/conversations?q=${encodeURIComponent(q)}`);
+        if (alive) setFound(Array.isArray(r) ? r : local());
+      } catch {
+        if (alive) setFound(local());
+      }
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+    // The list itself changes often; a search is run again when its words change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, hubDown]);
 
   // While a model or the engine downloads, follow it.
   const modelIds = ov?.models.map((m) => m.id) ?? [];
@@ -179,19 +315,27 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
         if (!alive) return;
         failures = 0;
         setChat((list) => {
-          const next = list.map((x) => (x.id === a.id ? { ...a, outcome: x.outcome } : x));
-          if (a.status === "done" || a.status === "failed") saveChat(next);
+          const next = list.map((x) => (x.id === a.id ? { ...a, turnId: x.turnId, outcome: x.outcome } : x));
+          if (saved === false && (a.status === "done" || a.status === "failed")) saveChat(next);
           return next;
         });
         if (a.status !== lastStatus) {
           lastStatus = a.status;
           load();
         }
-        if (a.status === "done" || a.status === "failed") return;
+        if (a.status === "done" || a.status === "failed") {
+          loadList();
+          return;
+        }
       } catch (e) {
         if (!alive) return;
         failures += 1;
         const lost = e instanceof ApiError && e.status === 404;
+        if (lost && openId && saved) {
+          // The hub restarted meanwhile: the saved conversation says what became of it.
+          loadConversation(openId);
+          return;
+        }
         if (lost || failures >= 40) {
           setChat((list) => list.map((x) => (x.id === current.id ? { ...x, status: "failed", error: String(e instanceof Error ? e.message : e) } : x)));
           return;
@@ -204,11 +348,49 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
       alive = false;
       if (timer) clearTimeout(timer);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, load]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
-  }, [chat.length, current?.text.length]);
+  }, [chat.length, current?.text.length, openId]);
+
+  // The box grows with the question, up to a few lines.
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [question]);
+
+  const readOnly = !isHub && hubDown;
+
+  // Another conversation: online research is off again (it is switched on per conversation).
+  const newChat = () => {
+    setDrawer(false);
+    setErr(null);
+    setOnline(false);
+    if (saved === false) {
+      setChat([]);
+      saveChat([]);
+      return;
+    }
+    setOpenId(null);
+    if (!narrow) box.current?.focus();
+  };
+
+  const openChat = (id: string) => {
+    setDrawer(false);
+    if (id === openId) {
+      // Shown already; one that could not be loaded is tried again.
+      if (unshown) loadConversation(id);
+      return;
+    }
+    setErr(null);
+    setOnline(false);
+    shown.current = null;
+    setOpenId(id);
+  };
 
   const ask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -216,15 +398,27 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
     if (!q || busy || asking.current) return;
     asking.current = true;
     setErr(null);
+    // The conversation so far, for a hub that does not keep conversations (one that does uses its own).
     const history = chat
       .filter((a) => a.status === "done")
       .slice(-2)
       .map((a) => ({ question: a.question, answer: a.text }));
+    const where = saved === false ? {} : openId ? { conversation: openId } : { new_conversation: true };
     try {
-      const r = await api<{ id: string }>("/api/assistant/ask", { json: { question: q, language: lang, history, online } });
+      const r = await api<{ id: string; conversation?: Summary; turn?: SavedTurn }>("/api/assistant/ask", { json: { question: q, language: lang, history, online, ...where } });
+      const c = r.conversation;
+      if (c) {
+        // A new conversation is in the list at once, with its title.
+        if (c.id !== openId) {
+          shown.current = c.id;
+          setOpenId(c.id);
+        }
+        setConv(c);
+        setList((l) => [c, ...(l ?? []).filter((x) => x.id !== c.id)]);
+      }
       setChat((list) => [
         ...list,
-        { id: r.id, question: q, status: "searching", text: "", sources: [], grounded: false, language: lang, tokens_per_second: 0, error: null },
+        { id: r.id, turnId: r.turn?.id, question: q, status: "searching", text: "", sources: [], grounded: false, language: lang, tokens_per_second: 0, error: null },
       ]);
       setQuestion("");
     } catch (ex) {
@@ -237,12 +431,6 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
   // Stop the answer being written; the hub keeps what was written so far.
   const stop = (id: string) => {
     api(`/api/assistant/answers/${id}/cancel`, { method: "POST" }).catch(() => {});
-  };
-
-  const clear = () => {
-    setOnline(false);
-    setChat([]);
-    saveChat([]);
   };
 
   const download = async (id: string) => {
@@ -277,7 +465,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
       else if (p.action === "remember") await api("/api/memory", { json: { text: p.name } });
       else if (p.action === "shopping")
         await api("/api/shopping", { json: { text: p.name, quantity: p.quantity > 0 ? p.quantity : null, unit: p.quantity > 0 ? p.unit : null, item_id: p.item_id } });
-      setOutcome(a.id, "done");
+      setOutcome(a, "done");
       if (p.action === "remember") setMemoryVersion((v) => v + 1);
     } catch (ex) {
       setErr(errText(t, ex));
@@ -285,12 +473,30 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
       setConfirming(null);
     }
   };
-  const setOutcome = (id: string, outcome: "done" | "canceled") =>
+  const setOutcome = (a: Answer, outcome: "done" | "canceled") => {
     setChat((list) => {
-      const next = list.map((x) => (x.id === id ? { ...x, outcome } : x));
-      saveChat(next);
+      const next = list.map((x) => (x.id === a.id ? { ...x, outcome } : x));
+      if (saved === false) saveChat(next);
       return next;
     });
+    // Kept with the conversation, so the change is not offered again when it is opened later.
+    if (openId && a.turnId) {
+      api(`/api/conversations/${encodeURIComponent(openId)}/turns/${encodeURIComponent(a.turnId)}`, { method: "PATCH", json: { outcome } }).catch(() => {});
+    }
+  };
+
+  const renamed = (c: Summary) => {
+    setConv(c);
+    setList((l) => (l ?? []).map((x) => (x.id === c.id ? c : x)));
+    loadList();
+  };
+  const deleted = () => {
+    if (openId) forget(`/api/conversations/${openId}`);
+    setList((l) => (l ?? []).filter((x) => x.id !== openId));
+    shown.current = null;
+    setOpenId(null);
+    loadList();
+  };
 
   const title = (m: ModelChoice) => (lang === "sr" && m.title_sr ? m.title_sr : m.title_en);
   const bookTitle = (s: Source) => (lang === "sr" && s.book_title_sr ? s.book_title_sr : s.book_title_en);
@@ -306,20 +512,9 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
     return <Reader t={t} lang={lang} url={reader.url} title={reader.title} onClose={() => setReader(null)} />;
   }
 
-  // A phone away from home (or a hub without the assistant) uses its own model.
+  // A phone away from home (or a hub without the assistant) uses its own model for new questions.
   const hubReady = !!ov && ov.engine !== "missing" && ov.engine !== "no_model";
-  if (!isHub && (hubDown || (ov && !hubReady))) {
-    return (
-      <div className="stack">
-        <div className="page-head">
-          <h1>{t("assistant")}</h1>
-          <p className="muted">{hubDown ? t("aiAwayFromHub") : t("aiHubHasNoModel")}</p>
-        </div>
-        <PhoneAi t={t} lang={lang} />
-      </div>
-    );
-  }
-
+  const phoneOwnAi = !isHub && (hubDown || (!!ov && !hubReady));
   const rec = ov?.models.find((m) => m.id === ov.recommended) ?? ov?.models[0];
   const stateOf = (id: string) => downloads.find((d) => d.id === id)?.state;
   const installedModels = ov?.models.filter((m) => m.installed) ?? [];
@@ -339,104 +534,176 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
       : latest.status === "done"
         ? latest.text.replace(/\[\d+(?:,\s*\d+)*\]/g, "").replace(/\*\*/g, "")
         : t(statusText[latest.status]);
+  const showing = openId !== null && saved !== false;
+  const canAsk = hubReady && !readOnly && (!showing || conv !== null);
 
-  return (
-    <div className="stack assistant">
-      <div className="page-head">
-        <h1>{t("assistant")}</h1>
-        <p className="muted">{t("assistantIntro")}</p>
-      </div>
-      {err && <p className="error" role="alert">{err}</p>}
-      {!ov && !err && !hubDown && <p className="muted">{t("aiLoading")}</p>}
+  const side = (head: React.ReactNode) => (
+    <ConversationList
+      t={t}
+      head={head}
+      list={query.trim() ? found : list}
+      query={query}
+      setQuery={setQuery}
+      openId={openId}
+      open={openChat}
+      newChat={newChat}
+      showMemory={() => {
+        setDrawer(false);
+        setMemoryOpen(true);
+      }}
+    />
+  );
 
-      {ov && !hubReady && rec && (
-        <div className="panel stack">
-          <h2>{t("aiNeedsModel")}</h2>
-          <p className="muted" style={{ margin: 0 }}>
-            {t("aiRecommendedFor")} {fmtBytes(ov.ram_total)} {t("aiRecommendedMemory")}: <strong>{title(rec)}</strong> ({fmtBytes(rec.size)})
-          </p>
-          {(() => {
-            const st = stateOf(rec.id);
-            const eng = stateOf("llama-cpp");
-            const active = [st, eng].find((s) => s && ["queued", "downloading", "verifying"].includes(s.status));
-            if (active) {
-              const pct = active.bytes_total ? Math.round((active.bytes_done / active.bytes_total) * 100) : 0;
-              return (
-                <>
-                  <div className="bar"><i style={{ width: `${pct}%` }} /></div>
-                  <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-                    {/* The engine comes along with the model: say which of the two these bytes are. */}
-                    {t("aiDownloading")} {active === eng ? t("aiEngine") : t("aiModel")} · {fmtBytes(active.bytes_done)} / {fmtBytes(active.bytes_total)}
-                  </p>
-                </>
-              );
-            }
-            return (
-              <div className="row wrap">
-                <button className="btn" onClick={() => download(rec.id)}>{t("download")}</button>
-                <button className="btn secondary" onClick={() => go("addons")}>{t("aiOtherModels")}</button>
-              </div>
-            );
-          })()}
-        </div>
-      )}
+  const needsModel = ov && !hubReady && rec && (
+    <div className="panel stack left">
+      <h2>{t("aiNeedsModel")}</h2>
+      <p className="muted" style={{ margin: 0 }}>
+        {t("aiRecommendedFor")} {fmtBytes(ov.ram_total)} {t("aiRecommendedMemory")}: <strong>{title(rec)}</strong> ({fmtBytes(rec.size)})
+      </p>
+      {(() => {
+        const st = stateOf(rec.id);
+        const eng = stateOf("llama-cpp");
+        const active = [st, eng].find((s) => s && ["queued", "downloading", "verifying"].includes(s.status));
+        if (active) {
+          const pct = active.bytes_total ? Math.round((active.bytes_done / active.bytes_total) * 100) : 0;
+          return (
+            <>
+              <div className="bar"><i style={{ width: `${pct}%` }} /></div>
+              <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+                {/* The engine comes along with the model: say which of the two these bytes are. */}
+                {t("aiDownloading")} {active === eng ? t("aiEngine") : t("aiModel")} · {fmtBytes(active.bytes_done)} / {fmtBytes(active.bytes_total)}
+              </p>
+            </>
+          );
+        }
+        return (
+          <div className="row wrap">
+            <button className="btn" onClick={() => download(rec.id)}>{t("download")}</button>
+            <button className="btn secondary" onClick={() => go("addons")}>{t("aiOtherModels")}</button>
+          </div>
+        );
+      })()}
+    </div>
+  );
 
-      {ov && hubReady && (
-        <div className="row between wrap model-line">
-          <label className="row model-pick">
-            <span className="muted" style={{ fontSize: 14 }}>{t("aiModel")}</span>
-            <select value={ov.selected ?? ""} onChange={(e) => select(e.target.value)} disabled={busy}>
-              {installedModels.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {title(m).match(/\(([^)]+)\)/)?.[1] ?? title(m)}{m.recommended ? ` · ${t("recommended")}` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <span className="muted" style={{ fontSize: 13 }}>
-            {ov.engine === "ready" ? t("aiReady") : ov.engine === "starting" ? t("aiStarting") : ov.engine === "failed" ? t("aiFailed") : t("aiSleeping")}
-            {ov.books === 0 && ` · ${t("aiNoLibrary")}`}
-            {isHub && ov.engine === "ready" && !busy && (
-              <>
-                {" · "}
-                <button className="link-btn" onClick={() => api("/api/assistant/stop", { method: "POST" }).then(load).catch(() => {})}>{t("aiFreeMemory")}</button>
-              </>
-            )}
-          </span>
-        </div>
-      )}
+  // The model and whether it runs: under the question box on a wide screen, and on a phone
+  // (where room is short) on the screen a new conversation starts with.
+  const modelLine = ov && hubReady && (
+    <div className="row model-line">
+      <label className="row model-pick">
+        <span>{t("aiModel")}</span>
+        <select value={ov.selected ?? ""} onChange={(e) => select(e.target.value)} disabled={busy}>
+          {installedModels.map((m) => (
+            <option key={m.id} value={m.id}>
+              {title(m).match(/\(([^)]+)\)/)?.[1] ?? title(m)}{m.recommended ? ` · ${t("recommended")}` : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+      <span>
+        {ov.engine === "ready" ? t("aiReady") : ov.engine === "starting" ? t("aiStarting") : ov.engine === "failed" ? t("aiFailed") : t("aiSleeping")}
+        {ov.books === 0 && ` · ${t("aiNoLibrary")}`}
+        {isHub && ov.engine === "ready" && !busy && (
+          <>
+            {" · "}
+            <button type="button" className="link-btn" onClick={() => api("/api/assistant/stop", { method: "POST" }).then(load).catch(() => {})}>{t("aiFreeMemory")}</button>
+          </>
+        )}
+      </span>
+    </div>
+  );
 
-      {hubReady && (
+  // What a new conversation starts with.
+  const start = (
+    <div className="stack chat-start">
+      {phoneOwnAi ? (
         <>
-          {ov?.books === 0 && (
+          <p className="muted" style={{ margin: 0 }}>{hubDown ? t("aiAwayFromHub") : t("aiHubHasNoModel")}</p>
+          <PhoneAi t={t} lang={lang} />
+        </>
+      ) : (
+        <>
+          <div className="chat-hello">
+            <span className="chat-hello-icon"><Icon name="assistant" size={28} /></span>
+            <p>{t("assistantIntro")}</p>
+            {hubReady && <p className="muted">{t("aiEmptyChat")}</p>}
+          </div>
+          {!ov && !err && <p className="muted">{t("aiLoading")}</p>}
+          {needsModel}
+          {hubReady && ov?.books === 0 && (
             <p className="warn" style={{ margin: 0, fontSize: 14 }}>
               {t("aiNoLibraryLong")} <a href="#addons">{t("addonsIn")}</a>.
             </p>
           )}
-          <div className="sr-only" aria-live="polite" aria-atomic="true">{announce}</div>
-          <div className="assistant-layout">
+          {narrow && modelLine && <div className="start-model">{modelLine}</div>}
+          {!isHub && hubReady && (
             <div className="stack">
+              <button className="btn secondary" onClick={() => setShowPhone(!showPhone)} aria-expanded={showPhone}>
+                {showPhone ? "▴ " : "▾ "}{t("aiOnThisPhone")}
+              </button>
+              {showPhone && <PhoneAi t={t} lang={lang} />}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="assistant">
+      {!narrow && <aside className="convo-side">{side(<h1>{t("assistant")}</h1>)}</aside>}
+      <section className="chat-pane" aria-label={conv?.title || t("aiNewChat")}>
+        {narrow && (
+          <div className="chat-top">
+            <button type="button" className="ghost-icon" onClick={() => setDrawer(true)} aria-label={t("aiConversations")} title={t("aiConversations")} aria-expanded={drawer}>
+              <Icon name="list" />
+            </button>
+            <h1>{t("assistant")}</h1>
+            <button type="button" className="ghost-icon" onClick={newChat} aria-label={t("aiNewChat")} title={t("aiNewChat")}>
+              <Icon name="plus" />
+            </button>
+          </div>
+        )}
+        {showing && conv ? (
+          <div className="chat-head">
+            <ChatTitle key={conv.id} t={t} conv={conv} readOnly={readOnly} onRenamed={renamed} onDeleted={deleted} />
+          </div>
+        ) : (
+          !narrow && (
+            <div className="chat-head">
+              <div className="chat-title"><h2 className="muted">{t("aiNewChat")}</h2></div>
+            </div>
+          )
+        )}
+        <div className="chat-scroll">
+          <div className="chat-column">
+            {err && <p className="error" role="alert">{err}</p>}
+            {readOnly && showing && <p className="muted chat-note">{t("aiReadOnly")}</p>}
+            {showing && unshown && <p className="muted chat-note">{t(unshown === "notKept" ? "aiNotKept" : "errGeneric")}</p>}
+            {showing && !conv && !unshown && <p className="muted">{t("aiLoading")}</p>}
+            {!showing && chat.length === 0 && start}
+            <div className="sr-only" aria-live="polite" aria-atomic="true">{announce}</div>
+            {chat.length > 0 && (
               <div className="chat">
-                {chat.length === 0 && <p className="muted">{t("aiEmptyChat")}</p>}
                 {chat.map((a) => (
                   <div key={a.id} className="exchange">
                     <div className="q">{a.question}</div>
-                    <div className="a panel left">
+                    <div className="a">
                       {a.status === "failed" ? (
                         <p className="error" style={{ margin: 0 }}>{errText(t, new Error(a.error ?? ""))}</p>
                       ) : (
                         <>
-                          {a.text ? <AnswerText text={a.text} sources={a.sources} open={openSource} /> : <p className="muted" style={{ margin: 0 }}>{t(statusText[a.status])}</p>}
+                          {a.text ? <AnswerText text={a.text} sources={a.sources} open={openSource} /> : <p className="muted thinking" style={{ margin: 0 }}>{t(statusText[a.status])}</p>}
                           {a.status === "done" && a.proposal && (
                             <div className="row wrap proposal">
                               {a.outcome === "done" ? (
                                 <span className="ok">✓ {t("aiDone")}{a.proposal.action !== "remember" && <> · <a href="#supplies">{t("supplies")}</a></>}</span>
                               ) : a.outcome === "canceled" ? (
                                 <span className="muted">{t("aiCancelled")}</span>
-                              ) : (
+                              ) : readOnly ? null : (
                                 <>
                                   <button className="btn" onClick={() => confirm(a)} disabled={confirming === a.id}>{t("aiConfirm")}</button>
-                                  <button className="btn secondary" onClick={() => setOutcome(a.id, "canceled")}>{t("cancel")}</button>
+                                  <button className="btn secondary" onClick={() => setOutcome(a, "canceled")}>{t("cancel")}</button>
                                 </>
                               )}
                             </div>
@@ -472,49 +739,56 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
                     </div>
                   </div>
                 ))}
-                <div ref={endRef} />
               </div>
-              <form className="stack ask-form" onSubmit={ask}>
-                <textarea
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      (e.currentTarget.form as HTMLFormElement).requestSubmit();
-                    }
-                  }}
-                  placeholder={t("askExample")}
-                  aria-label={t("askSomething")}
-                  rows={2}
-                  maxLength={2000}
-                />
-                <label className="check-line online-switch">
-                  <input type="checkbox" checked={online} onChange={(e) => setOnline(e.target.checked)} />
-                  <span>{t("aiOnline")}</span>
-                </label>
-                <div className="row between wrap">
-                  <div className="row wrap">
-                    <button className="btn" disabled={busy || !question.trim()}>{busy ? t("aiThinking") : t("ask")}</button>
-                    {current && <button type="button" className="btn secondary" onClick={() => stop(current.id)}>{t("aiStop")}</button>}
-                  </div>
-                  {chat.length > 0 && !busy && <button type="button" className="btn secondary small" onClick={clear}>{t("aiNewChat")}</button>}
-                </div>
-              </form>
-            </div>
-            <Memory t={t} version={memoryVersion} />
+            )}
+            <div ref={endRef} />
           </div>
-        </>
-      )}
-
-      {!isHub && (
-        <div className="stack">
-          <button className="btn secondary" onClick={() => setShowPhone(!showPhone)} aria-expanded={showPhone}>
-            {showPhone ? "▴ " : "▾ "}{t("aiOnThisPhone")}
-          </button>
-          {showPhone && <PhoneAi t={t} lang={lang} />}
         </div>
+        {canAsk && (
+          <form className="composer" onSubmit={ask}>
+            <div className="composer-box">
+              <textarea
+                ref={box}
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                onKeyDown={(e) => {
+                  // Enter asks on a keyboard; on a phone it starts a new line (the button asks).
+                  if (e.key === "Enter" && !e.shiftKey && !narrow) {
+                    e.preventDefault();
+                    (e.currentTarget.form as HTMLFormElement).requestSubmit();
+                  }
+                }}
+                placeholder={t("askExample")}
+                aria-label={t("askSomething")}
+                rows={1}
+                maxLength={2000}
+              />
+              {current ? (
+                <button type="button" className="send-btn" onClick={() => stop(current.id)} aria-label={t("aiStop")} title={t("aiStop")}>
+                  <Icon name="stop" size={18} />
+                </button>
+              ) : (
+                <button className="send-btn" disabled={busy || !question.trim()} aria-label={t("ask")} title={t("ask")}>
+                  <Icon name="send" size={20} />
+                </button>
+              )}
+            </div>
+            <div className="composer-foot">
+              <label className="check-line online-switch">
+                <input type="checkbox" checked={online} onChange={(e) => setOnline(e.target.checked)} />
+                <span>{t("aiOnline")}</span>
+              </label>
+              {!narrow && modelLine}
+            </div>
+          </form>
+        )}
+      </section>
+      {narrow && drawer && (
+        <SidePanel side="left" title={t("aiConversations")} closeLabel={t("aiClose")} onClose={() => setDrawer(false)} className="convo-drawer">
+          {side(null)}
+        </SidePanel>
       )}
+      {memoryOpen && <Memory t={t} version={memoryVersion} onClose={() => setMemoryOpen(false)} />}
     </div>
   );
 }

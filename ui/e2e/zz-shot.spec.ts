@@ -124,4 +124,71 @@ test("shots", async ({ page }, info) => {
   await page.locator(".item").first().click();
   await page.waitForTimeout(600);
   await page.screenshot({ path: file("supplies-edit"), fullPage: true });
+
+  // The assistant with saved conversations. The test hub has no AI, so the
+  // answers and the list are served by the test.
+  const phone = info.project.name === "phone";
+  const sr = LANG === "sr";
+  const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+  const conv = (id: string, en: string, srTitle: string, days: number, from?: [string, string]) => ({
+    id, title: sr ? srTitle : en, from_owner: from?.[0] ?? null, from_name: from?.[1] ?? null, created_at: ago(days), updated_at: ago(days), turns: 2,
+  });
+  const list = [
+    conv("c1", "How do I purify water without a filter?", "Kako da prečistim vodu bez filtera?", 0),
+    conv("c2", "How long do dry beans keep?", "Koliko dugo traje suvi pasulj?", 0.05),
+    conv("c3", "First aid for a burn", "Prva pomoć kod opekotine", 1, ["p1", sr ? "Anin telefon" : "Ana's phone"]),
+    conv("c4", "Add 2 liters of milk", "Dodaj 2 litra mleka", 3),
+    conv("c5", "Bread without yeast", "Hleb bez kvasca", 20),
+  ];
+  const source = (n: number, title: string) => ({ n, title, url: `/kiwix/content/test/A/${n}`, book_title_en: "Wikipedia", book_title_sr: "Vikipedija" });
+  const turn = (q: string, a: string) => ({
+    id: q, question: q, answer: a, status: "done", error: null, answer_id: null, outcome: null, created_at: ago(0), answered_at: ago(0),
+    sources: [source(1, sr ? "Prečišćavanje vode" : "Water purification"), source(2, sr ? "Ključanje" : "Boiling")],
+    details: { grounded: true, cited: true, language: LANG, tokens_per_second: 11.4, searched: [sr ? "prečišćavanje vode" : "water purification"] },
+  });
+  const turns = sr
+    ? [
+        turn("Kako da prečistim vodu bez filtera?", "Najsigurnije je da je **prokuvaš**: neka ključa bar jedan minut, a na planini tri [1].\n\nAko ne možeš da je prokuvaš:\n* ostavi je da se slegne, pa je procedi kroz čistu tkaninu\n* dodaj dve kapi varikine bez mirisa na litar i sačekaj 30 minuta [2]"),
+        turn("A ako imam samo jedan lonac?", "Dovoljan je jedan lonac: prokuvaj vodu, ostavi je poklopljenu da se ohladi i tek onda je presipaj u čiste flaše [1]."),
+      ]
+    : [
+        turn("How do I purify water without a filter?", "The safest way is to **boil** it: keep it at a rolling boil for one minute, three at high altitude [1].\n\nIf you cannot boil it:\n* let it settle, then pour it through a clean cloth\n* add two drops of unscented bleach per liter and wait 30 minutes [2]"),
+        turn("And if I only have one pot?", "One pot is enough: boil the water, let it cool with the lid on, and only then pour it into clean bottles [1]."),
+      ];
+  await page.route("**/api/assistant", (route) =>
+    route.fulfill({
+      json: {
+        engine: "ready", engine_installed: true, selected: "qwen35-4b", recommended: "qwen35-4b", ram_total: 16e9, books: 3,
+        models: [{ id: "qwen35-4b", title_en: "AI model (Qwen3.5 4B)", title_sr: "AI model (Qwen3.5 4B)", size: 3e9, installed: true, recommended: true }],
+      },
+    }),
+  );
+  await page.route("**/api/conversations", (route) => route.fulfill({ json: list }));
+  await page.route("**/api/conversations/c1", (route) => route.fulfill({ json: { ...list[0], turns } }));
+  await page.route("**/api/devices", (route) =>
+    route.fulfill({ json: [{ id: "p1", name: sr ? "Anin telefon" : "Ana's phone", platform: "android", created_at: ago(30), last_seen: ago(0) }, { id: "p2", name: sr ? "Markov telefon" : "Marko's phone", platform: "android", created_at: ago(30), last_seen: null }] }),
+  );
+  await page.addInitScript(() => localStorage.removeItem("zaklon.chat.open"));
+  await page.goto("/#assistant");
+  await page.waitForTimeout(1000);
+  await page.screenshot({ path: file("assistant-new"), fullPage: false });
+  if (phone) {
+    await page.locator(".chat-top .ghost-icon").first().click();
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: file("assistant-list"), fullPage: false });
+  }
+  await page.locator(".convo-item").first().click();
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: file("assistant-chat"), fullPage: false });
+  await page.locator(".menu-wrap .ghost-icon").click();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: file("assistant-menu"), fullPage: false });
+  await page.locator(".menu > button").nth(1).click();
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: file("assistant-send"), fullPage: false });
+  await page.keyboard.press("Escape");
+  if (phone) await page.locator(".chat-top .ghost-icon").first().click();
+  await page.locator(".convo-memory").click();
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: file("assistant-memory"), fullPage: false });
 });

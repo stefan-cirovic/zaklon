@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
 
-/** Line icons for the bar and the Tools screen, drawn on a 24 px grid in the text color. */
-export type IconName = "home" | "assistant" | "tools" | "household" | "supplies" | "library" | "maps" | "addons" | "pin";
+/** Line icons for the bar, the Tools screen and the assistant, drawn on a 24 px grid in the text color. */
+export type IconName =
+  | "home" | "assistant" | "tools" | "household" | "supplies" | "library" | "maps" | "addons" | "pin"
+  | "plus" | "list" | "more" | "close" | "send" | "stop" | "memory" | "shared";
 
 const SHAPES: Record<IconName, ReactNode> = {
   home: (
@@ -61,6 +63,29 @@ const SHAPES: Record<IconName, ReactNode> = {
     <>
       <path d="M9 4h6l-1 5.5 3 2.5v1.5H7V12l3-2.5z" />
       <path d="M12 13.5V20" />
+    </>
+  ),
+  plus: <path d="M12 5v14M5 12h14" />,
+  list: <path d="M4 6.5h16M4 12h16M4 17.5h16" />,
+  more: (
+    <>
+      <circle cx="6" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="18" cy="12" r="1.4" fill="currentColor" stroke="none" />
+    </>
+  ),
+  close: <path d="M6 6l12 12M18 6 6 18" />,
+  send: <path d="M12 19V5M6 11l6-6 6 6" />,
+  stop: <rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none" />,
+  memory: (
+    <>
+      <path d="M7 4h10v16l-5-3.5L7 20z" />
+    </>
+  ),
+  shared: (
+    <>
+      <path d="M13.5 5H19v5.5M19 5l-8 8" />
+      <path d="M17 14v5H5V7h5" />
     </>
   ),
 };

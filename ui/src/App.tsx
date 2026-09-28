@@ -339,8 +339,11 @@ export default function App() {
     );
   }
 
+  // The assistant fills the window like a chat app: its list and conversation scroll on their own.
+  const fill = tab === "assistant" && !setupOnly;
+
   return (
-    <div className="shell">
+    <div className={"shell" + (fill ? " fill" : "")}>
       <main className="content">
         {!isHub && <OfflineBanner t={t} />}
         {!isHub && hubChanged && link?.linked && (
@@ -406,7 +409,7 @@ export default function App() {
         {tab === "supplies" && <Supplies t={t} />}
         {tab === "assistant" && <Assistant t={t} lang={lang} isHub={isHub} go={setTab} />}
         {tab === "addons" && <Addons t={t} lang={lang} isHub={isHub} />}
-        {status?.version && <p className="muted footer-note">Zaklon {status.version}</p>}
+        {status?.version && !fill && <p className="muted footer-note">Zaklon {status.version}</p>}
       </main>
       {!setupOnly && (
         <nav className="nav" aria-label={t("mainNav")}>

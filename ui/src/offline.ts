@@ -19,8 +19,17 @@ const ONLINE_EVENT = "zaklon-online";
 /** Ask the app to look for the hub at most this often when a screen was served from the copy. */
 const PROBE_EVERY = 5000;
 
+/** One saved conversation with the assistant (the list of them is kept too). */
+const ONE_CONVERSATION = /^\/api\/conversations\/[^/?]+$/;
 /** GET answers kept for when the hub is out of reach. */
-const CACHED = [/^\/api\/items$/, /^\/api\/shopping$/, /^\/api\/put-away$/, /^\/api\/places$/, /^\/api\/supplies\/summary$/, /^\/api\/history(\?.*)?$/];
+const CACHED = [
+  /^\/api\/items$/, /^\/api\/shopping$/, /^\/api\/put-away$/, /^\/api\/places$/, /^\/api\/supplies\/summary$/, /^\/api\/history(\?.*)?$/,
+  /^\/api\/conversations$/, ONE_CONVERSATION,
+];
+/** Conversations kept for reading away from the hub: the ones opened last. */
+const KEEP_CONVERSATIONS = 30;
+/** Which conversations are kept, the one opened last at the end. */
+const KEPT_CONVERSATIONS = CACHE + "#conversations";
 
 type Queued = { method: string; path: string; body: string | null; at: number };
 type Cached = { at: number; body: string };
@@ -159,6 +168,22 @@ export function isCacheable(method: string, path: string) {
 
 export function remember(path: string, body: string) {
   write(CACHE + path, { at: Date.now(), body } satisfies Cached);
+  if (ONE_CONVERSATION.test(path)) {
+    // Only the last few: the phone's storage is small and the supplies come first.
+    const kept = (read<string[]>(KEPT_CONVERSATIONS) ?? []).filter((p) => typeof p === "string" && p !== path);
+    kept.push(path);
+    while (kept.length > KEEP_CONVERSATIONS) forget(kept.shift() as string);
+    write(KEPT_CONVERSATIONS, kept);
+  }
+}
+
+/** Drop the copy of a GET (a conversation that was deleted). */
+export function forget(path: string) {
+  try {
+    localStorage.removeItem(CACHE + path);
+  } catch {
+    /* nothing kept */
+  }
 }
 
 export function recall(path: string): Cached | null {

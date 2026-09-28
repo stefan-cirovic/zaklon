@@ -283,4 +283,20 @@ off.markOnline();
 assert.ok(!off.knownAway());
 assert.equal(reloaded, 1);
 stop();
+
+// Saved conversations: the list and the ones opened last are kept for reading
+// away from the hub; a search is not.
+assert.ok(off.isCacheable("GET", "/api/conversations"));
+assert.ok(off.isCacheable("GET", "/api/conversations/c1"));
+assert.ok(!off.isCacheable("GET", "/api/conversations?q=water"));
+assert.ok(!off.isCacheable("GET", "/api/conversations/c1/send"));
+assert.ok(!off.isQueueable("POST", "/api/assistant/ask"), "questions do not wait for the hub");
+for (let i = 0; i < 32; i++) off.remember(`/api/conversations/c${i}`, JSON.stringify({ id: `c${i}`, turns: [] }));
+off.remember("/api/conversations/c0", JSON.stringify({ id: "c0", turns: [] }));
+assert.equal(off.recall("/api/conversations/c1"), null, "the one opened longest ago made room");
+assert.equal(off.recall("/api/conversations/c2"), null);
+assert.notEqual(off.recall("/api/conversations/c0"), null, "opened again, so kept");
+assert.notEqual(off.recall("/api/conversations/c31"), null);
+off.forget("/api/conversations/c31");
+assert.equal(off.recall("/api/conversations/c31"), null);
 console.log("offline: all checks passed");
