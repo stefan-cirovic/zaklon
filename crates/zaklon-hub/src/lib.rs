@@ -19,6 +19,7 @@ pub mod kiwix;
 pub mod latin;
 pub mod machine;
 mod powershell;
+pub mod tiles;
 pub mod ui;
 pub mod updates;
 pub mod web;
@@ -172,6 +173,8 @@ pub struct HubState {
     pub export: Arc<export::Exporter>,
     pub assistant: Arc<assistant::Assistant>,
     pub updates: Arc<updates::Updates>,
+    /// The Zaklon map's tiles, fonts and icons.
+    pub tiles: Arc<tiles::Tiles>,
 }
 
 impl HubState {
@@ -224,13 +227,20 @@ pub fn log_file(root: &Path, name: &str) -> Result<tracing_appender::rolling::Ro
 /// Before a pack's files are replaced or deleted, the program holding them
 /// open stops: kiwix-serve for knowledge packs and itself, llama-server for
 /// AI models and itself. Both start again by themselves when needed.
-fn release_engines(library: &Arc<Library>, assistant: &Arc<assistant::Assistant>) -> Box<downloads::ReleaseFn> {
+fn release_engines(library: &Arc<Library>, assistant: &Arc<assistant::Assistant>, tiles: &Arc<tiles::Tiles>) -> Box<downloads::ReleaseFn> {
     use zaklon_core::catalog::Category;
     // Weak: the downloads must not keep the engines (which hold the downloads) alive.
-    let (library, assistant) = (Arc::downgrade(library), Arc::downgrade(assistant));
+    let (library, assistant, tiles) = (Arc::downgrade(library), Arc::downgrade(assistant), Arc::downgrade(tiles));
     Box::new(move |pack| {
-        let (library, assistant) = (library.upgrade(), assistant.upgrade());
+        let (library, assistant, tiles) = (library.upgrade(), assistant.upgrade(), tiles.upgrade());
         Box::pin(async move {
+            // The map reads its archives without holding them against a
+            // delete, but a file being replaced should not stay open.
+            if downloads::is_map_archive_pack(&pack) {
+                if let Some(t) = tiles {
+                    t.close_all().await;
+                }
+            }
             if pack.category == Category::Knowledge || pack.id == "kiwix-tools" {
                 if let Some(l) = library {
                     l.stop_for(Duration::from_secs(10)).await;
@@ -270,7 +280,8 @@ impl Hub {
         let library = Library::new(downloads.clone());
         let chosen = db.get_setting(assistant::SETTING_MODEL).ok().flatten();
         let assistant = assistant::Assistant::new(downloads.clone(), library.clone(), chosen);
-        downloads.set_release(release_engines(&library, &assistant));
+        let tiles = tiles::Tiles::new(downloads.clone(), tiles::map_assets_dir());
+        downloads.set_release(release_engines(&library, &assistant, &tiles));
         let updates = updates::Updates::new(config.auto_update_check);
         Ok(Self {
             state: Arc::new(HubState {
@@ -287,6 +298,7 @@ impl Hub {
                 assistant,
                 updates,
                 downloads,
+                tiles,
             }),
         })
     }

@@ -87,6 +87,9 @@ pub struct Downloads {
     verify_only: Mutex<HashSet<String>>,
     /// Packs checked again this session because the library engine could not open them.
     rechecked: Mutex<HashSet<String>>,
+    /// Map packs whose files were found in place (put there by hand, say)
+    /// and are being checked. The map shows them meanwhile; see `map_archives`.
+    found_in_place: Mutex<HashSet<String>>,
     notify: Notify,
     client: reqwest::Client,
     release: OnceLock<Box<ReleaseFn>>,
@@ -111,11 +114,15 @@ impl Downloads {
         }
         let mut queue = VecDeque::new();
         let mut verify_only = HashSet::new();
+        let mut found_in_place = HashSet::new();
         for p in &catalog.packs {
             let st = states.entry(p.id.clone()).or_insert_with(|| PackState::not_installed(p.size));
             if reconcile(&library, p, st) {
                 queue.push_back(p.id.clone());
                 verify_only.insert(p.id.clone());
+                if is_map_archive_pack(p) && complete_in_place(&library, p) {
+                    found_in_place.insert(p.id.clone());
+                }
             }
             // A USB copy that was cut off leaves its temporary file behind.
             for f in &p.files {
@@ -149,6 +156,7 @@ impl Downloads {
             pause_requests: Mutex::new(HashSet::new()),
             verify_only: Mutex::new(verify_only),
             rechecked: Mutex::new(HashSet::new()),
+            found_in_place: Mutex::new(found_in_place),
             notify: Notify::new(),
             client,
             release: OnceLock::new(),
@@ -253,6 +261,7 @@ impl Downloads {
         }
         // Asked for by someone: a full download, not just a check.
         self.verify_only.lock().unwrap_or_else(|p| p.into_inner()).remove(id);
+        self.found_in_place.lock().unwrap_or_else(|p| p.into_inner()).remove(id);
         self.pause_requests.lock().unwrap_or_else(|p| p.into_inner()).remove(id);
         self.queue.lock().unwrap_or_else(|p| p.into_inner()).push_back(id.to_string());
         self.save_soon();
@@ -290,6 +299,7 @@ impl Downloads {
         }
         self.queue.lock().unwrap_or_else(|p| p.into_inner()).retain(|q| q != id);
         self.verify_only.lock().unwrap_or_else(|p| p.into_inner()).remove(id);
+        self.found_in_place.lock().unwrap_or_else(|p| p.into_inner()).remove(id);
         // Forget the pack first: whatever happens below, it no longer counts as installed.
         let old = self
             .states
@@ -386,6 +396,61 @@ impl Downloads {
             self.save_soon();
             self.notify.notify_one();
         }
+    }
+
+    /// Map archives (the `.pmtiles` files of map packs, such as the world
+    /// map) the map can use now: the verified files of each pack (also while
+    /// a newer version downloads), and the files of a pack that were found in
+    /// place with the right size and are still being checked, so a map put
+    /// there by hand shows at once. Blocking only for a few file lookups.
+    pub fn map_archives(&self) -> Vec<(String, PathBuf)> {
+        let states = self.states.lock().unwrap_or_else(|p| p.into_inner());
+        let found = self.found_in_place.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        let mut out = Vec::new();
+        for p in self.catalog.packs.iter().filter(|p| is_map_archive_pack(p)) {
+            let Some(st) = states.get(&p.id) else { continue };
+            let files: Vec<&str> = if !st.files.is_empty() {
+                st.files.iter().map(|f| f.path.as_str()).collect()
+            } else if found.contains(&p.id)
+                && matches!(st.status, PackStatus::Queued | PackStatus::Verifying | PackStatus::Paused)
+                && complete_in_place(&self.library, p)
+            {
+                p.files.iter().map(|f| f.path.as_str()).collect()
+            } else {
+                continue;
+            };
+            out.extend(files.into_iter().filter(|f| f.ends_with(".pmtiles")).map(|f| (p.id.clone(), self.library.join(f))));
+        }
+        out
+    }
+
+    /// Map packs whose files appeared in place while the hub runs (copied or
+    /// linked there by hand) with the right size: they are checked in the
+    /// background and shown meanwhile, as if found at startup.
+    pub fn notice_placed_maps(self: &Arc<Self>) {
+        let mut noticed = Vec::new();
+        {
+            let mut states = self.states.lock().unwrap_or_else(|p| p.into_inner());
+            for p in self.catalog.packs.iter().filter(|p| is_map_archive_pack(p)) {
+                let st = states.entry(p.id.clone()).or_insert_with(|| PackState::not_installed(p.size));
+                if st.status == PackStatus::NotInstalled && st.files.is_empty() && complete_in_place(&self.library, p) {
+                    st.status = PackStatus::Queued;
+                    st.error = None;
+                    noticed.push(p.id.clone());
+                }
+            }
+        }
+        if noticed.is_empty() {
+            return;
+        }
+        for id in noticed {
+            info!(pack = %id, "map found in place; checking it");
+            self.verify_only.lock().unwrap_or_else(|p| p.into_inner()).insert(id.clone());
+            self.found_in_place.lock().unwrap_or_else(|p| p.into_inner()).insert(id.clone());
+            self.queue.lock().unwrap_or_else(|p| p.into_inner()).push_back(id);
+        }
+        self.save_soon();
+        self.notify.notify_one();
     }
 
     // ---- internals ----------------------------------------------------------
@@ -529,6 +594,10 @@ impl Downloads {
 
     fn finish(self: &Arc<Self>, id: &str, outcome: Outcome) {
         self.pause_requests.lock().unwrap_or_else(|p| p.into_inner()).remove(id);
+        // A paused check goes on later; a finished one decided.
+        if !matches!(outcome, Outcome::Paused) {
+            self.found_in_place.lock().unwrap_or_else(|p| p.into_inner()).remove(id);
+        }
         self.set(id, |s| {
             s.speed = 0;
             match outcome {
@@ -567,7 +636,7 @@ impl Downloads {
                 // right after it was moved into place): check it before trusting it.
                 None => {
                     self.set(id, |s| s.status = PackStatus::Verifying);
-                    match self.hash_checked(id, &dest).await {
+                    match self.hash_checked(id, &dest, needs_sha1(&f.sha256), false).await {
                         Ok(Some(d)) => d.matches(f),
                         Ok(None) => return Outcome::Paused,
                         Err(e) => return Outcome::Failed(e),
@@ -640,10 +709,13 @@ impl Downloads {
             s.bytes_done = 0;
             s.bytes_total = total;
         });
-        for f in &files {
+        for (i, f) in files.iter().enumerate() {
             let path = self.library.join(&f.path);
+            // Progress by bytes read: a check of the world map takes minutes.
+            let checked_before: u64 = files[..i].iter().map(|x| x.size).sum();
+            self.set(id, |s| s.bytes_done = checked_before);
             let good = std::fs::metadata(&path).is_ok_and(|m| m.len() == f.size)
-                && match self.hash_checked(id, &path).await {
+                && match self.hash_checked(id, &path, needs_sha1(&f.sha256), true).await {
                     Ok(Some(d)) => d.matches_hash(&f.sha256, f.sha1_base64.as_deref()),
                     Ok(None) => return Outcome::Paused,
                     Err(_) => false,
@@ -662,7 +734,7 @@ impl Downloads {
                 });
                 return Outcome::Failed("the file on disk is damaged or another version; download it again".into());
             }
-            self.set(id, |s| s.bytes_done += f.size);
+            self.set(id, |s| s.bytes_done = checked_before + f.size);
         }
         for f in &files {
             if let Err(e) = self.ensure_unpacked(pack, f.unpack_to.as_deref(), &self.library.join(&f.path)).await {
@@ -696,13 +768,22 @@ impl Downloads {
             .unwrap_or_else(|e| Err(format!("unpack task: {e}")))
     }
 
-    /// SHA-256 and SHA-1 of a file, off the async threads. `Ok(None)` when a pause was asked for.
-    async fn hash_checked(self: &Arc<Self>, id: &str, path: &Path) -> Result<Option<FileDigest>, String> {
+    /// The checksums of a file (see `needs_sha1`), off the async threads.
+    /// `Ok(None)` when a pause was asked for. With `progress`, what has been
+    /// read counts towards the pack's progress (a check of a very large file
+    /// takes a while).
+    async fn hash_checked(self: &Arc<Self>, id: &str, path: &Path, with_sha1: bool, progress: bool) -> Result<Option<FileDigest>, String> {
         let (me, id2, p) = (self.clone(), id.to_string(), path.to_path_buf());
-        tokio::task::spawn_blocking(move || hash_file(&p, || me.pause_requested(&id2)))
-            .await
-            .map_err(|e| format!("verify task: {e}"))?
-            .map_err(|e| format!("reading file: {e}"))
+        tokio::task::spawn_blocking(move || {
+            hash_file(&p, with_sha1, || me.pause_requested(&id2), |n| {
+                if progress {
+                    me.set(&id2, |s| s.bytes_done += n);
+                }
+            })
+        })
+        .await
+        .map_err(|e| format!("verify task: {e}"))?
+        .map_err(|e| format!("reading file: {e}"))
     }
 
     /// Download `f` into its `.part` file and verify it. Returns the `.part`.
@@ -756,7 +837,7 @@ impl Downloads {
             s.speed = 0;
         });
         self.save_soon();
-        match self.hash_checked(id, &part).await {
+        match self.hash_checked(id, &part, needs_sha1(&f.sha256), false).await {
             Ok(Some(d)) if d.matches(f) => Ok(part),
             Ok(Some(_)) => {
                 let _ = std::fs::remove_file(&part);
@@ -945,8 +1026,8 @@ impl Downloads {
         // Its own temporary file: a paused download's ".part" (with its
         // progress) is left alone, and a failed copy leaves nothing behind.
         let tmp = import_path(&dest);
-        let (me, id2, t2) = (self.clone(), id.to_string(), tmp.clone());
-        let copied = tokio::task::spawn_blocking(move || me.copy_with_hash(&id2, &src, &t2))
+        let (me, id2, t2, with_sha1) = (self.clone(), id.to_string(), tmp.clone(), needs_sha1(&f.sha256));
+        let copied = tokio::task::spawn_blocking(move || me.copy_with_hash(&id2, &src, &t2, with_sha1))
             .await
             .unwrap_or_else(|e| Err(std::io::Error::other(e.to_string())));
         let result = match copied {
@@ -961,10 +1042,10 @@ impl Downloads {
 
     /// Blocking copy with progress and pause. `Ok(None)` when paused. The copy
     /// is on the disk (synced) before its hash is trusted.
-    fn copy_with_hash(&self, id: &str, src: &Path, dest: &Path) -> std::io::Result<Option<FileDigest>> {
+    fn copy_with_hash(&self, id: &str, src: &Path, dest: &Path, with_sha1: bool) -> std::io::Result<Option<FileDigest>> {
         let mut input = std::fs::File::open(src)?;
         let mut output = std::fs::File::create(dest)?;
-        let mut h = Hashers::new();
+        let mut h = Hashers::new(with_sha1);
         let mut buf = vec![0u8; 1 << 20];
         let mut copied: u64 = 0;
         let (mut tick, mut tick_bytes) = (Instant::now(), 0u64);
@@ -1123,6 +1204,20 @@ fn delete_in_library(library: &Path, rel: &str) -> std::io::Result<()> {
     }
 }
 
+/// A map pack the Zaklon map draws from: its files are map archives
+/// (PMTiles), unlike the pieces of CoMaps maps.
+pub fn is_map_archive_pack(p: &Pack) -> bool {
+    p.category == zaklon_core::catalog::Category::Maps
+        && !p.id.starts_with(zaklon_core::maps::MAP_ID_PREFIX)
+        && p.files.iter().any(|f| f.path.ends_with(".pmtiles"))
+}
+
+/// Every file of a pack is at its place with exactly the catalog's size
+/// (not yet checked).
+fn complete_in_place(library: &Path, p: &Pack) -> bool {
+    p.files.iter().all(|f| std::fs::metadata(library.join(&f.path)).is_ok_and(|m| m.is_file() && m.len() == f.size))
+}
+
 /// All files of a pack are in place (and unpacked where needed).
 fn pack_complete_on_disk(library: &Path, p: &Pack) -> bool {
     p.files.iter().all(|f| library.join(&f.path).is_file() && unpacked_ok(library, f.unpack_to.as_deref()))
@@ -1173,11 +1268,11 @@ fn import_path(dest: &Path) -> PathBuf {
     PathBuf::from(p)
 }
 
-/// SHA-256 and SHA-1 of a file, computed in one pass. Our catalog uses
-/// SHA-256; CoMaps publishes SHA-1 (base64) for its map files.
+/// SHA-256 of a file, and its SHA-1 when that is what the catalog has. Our
+/// catalog uses SHA-256; CoMaps publishes SHA-1 (base64) for its map files.
 struct FileDigest {
     sha256: String,
-    sha1_base64: String,
+    sha1_base64: Option<String>,
 }
 
 impl FileDigest {
@@ -1189,37 +1284,49 @@ impl FileDigest {
         if !sha256.is_empty() {
             return self.sha256.eq_ignore_ascii_case(sha256);
         }
-        sha1_base64.is_some_and(|h| h == self.sha1_base64)
+        sha1_base64.is_some_and(|h| Some(h) == self.sha1_base64.as_deref())
     }
+}
+
+/// Whether checking a file with these checksums needs its SHA-1 too. Only
+/// then is it computed: it would add half again to the time a file of a
+/// hundred gigabytes takes to check.
+fn needs_sha1(sha256: &str) -> bool {
+    sha256.is_empty()
 }
 
 struct Hashers {
     sha256: Sha256,
-    sha1: sha1::Sha1,
+    sha1: Option<sha1::Sha1>,
 }
 
 impl Hashers {
-    fn new() -> Self {
-        Self { sha256: Sha256::new(), sha1: sha1::Sha1::new() }
+    fn new(with_sha1: bool) -> Self {
+        Self { sha256: Sha256::new(), sha1: with_sha1.then(sha1::Sha1::new) }
     }
     fn update(&mut self, b: &[u8]) {
         self.sha256.update(b);
-        sha1::Digest::update(&mut self.sha1, b);
+        if let Some(s) = self.sha1.as_mut() {
+            sha1::Digest::update(s, b);
+        }
     }
     fn finish(self) -> FileDigest {
         use base64::Engine;
         FileDigest {
             sha256: self.sha256.finalize().iter().map(|b| format!("{b:02x}")).collect(),
-            sha1_base64: base64::engine::general_purpose::STANDARD.encode(sha1::Digest::finalize(self.sha1)),
+            sha1_base64: self.sha1.map(|s| base64::engine::general_purpose::STANDARD.encode(sha1::Digest::finalize(s))),
         }
     }
 }
 
-/// Hash a file; `Ok(None)` when `stop` says to give up (a pause). Blocking.
-fn hash_file(path: &Path, stop: impl Fn() -> bool) -> std::io::Result<Option<FileDigest>> {
+/// Hash a file; `Ok(None)` when `stop` says to give up (a pause). `read`
+/// hears how many bytes were read, now and then. Blocking.
+fn hash_file(path: &Path, with_sha1: bool, stop: impl Fn() -> bool, mut read: impl FnMut(u64)) -> std::io::Result<Option<FileDigest>> {
+    const REPORT_EVERY: u64 = 64 << 20;
     let mut file = std::fs::File::open(path)?;
-    let mut h = Hashers::new();
+    let mut h = Hashers::new(with_sha1);
     let mut buf = vec![0u8; 1 << 20];
+    let mut unreported = 0u64;
     loop {
         if stop() {
             return Ok(None);
@@ -1229,6 +1336,14 @@ fn hash_file(path: &Path, stop: impl Fn() -> bool) -> std::io::Result<Option<Fil
             break;
         }
         h.update(&buf[..n]);
+        unreported += n as u64;
+        if unreported >= REPORT_EVERY {
+            read(unreported);
+            unreported = 0;
+        }
+    }
+    if unreported > 0 {
+        read(unreported);
     }
     Ok(Some(h.finish()))
 }
@@ -1448,10 +1563,17 @@ mod tests {
         let dir = temp("hash");
         let p = dir.join("x.bin");
         std::fs::write(&p, b"abc").unwrap();
-        let d = hash_file(&p, || false).unwrap().unwrap();
+        let mut read = 0;
+        let d = hash_file(&p, true, || false, |n| read += n).unwrap().unwrap();
         assert_eq!(d.sha256, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
-        assert_eq!(d.sha1_base64, "qZk+NkcGgWq6PiVxeFDCbJzQ2J0=", "SHA-1 of abc");
-        assert!(hash_file(&p, || true).unwrap().is_none(), "a pause stops the check");
+        assert_eq!(d.sha1_base64.as_deref(), Some("qZk+NkcGgWq6PiVxeFDCbJzQ2J0="), "SHA-1 of abc");
+        assert_eq!(read, 3, "what was read is reported");
+        // SHA-1 only when the catalog has nothing better.
+        let d = hash_file(&p, needs_sha1(&d.sha256), || false, |_| {}).unwrap().unwrap();
+        assert!(d.sha1_base64.is_none());
+        assert!(d.matches_hash("BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD", None));
+        assert!(!d.matches_hash("", Some("qZk+NkcGgWq6PiVxeFDCbJzQ2J0=")), "no SHA-1 was computed to compare");
+        assert!(hash_file(&p, false, || true, |_| {}).unwrap().is_none(), "a pause stops the check");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1701,5 +1823,54 @@ mod tests {
         let st = wait(&d, "i", &[PackStatus::Installed, PackStatus::Failed]).await;
         assert!(st.error.unwrap().contains("import again"));
         assert!(st.import_from.is_none());
+    }
+
+    fn map_pack(id: &str, f: PackFile) -> Pack {
+        Pack { category: Category::Maps, ..pack(id, "20260928", f) }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_map_found_in_place_is_shown_while_it_is_checked() {
+        no_battery_rule();
+        let world = payload(11, 400_000);
+        let (library, state_path) = hub_dir(None);
+        put(&library, "maps/world.pmtiles", &world);
+        // Right name, wrong size: never shown, and the check fails at once.
+        put(&library, "maps/other.pmtiles", &world[..1000]);
+        let unreachable = "http://127.0.0.1:9/nothing";
+        let d = Downloads::new(
+            catalog(vec![
+                map_pack("world", file("maps/world.pmtiles", &world, unreachable)),
+                map_pack("other", file("maps/other.pmtiles", &world, unreachable)),
+                map_pack("later", file("maps/later.pmtiles", &world, unreachable)),
+                // A piece of a CoMaps map is not a map archive.
+                map_pack("map:Serbia", file("maps/1/Serbia.mwm", &world, unreachable)),
+            ]),
+            library.clone(),
+            state_path,
+        );
+        put(&library, "maps/1/Serbia.mwm", &world);
+        assert_eq!(d.state_of("world").unwrap().status, PackStatus::Queued, "checked before it counts as installed");
+        let shown = |d: &Downloads| d.map_archives().into_iter().map(|(id, _)| id).collect::<Vec<_>>();
+        assert_eq!(shown(&d), ["world"], "shown while it is checked");
+        assert_eq!(d.map_archives()[0].1, library.join("maps/world.pmtiles"));
+        d.start();
+        let st = wait(&d, "world", &[PackStatus::Installed, PackStatus::Failed]).await;
+        assert_eq!(st.status, PackStatus::Installed, "{:?}", st.error);
+        assert_eq!(st.bytes_done, world.len() as u64, "the check counts its progress");
+        assert_eq!(wait(&d, "other", &[PackStatus::Installed, PackStatus::Failed]).await.status, PackStatus::Failed);
+        assert_eq!(shown(&d), ["world"], "verified, and the one of the wrong size is not shown");
+
+        // A map put in place while the hub runs is noticed and checked too.
+        put(&library, "maps/later.pmtiles", &world);
+        d.notice_placed_maps();
+        assert!(shown(&d).contains(&"later".to_string()));
+        let st = wait(&d, "later", &[PackStatus::Installed, PackStatus::Failed]).await;
+        assert_eq!(st.status, PackStatus::Installed, "{:?}", st.error);
+
+        // Removed: not shown any more.
+        d.remove("world").unwrap();
+        assert_eq!(shown(&d), ["later"]);
+        assert!(!library.join("maps/world.pmtiles").exists());
     }
 }

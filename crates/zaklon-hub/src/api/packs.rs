@@ -28,8 +28,10 @@ pub(super) struct CatalogReply {
 
 pub(super) async fn catalog(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<CatalogReply>, ApiError> {
     let d = &state.downloads;
-    // Map pieces (over a thousand) have their own screen and endpoint.
-    let packs = d.snapshot().into_iter().filter(|v| v.pack.category != zaklon_core::catalog::Category::Maps).collect();
+    // Pieces of CoMaps maps (over a thousand) have their own screen and
+    // endpoint; the Zaklon map's packs (the world map) are listed here.
+    d.notice_placed_maps();
+    let packs = d.snapshot().into_iter().filter(|v| !v.pack.id.starts_with(zaklon_core::maps::MAP_ID_PREFIX)).collect();
     Ok(Json(CatalogReply { packs, system: crate::downloads::system_info(d.library_dir()), library_drive: crate::machine::drive_root(d.library_dir()) }))
 }
 
@@ -47,8 +49,8 @@ pub(super) async fn pack_download(State(state): State<Arc<HubState>>, _caller: C
         if pack.category == zaklon_core::catalog::Category::Model && state.downloads.needs_download("llama-cpp") {
             let _ = state.downloads.enqueue("llama-cpp");
         }
-        // A map piece: CoMaps needs the world overview first, phones need the app.
-        if pack.category == zaklon_core::catalog::Category::Maps {
+        // A piece of a CoMaps map: CoMaps needs the world overview first, phones need the app.
+        if pack.id.starts_with(zaklon_core::maps::MAP_ID_PREFIX) {
             for dep in zaklon_core::maps::BASE_IDS.into_iter().chain([zaklon_core::maps::COMAPS_APK_ID]) {
                 if dep != id && state.downloads.needs_download(dep) {
                     let _ = state.downloads.enqueue(dep);

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build the phone app, then the Windows installer that carries it.
+# Build the phone app, then the Windows installer that carries it (and the
+# map's assets: the world overview, fonts, icons and places).
 #   scripts/build-all.sh            (debug APK: installable, for testing)
 # Outputs:
 #   apps/zaklon/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
@@ -17,6 +18,9 @@ ANDROID_SDK_ROOT="$ANDROID_HOME"
 JAVA_HOME="$(unquote "${JAVA_HOME:-$DEFAULT_TOOLS\\jdk\\jdk-17.0.20.1+1}")"
 NDK_HOME="$(unquote "${NDK_HOME:-$ANDROID_HOME\\ndk\\27.1.12297006}")"
 export GRADLE_USER_HOME ANDROID_HOME ANDROID_SDK_ROOT JAVA_HOME NDK_HOME
+
+echo "== map assets (made once, then taken from the cache)"
+bash scripts/fetch-map-assets.sh
 
 echo "== phone app"
 pnpm tauri android build --debug --target aarch64

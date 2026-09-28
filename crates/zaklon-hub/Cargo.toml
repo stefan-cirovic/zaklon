@@ -47,10 +47,17 @@ lol_html = "2"
 fs4 = { version = "0.12", features = ["sync"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 age = "0.11"
+bytes = "1"
+# Reads the map's tile archives (PMTiles) for the Zaklon map. The feature
+# brings the async reader; the files are read with our own positioned reads.
+pmtiles = { version = "0.24", default-features = false, features = ["mmap-async-tokio"] }
 
 [dev-dependencies]
 # A paused clock, for tests of time limits.
 tokio = { workspace = true, features = ["test-util"] }
+# Tiny map archives written by the tests.
+pmtiles = { version = "0.24", default-features = false, features = ["mmap-async-tokio", "write"] }
+flate2 = "1"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_System_Power", "Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_SystemInformation", "Win32_System_Registry"] }

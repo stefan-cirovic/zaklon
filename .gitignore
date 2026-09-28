@@ -40,6 +40,8 @@ apps/zaklon/src-tauri/gen/android/app/src/main/llama-libs/
 
 # Phone app bundled into the Windows installer by scripts/build-all.sh
 apps/zaklon/src-tauri/windows/zaklon.apk
+# The map's overview, fonts, icons and places (scripts/fetch-map-assets.sh)
+apps/zaklon/src-tauri/windows/map-assets/
 
 # Temporary copies used by parallel agents
 .claude/worktrees/

@@ -9,6 +9,7 @@
 mod admin;
 mod assistant;
 mod auth;
+mod basemap;
 mod error;
 mod household;
 mod maps;
@@ -135,6 +136,10 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/maps-app", get(maps_app_file))
         .route("/api/maps/{country}/download", post(maps_country_download))
         .route("/api/maps/{country}", axum::routing::delete(maps_country_remove))
+        .route("/api/map", get(basemap::map_info))
+        .route("/tiles/{z}/{x}/{file}", get(basemap::tile))
+        .route("/map/fonts/{fontstack}/{range}", get(basemap::glyphs))
+        .route("/map/sprites/{file}", get(basemap::sprite))
         .route("/api/assistant", get(assistant_overview))
         .route("/api/assistant/model", post(assistant_select))
         .route("/api/assistant/ask", post(assistant_ask))

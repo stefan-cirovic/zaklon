@@ -4,7 +4,10 @@
 ;    USB" can put it on a stick for a friend who has no internet: they install
 ;    Zaklon from the stick, then import the packs from it.
 ; 2. Bring the phone app along (when the build put windows/zaklon.apk next to
-;    this file), so phones can install it from the hub without internet.
+;    this file), so phones can install it from the hub without internet, and
+;    the map's assets (windows/map-assets, made by scripts/fetch-map-assets.sh:
+;    the world overview, the map's fonts and icons, the list of places) into
+;    the program's folder, where the hub looks for them.
 ; 3. Start with Windows unless the person turned it off. An upgrade that
 ;    uninstalls the old version first removes the entry; without this, the
 ;    hub would not come back after the next reboot until the app was opened
@@ -38,6 +41,14 @@
     SetOutPath "$INSTDIR"
   !endif
 
+  !if /FileExists "${ZAKLON_HOOKS_DIR}\map-assets\overview.pmtiles"
+    ; A fresh copy: nothing of an older version's assets stays behind.
+    RMDir /r "$INSTDIR\map-assets"
+    SetOutPath "$INSTDIR\map-assets"
+    File /r "${ZAKLON_HOOKS_DIR}\map-assets\*"
+    SetOutPath "$INSTDIR"
+  !endif
+
   Push $0
   ReadRegDWORD $0 HKCU "Software\Zaklon" "AutostartOff"
   ${If} $0 <> 1
@@ -48,6 +59,10 @@
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
+  ; The map's assets belong to the program; an update brings its own.
+  ${If} $UpdateMode <> 1
+    RMDir /r "$INSTDIR\map-assets"
+  ${EndIf}
   ; Not during an update, and only a data folder Zaklon made itself: never a
   ; "data" folder that happens to be in a folder the person picked by hand.
   ${If} $DeleteAppDataCheckboxState = 1
