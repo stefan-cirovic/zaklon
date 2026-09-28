@@ -6,6 +6,9 @@
 //!
 //! The list of pieces must match the CoMaps app version the hub hands out:
 //! a map file is only usable by an app built for the same data version.
+//!
+//! Also here: the whole world as one pack for the Zaklon map (Protomaps,
+//! PMTiles), which the hub reads itself (see the hub's tiles.rs).
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -31,6 +34,53 @@ const COMAPS_APK_SIZE: u64 = 61_716_469;
 
 /// Pack ids of map pieces start with this.
 pub const MAP_ID_PREFIX: &str = "map:";
+
+/// The whole world in one pack for the Zaklon map: the Protomaps basemap
+/// build of 2026-09-28 (OpenStreetMap data, ODbL), zoom 0-15, as one
+/// PMTiles file. A newer catalog can offer a newer build under this id.
+pub const WORLD_MAP_ID: &str = "world-map";
+const WORLD_MAP_VERSION: &str = "20260928";
+const WORLD_MAP_URL: &str = "https://build.protomaps.com/20260928.pmtiles";
+/// Where it goes in the library. A copy put there by hand (with this name and
+/// size) is shown at once and checked in the background.
+pub const WORLD_MAP_PATH: &str = "maps/protomaps-world-20260928.pmtiles";
+const WORLD_MAP_SIZE: u64 = 138_415_942_566;
+/// TODO: the SHA-256 of the world map file (lower-case hex), from
+/// E:\ZaklonDev\maps\protomaps-world-20260928.sha256 on the build machine,
+/// where it is being computed. Until it is filled in, the world map is not
+/// offered: a pack is never downloaded or trusted without its checksum.
+pub const WORLD_MAP_SHA256: &str = "";
+
+/// The world map pack, once its checksum is known (see `WORLD_MAP_SHA256`).
+pub fn world_map_pack() -> Option<Pack> {
+    let known = WORLD_MAP_SHA256.len() == 64 && WORLD_MAP_SHA256.chars().all(|c| c.is_ascii_hexdigit());
+    known.then(|| Pack {
+        id: WORLD_MAP_ID.into(),
+        title: Localized { en: "World map (towns, streets and buildings)".into(), sr: "Mapa sveta (mesta, ulice i zgrade)".into() },
+        description: Localized {
+            en: "The whole world in detail for the Zaklon map, on the laptop and on phones at home. Very large: it needs a big disk and a long download, which continues after interruptions.".into(),
+            sr: "Ceo svet do detalja za Zaklon mapu, na laptopu i na telefonima kod kuće. Veoma velika: treba joj veliki disk i dugo preuzimanje, koje se nastavlja posle prekida.".into(),
+        },
+        category: Category::Maps,
+        topics: vec!["maps".into()],
+        version: WORLD_MAP_VERSION.into(),
+        size: WORLD_MAP_SIZE,
+        files: vec![PackFile {
+            path: WORLD_MAP_PATH.into(),
+            urls: vec![WORLD_MAP_URL.into()],
+            sha256: WORLD_MAP_SHA256.to_ascii_lowercase(),
+            sha1_base64: None,
+            size: WORLD_MAP_SIZE,
+            unpack: None,
+            unpack_to: None,
+        }],
+        license: "ODbL-1.0".into(),
+        attribution: "© OpenStreetMap contributors; map tiles built by Protomaps (protomaps.com)".into(),
+        source: "https://protomaps.com".into(),
+        languages: vec![],
+        recommended_for: vec![],
+    })
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MapRegion {
@@ -208,6 +258,7 @@ pub fn packs() -> Vec<Pack> {
         languages: vec![],
         recommended_for: vec![],
     });
+    out.extend(world_map_pack());
     out
 }
 
@@ -249,6 +300,24 @@ mod tests {
             for id in std::iter::once(&c.id).chain(c.regions.iter().map(|r| &r.id)) {
                 let sr = local_name(id, "sr");
                 assert!(!sr.chars().any(|ch| ('\u{0400}'..='\u{04FF}').contains(&ch)), "Cyrillic in {sr}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_world_map_is_offered_only_with_its_checksum() {
+        let offered = packs().into_iter().find(|p| p.id == WORLD_MAP_ID);
+        match world_map_pack() {
+            None => assert!(offered.is_none(), "never offered without its checksum"),
+            Some(w) => {
+                let p = offered.expect("offered once its checksum is known");
+                assert!(p.is_safe());
+                assert_eq!((p.category, p.topics.clone()), (Category::Maps, vec!["maps".to_string()]));
+                assert_eq!(p.size, 138_415_942_566);
+                assert_eq!(p.files[0].path, "maps/protomaps-world-20260928.pmtiles");
+                assert_eq!(p.files[0].urls, ["https://build.protomaps.com/20260928.pmtiles"]);
+                assert_eq!(p.files[0].sha256.len(), 64);
+                assert_eq!(w.files[0].sha256, p.files[0].sha256);
             }
         }
     }

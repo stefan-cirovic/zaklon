@@ -74,7 +74,11 @@ test("maps: the Zaklon map is drawn from the hub with its credit, next to Naviga
   await expect(credit).toHaveAttribute("href", "https://www.openstreetmap.org/copyright");
   // Only the overview on this hub: the way to the world map is shown.
   await expect(map.getByText("Only the world overview: countries and larger cities.")).toBeVisible();
-  await expect(map.getByRole("link", { name: "The world map is in Add-ons." })).toHaveAttribute("href", "#addons/maps");
+  // The way to the world map, where the catalog offers it (only once its checksum is known).
+  const world = (await (await page.request.get("/api/map")).json()).world;
+  const toAddons = map.getByRole("link", { name: "The world map is in Add-ons." });
+  if (world) await expect(toAddons).toHaveAttribute("href", "#addons/maps");
+  else await expect(toAddons).toHaveCount(0);
   // Tiles and fonts come from the hub.
   await expect.poll(() => fromHub.some((p) => /^\/tiles\/\d+\/\d+\/\d+\.mvt$/.test(p)), { timeout: 15_000 }).toBe(true);
   await expect.poll(() => fromHub.some((p) => p.startsWith("/map/fonts/")), { timeout: 15_000 }).toBe(true);

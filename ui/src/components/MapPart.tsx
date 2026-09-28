@@ -59,7 +59,8 @@ export function MapNote({ t, info, err }: { t: T; info: MapInfo | null; err: str
   if (info.phone) return <p className="zmap-note">{t("mapPhoneOverview")}</p>;
   const w = info.world;
   const pct = w && w.bytes_total ? Math.min(100, Math.floor((w.bytes_done / w.bytes_total) * 100)) : 0;
-  const addons = (
+  // The way to the world map, where this hub's catalog offers one.
+  const addons = w && (
     <a className="zmap-note-link" href="#addons/maps">
       {t("mapWorldInAddons")}
     </a>

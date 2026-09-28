@@ -63,6 +63,26 @@ async fn tile_text(hub: &Hub, z: u8, x: u32, y: u32) -> (u16, String) {
     (st, gunzip(&body))
 }
 
+/// The status of a pack, as Add-ons shows it.
+async fn pack_status(hub: &Hub, id: &str) -> String {
+    let (_, cat) = hub.get("/api/catalog").await;
+    let pack = cat["packs"].as_array().unwrap().iter().find(|p| p["id"] == id).unwrap_or_else(|| panic!("{id} is listed in Add-ons"));
+    pack["state"]["status"].as_str().unwrap().to_string()
+}
+
+/// Wait until the pack `id` is installed.
+async fn installed(hub: &Hub, id: &str) {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let st = pack_status(hub, id).await;
+        if st == "installed" {
+            return;
+        }
+        assert!(Instant::now() < deadline, "{id} stuck in {st}");
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}
+
 /// The map's summary once `until` holds for it.
 async fn map_until(hub: &Hub, what: &str, until: impl Fn(&Value) -> bool) -> Value {
     let deadline = Instant::now() + Duration::from_secs(30);
@@ -133,13 +153,12 @@ async fn the_map_comes_from_the_hub_most_detailed_first() {
     assert_eq!(map["tiles"]["min_zoom"], 0);
     assert_eq!(map["tiles"]["overview"], true);
     assert_eq!((map["glyphs"].as_bool(), map["sprites"].as_bool()), (Some(true), Some(true)));
-    assert_eq!(map["world"]["id"], "test-world", "the largest map pack: {map}");
+    // The largest map pack (the real world map, once the catalog offers it).
+    assert!(["test-world", "world-map"].contains(&map["world"]["id"].as_str().unwrap_or_default()), "{map}");
     let key = map["tiles"]["key"].as_str().unwrap().to_string();
     // It is installed once checked; the one of the wrong size fails.
-    map_until(&hub, "the world map is checked", |m| m["world"]["status"] == "installed").await;
-    let (_, cat) = hub.get("/api/catalog").await;
-    let short = cat["packs"].as_array().unwrap().iter().find(|p| p["id"] == "test-short").expect("map packs are listed in Add-ons");
-    assert_eq!(short["state"]["status"], "failed", "{short}");
+    installed(&hub, "test-world").await;
+    assert_eq!(pack_status(&hub, "test-short").await, "failed");
 
     // 2. Tiles: the most detailed archive that has one, tile by tile.
     assert_eq!(tile_text(&hub, 0, 0, 0).await, (200, "world 0".into()));
@@ -204,7 +223,7 @@ async fn the_map_comes_from_the_hub_most_detailed_first() {
     // 6. Put back by hand while the hub runs: noticed, used, checked.
     std::fs::write(root.join("library/maps/test-world.pmtiles"), &world_bytes).unwrap();
     map_until(&hub, "the world map is noticed", |m| m["tiles"]["detailed"] == true).await;
-    map_until(&hub, "and checked", |m| m["world"]["status"] == "installed").await;
+    installed(&hub, "test-world").await;
     assert_eq!(tile_text(&hub, 3, 4, 2).await, (200, "world 3/4/2".into()));
 
     // 7. The home location: one for the household, set on the laptop or a phone.
