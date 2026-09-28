@@ -29,6 +29,11 @@ export function fmtBytes(n: number): string {
   return `${nf(n / KB, 0)} kB`;
 }
 
+/** Lower case without diacritics, so "srbija" finds "Srbija" and "cesko" finds "Češko". */
+export function fold(s: string): string {
+  return s.toLowerCase().replace(/đ/g, "dj").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
 /** "YYYY-MM-DD" -> "31.01.2027." (Serbian) or "31 Jan 2027" (English). */
 export function fmtDate(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);

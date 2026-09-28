@@ -162,10 +162,12 @@ test("library without packs points to add-ons, which lists the catalog", async (
   await expect(page.getByText(/No knowledge packs yet/)).toBeVisible();
   await page.getByRole("button", { name: "Open Add-ons" }).click();
   await expect(page.getByRole("heading", { name: "Add-ons" })).toBeVisible();
+  // The hub's drive with how full it is, then the catalog in folders.
+  const library = page.locator(".drive-grid .drive-tile").first();
+  await expect(library).toContainText("Zaklon library");
+  await expect(library).toContainText(/free of/);
+  await page.getByRole("list", { name: "Folders" }).getByRole("button", { name: /^Wikipedia and books/ }).click();
   await expect(page.getByText("Wikipedia in Serbian (with pictures)")).toBeVisible();
-  // Exact: on a nearly full disk "Not enough free disk space." shows too.
-  await expect(page.getByText("Free disk space", { exact: true })).toBeVisible();
-  await expect(page.getByText("Battery")).toBeVisible();
 });
 
 test("every screen fits the width of the device", async ({ page }, info) => {
@@ -444,10 +446,14 @@ test("maps: the phone steps show the hub address, and the world is searchable", 
   await search.fill("zzzz-nowhere");
   await expect(page.getByText("Nothing found.")).toBeVisible();
   await noHorizontalScroll(page);
-  // Map pieces are not repeated in the add-ons list; there is a link instead.
-  await page.goto("/#addons");
-  await expect(page.getByText(/Maps of the world are chosen on their own screen/)).toBeVisible();
-  await expect(page.getByText("Montenegro")).toHaveCount(0);
+  // In Add-ons the maps are a folder of countries (not their pieces), which points here for phones.
+  await page.goto("/#addons/maps");
+  await expect(page.getByRole("heading", { name: "Maps", exact: true })).toBeVisible();
+  await expect(page.getByText(/Phones show maps in the CoMaps app/)).toBeVisible();
+  await expect(page.locator('[data-entry="map:Montenegro"]')).toBeVisible();
+  await expect(page.locator('[data-entry^="map:Germany"]')).toHaveCount(1);
+  await page.getByRole("link", { name: "Open Maps" }).click();
+  await expect(page).toHaveURL(/#maps$/);
 });
 
 test("household: accent color is remembered, password can be changed, hub facts and privacy are shown", async ({ page }) => {
@@ -491,6 +497,137 @@ test("add-ons: copy to USB and import offer the laptop's drives", async ({ page 
   await expect.poll(async () => importDrive.locator("option").count()).toBeGreaterThan(1);
   await expect(importDrive.locator("option").nth(1)).toHaveText(/[A-Z]:.*free/);
   await noHorizontalScroll(page);
+  // The laptop's other drives are tiles under "Devices and drives"; one opens with
+  // Copy and Import already set to it. (The test machine has more than one drive.)
+  // A pack made to look installed, so there is something to copy.
+  await page.route("**/api/catalog", async (r) => {
+    const json = await (await r.fetch()).json();
+    const pack = json.packs.find((p: { id: string }) => p.id === "wikimed-en");
+    pack.state = { ...pack.state, status: "installed", bytes_done: pack.size, bytes_total: pack.size };
+    return r.fulfill({ json });
+  });
+  await page.reload();
+  await expect(page.getByRole("checkbox", { name: /Medical Wikipedia/ })).toBeVisible();
+  const other = page.locator(".drive-grid button.drive-tile").nth(1);
+  const name = await other.locator(".drive-title").innerText();
+  const letter = name.match(/\(([A-Z]):\)$/)![1];
+  await other.click();
+  await expect(page).toHaveURL(new RegExp(`#addons/drive/${letter}$`));
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(name);
+  await expect(page.getByRole("combobox", { name: "Drive", exact: true })).toHaveValue(`${letter}:\\`);
+  await expect(page.getByRole("combobox", { name: "Import from a USB stick or folder", exact: true })).toHaveValue(`${letter}:\\`);
+  await noHorizontalScroll(page);
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Add-ons", exact: true })).toBeVisible();
+});
+
+test("add-ons: a folder opens; the breadcrumb, Back and the browser's Back return to the top", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.goto("/#addons");
+  const folders = page.getByRole("list", { name: "Folders" });
+  // Knowledge by topic, AI models, maps and programs.
+  for (const name of ["Wikipedia and books", "Health and first aid", "Garden and food", "Repair and skills", "AI models", "Maps", "Programs"]) {
+    await expect(folders.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
+  }
+  await expect(folders.getByRole("button", { name: /^AI models/ })).toContainText(/4 add-ons/);
+  await folders.getByRole("button", { name: /^AI models/ }).click();
+  await expect(page).toHaveURL(/#addons\/models$/);
+  await expect(page.getByRole("heading", { name: "AI models", exact: true })).toBeVisible();
+  const crumbs = page.getByRole("navigation", { name: "Location" });
+  await expect(crumbs.locator('[aria-current="page"]')).toHaveText("AI models");
+  await expect(page.locator('[data-entry="qwen35-4b"]')).toContainText("Apache-2.0");
+  await expect(page.locator('[data-entry="kiwix-tools"]')).toHaveCount(0);
+  // A download the hub accepts without a body (202) is not an error.
+  let asked = false;
+  await page.route("**/api/packs/qwen35-08b/download", (route) => {
+    asked = true;
+    return route.fulfill({ status: 202, body: "" });
+  });
+  await page.locator('[data-entry="qwen35-08b"]').getByRole("button", { name: /^Download/ }).click();
+  await expect.poll(() => asked).toBe(true);
+  await page.waitForTimeout(300);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await noHorizontalScroll(page);
+
+  // The breadcrumb goes back to the top.
+  await crumbs.getByRole("button", { name: "Add-ons" }).click();
+  await expect(page).toHaveURL(/#addons$/);
+  await expect(page.getByRole("heading", { name: "Add-ons", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Back", exact: true })).toBeDisabled();
+  // So does Back...
+  await folders.getByRole("button", { name: /^Programs/ }).click();
+  await expect(page.locator('[data-entry="kiwix-tools"]')).toBeVisible();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Add-ons", exact: true })).toBeVisible();
+  // ...and the browser's (or the phone's) Back.
+  await folders.getByRole("button", { name: /^Health and first aid/ }).click();
+  await expect(page.locator('[data-entry="wikimed-en"]')).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Add-ons", exact: true })).toBeVisible();
+
+  // The hub's drive opens with what is on it.
+  await page.locator(".drive-grid button.drive-tile").first().click();
+  await expect(page).toHaveURL(/#addons\/library$/);
+  await expect(page.getByText(/Everything Zaklon keeps on this drive/)).toBeVisible();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(page).toHaveURL(/#addons$/);
+
+  // Straight into a folder from elsewhere: Back goes up to Add-ons, not away from it.
+  await page.goto("/#addons/programs");
+  await expect(page.getByRole("heading", { name: "Programs", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(page).toHaveURL(/#addons$/);
+  await expect(page.getByRole("heading", { name: "Add-ons", exact: true })).toBeVisible();
+});
+
+test("add-ons: the search finds packs and countries in every folder", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.goto("/#addons/models");
+  const search = page.getByRole("searchbox", { name: "Search add-ons" });
+  await search.fill("wikipedia");
+  await expect(page.getByRole("heading", { name: /^Search results/ })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Location" }).locator('[aria-current="page"]')).toHaveText("Search results");
+  await expect(page.locator('[data-entry="wikipedia-sr-maxi"]')).toBeVisible();
+  // Medical Wikipedia is in another folder, and says so.
+  await expect(page.locator('[data-entry="wikimed-en"]')).toContainText("Health and first aid");
+  await expect(page.locator('[data-entry="qwen35-2b"]')).toHaveCount(0);
+  // Serbian titles, words in any order, and countries by name (in either language).
+  await search.fill("srpskom vikipedija");
+  await expect(page.locator('[data-entry="wikipedia-sr-maxi"]')).toBeVisible();
+  await search.fill("crna gora");
+  await expect(page.locator('[data-entry="map:Montenegro"]')).toBeVisible();
+  await search.fill("zzzz-nowhere");
+  await expect(page.getByText("Nothing found.")).toBeVisible();
+  await noHorizontalScroll(page);
+  // Back ends the search, where it started.
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(search).toHaveValue("");
+  await expect(page.getByRole("heading", { name: "AI models", exact: true })).toBeVisible();
+});
+
+test("add-ons: tiles or details, remembered on this device", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.goto("/#addons");
+  const view = page.getByRole("group", { name: "View" });
+  await expect(view.getByRole("button", { name: "Tiles" })).toHaveAttribute("aria-pressed", "true");
+  await view.getByRole("button", { name: "Details" }).click();
+  await expect(view.getByRole("button", { name: "Details" })).toHaveAttribute("aria-pressed", "true");
+  // The folders as a table (its column names are left out on a phone).
+  const table = page.getByRole("table", { name: "Folders" });
+  await expect(table.getByRole("columnheader", { name: "Items", includeHidden: true })).toHaveCount(1);
+  await noHorizontalScroll(page);
+  await table.getByRole("button", { name: /^Wikipedia and books/ }).click();
+  const row = page.getByRole("table", { name: "Wikipedia and books" }).getByRole("row").filter({ hasText: "Wikipedia in Serbian (with pictures)" });
+  await expect(row).toContainText("CC BY-SA 4.0");
+  await expect(row).toContainText("Not downloaded");
+  await expect(row.getByRole("button", { name: /^Download/ })).toBeVisible();
+  await noHorizontalScroll(page);
+  // Still details after a reload; back to tiles.
+  await page.reload();
+  await expect(page.getByRole("table", { name: "Wikipedia and books" })).toBeVisible();
+  await page.getByRole("group", { name: "View" }).getByRole("button", { name: "Tiles" }).click();
+  await expect(page.getByRole("list", { name: "Wikipedia and books" })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("zaklon.addonsView"))).toBe("tiles");
 });
 
 test("a download that the hub accepts without a body is not reported as an error", async ({ page }) => {
@@ -518,6 +655,7 @@ test("assistant: without a model it offers the one that fits this computer", asy
   await expect(page.getByRole("button", { name: "Download" })).toBeVisible();
   await page.getByRole("button", { name: "Other models" }).click();
   await expect(page.getByRole("heading", { name: "Add-ons" })).toBeVisible();
+  await page.getByRole("list", { name: "Folders" }).getByRole("button", { name: /^Programs/ }).click();
   await expect(page.getByText("AI engine (llama.cpp)")).toBeVisible();
 });
 

@@ -54,8 +54,9 @@ function writePref(key: string, value: string) {
   }
 }
 
+/** The screen in the address; a screen may add a place of its own after a slash ("#addons/maps"). */
 function tabFromHash(): string {
-  const id = typeof location !== "undefined" ? location.hash.replace("#", "") : "";
+  const id = typeof location !== "undefined" ? location.hash.replace("#", "").split("/")[0] : "";
   return TAB_IDS.includes(id) ? id : "home";
 }
 
@@ -132,8 +133,9 @@ export default function App() {
   // Stable between renders so screens can safely depend on it.
   const t = useMemo(() => makeT(lang), [lang]);
 
+  /** Open a screen, or a place in it ("addons/models"). */
   const setTab = (id: string) => {
-    setTabState(id);
+    setTabState(id.split("/")[0]);
     if (location.hash !== `#${id}`) location.hash = id;
   };
 

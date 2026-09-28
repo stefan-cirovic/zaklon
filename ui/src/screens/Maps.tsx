@@ -4,45 +4,13 @@ import { api } from "../api";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
 import { useVisiblePoll } from "../poll";
-import { countWord, fmtBytes } from "../format";
+import { countWord, fmtBytes, fold } from "../format";
+import { countryState, SUGGESTED, type Country, type MapsReply } from "../maps";
 import ConfirmButton from "../components/ConfirmButton";
 import Qr from "../components/Qr";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 type T = (k: Key) => string;
-type Status = "not_installed" | "queued" | "downloading" | "paused" | "verifying" | "installed" | "failed";
-type Region = { id: string; name: string; name_sr: string; size: number; status: Status; bytes_done: number; error?: string; update?: boolean };
-type Country = { id: string; name: string; name_sr: string; size: number; regions: Region[] };
-type MapsReply = {
-  version: number;
-  server_urls: string[];
-  app_urls: string[];
-  app: { status: Status; bytes_done: number; bytes_total: number };
-  installed_bytes: number;
-  countries: Country[];
-};
-
-/** Suggested first, by app language. */
-const SUGGESTED: Record<Lang, string[]> = {
-  sr: ["Serbia", "Bosnia and Herzegovina", "Croatia", "Montenegro", "Macedonia", "Kosovo", "Slovenia", "Hungary", "Romania", "Bulgaria"],
-  en: [],
-};
-
-/** Lower case without diacritics, so "srbija" finds "Srbija" and "cesko" finds "Češko". */
-function fold(s: string) {
-  return s.toLowerCase().replace(/đ/g, "dj").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-}
-
-function countryState(c: Country) {
-  const installed = c.regions.filter((r) => r.status === "installed").length;
-  const busy = c.regions.some((r) => ["queued", "downloading", "verifying"].includes(r.status));
-  const failed = c.regions.some((r) => r.status === "failed");
-  const paused = c.regions.some((r) => r.status === "paused");
-  const done = c.regions.reduce((s, r) => s + (r.status === "installed" ? r.size : Math.min(r.bytes_done, r.size)), 0);
-  // Pieces of an older map version: they keep working until updated.
-  const update = c.regions.some((r) => r.status === "installed" && r.update);
-  return { installed, all: installed === c.regions.length, some: installed > 0, busy, failed, paused, done, update };
-}
 
 /** Clipboard, with a fallback for web views that do not allow it. */
 async function copyText(text: string): Promise<boolean> {

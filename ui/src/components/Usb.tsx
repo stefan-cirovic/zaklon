@@ -64,9 +64,9 @@ export function DrivePicker({ t, value, onChange, label }: { t: T; value: string
   );
 }
 
-/** Copy installed packs to a USB drive, in the background, with progress. */
-export function CopyToUsb({ t, items }: { t: T; lang: Lang; items: CopyItem[] }) {
-  const [dir, setDir] = useState("");
+/** Copy installed packs to a USB drive, in the background, with progress. `dir`: the drive chosen at first. */
+export function CopyToUsb({ t, items, dir: initialDir = "" }: { t: T; lang: Lang; items: CopyItem[]; dir?: string }) {
+  const [dir, setDir] = useState(initialDir);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [drives, setDrives] = useState<Drive[]>([]);
   const [job, setJob] = useState<ExportState | null>(null);

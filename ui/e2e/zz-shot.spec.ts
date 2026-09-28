@@ -39,6 +39,60 @@ test("shots", async ({ page }, info) => {
     await page.waitForTimeout(1200);
     await page.screenshot({ path: file(name), fullPage: true });
   }
+  // Add-ons as a file explorer, with some packs on the hub, one on its way and one
+  // that failed (states made up for the picture; nothing is downloaded).
+  await page.route("**/api/catalog", async (r) => {
+    const json = await (await r.fetch()).json();
+    for (const p of json.packs) {
+      if (["wikipedia-sr-maxi", "wikimed-en", "kiwix-tools", "llama-cpp", "qwen35-4b"].includes(p.id)) p.state = { ...p.state, status: "installed", bytes_done: p.size, bytes_total: p.size };
+      if (p.id === "ifixit-en") p.state = { ...p.state, status: "downloading", bytes_done: Math.round(p.size * 0.45), bytes_total: p.size, speed: 3_400_000 };
+      if (p.id === "zimgit-water-en") p.state = { ...p.state, status: "failed", error: "checksum mismatch" };
+      if (p.id === "qwen35-9b") p.state = { ...p.state, status: "paused", bytes_done: Math.round(p.size * 0.2), bytes_total: p.size };
+    }
+    return r.fulfill({ json });
+  });
+  await page.route("**/api/maps", async (r) => {
+    const json = await (await r.fetch()).json();
+    const serbia = json.countries.find((c: { id: string }) => c.id === "Serbia");
+    for (const reg of serbia.regions) reg.status = "installed";
+    json.installed_bytes = serbia.size;
+    return r.fulfill({ json });
+  });
+  for (const [name, url, view] of [
+    ["addons-x", "/#addons", "tiles"],
+    ["addons-x-models", "/#addons/models", "tiles"],
+    ["addons-x-skills", "/#addons/skills", "tiles"],
+    ["addons-x-details", "/#addons", "details"],
+    ["addons-x-reference-details", "/#addons/reference", "details"],
+    ["addons-x-maps-details", "/#addons/maps", "details"],
+    ["addons-x-library", "/#addons/library", "details"],
+  ]) {
+    await page.evaluate((v) => localStorage.setItem("zaklon.addonsView", v), view);
+    await page.goto(url);
+    await page.reload();
+    await page.waitForTimeout(1200);
+    await page.screenshot({ path: file(name), fullPage: name !== "addons-x-maps-details" });
+  }
+  await page.getByRole("searchbox").fill("wiki");
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: file("addons-x-search"), fullPage: true });
+  await page.getByRole("searchbox").fill("");
+  if (info.project.name === "laptop") {
+    // A USB drive, when the machine has another drive.
+    await page.goto("/#addons");
+    await page.reload();
+    await page.waitForTimeout(1200);
+    const other = page.locator(".drive-grid button.drive-tile").nth(1);
+    if (await other.count()) {
+      await other.click();
+      await page.waitForTimeout(800);
+      await page.screenshot({ path: file("addons-x-drive"), fullPage: true });
+    }
+  }
+  await page.evaluate(() => localStorage.setItem("zaklon.addonsView", "tiles"));
+  await page.unroute("**/api/catalog");
+  await page.unroute("**/api/maps");
+
   // The bar with a pinned tool, and the logo while pointed at (laptop).
   await page.request.post("/api/pinned-tool", { data: { tool: "supplies" } });
   await page.goto("/#tools");
