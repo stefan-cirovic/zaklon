@@ -176,6 +176,8 @@ export default function Power({ t, lang }: Props) {
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Changed since a draft was opened: then it is not replaced by the hub's list.
   const touched = useRef(false);
+  // Counts changes, so an answer asked for before a change does not undo it.
+  const edits = useRef(0);
   const pageRef = useRef<HTMLDivElement>(null);
 
   const setDraft = useCallback((d: Draft) => {
@@ -243,6 +245,7 @@ export default function Power({ t, lang }: Props) {
   // The household's list: at first, then now and then for changes made on another device.
   useVisiblePoll(async () => {
     if (loaded.current && (busy() || typing())) return true;
+    const before = edits.current;
     let r: Saved | undefined;
     try {
       r = await api<Saved>("/api/power");
@@ -254,7 +257,7 @@ export default function Power({ t, lang }: Props) {
       }
       return false;
     }
-    if (loaded.current && (busy() || typing())) return true;
+    if (loaded.current && (busy() || typing() || edits.current !== before)) return true;
     const saved = r?.plan ? normalizePlan(r.plan) : defaultPlan();
     const changedElsewhere = (r?.updated_at ?? null) !== hubAt.current;
     heard(r, saved);
@@ -337,6 +340,7 @@ export default function Power({ t, lang }: Props) {
   const change = (next: Plan) => {
     setPlan(next);
     touched.current = true;
+    edits.current++;
     if (draftRef.current) return;
     pending.current = next;
     setSaving(true);
