@@ -1024,6 +1024,8 @@ select.lang-pick { width: auto; margin-top: 4px; }
   .home-part > .home-link { margin-top: 0; }
   /* On a phone the actions are a fingertip wide, with their words left for screen readers. */
   .btn.home-add-phone { width: 44px; min-height: 44px; padding: 0; }
+  /* The number on the line of the other values, the "+" beside it. */
+  .home-facts dd.home-devices { align-items: flex-start; }
   .home-add-phone-text, .attn-add-text, .attn-listed-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .btn.attn-add { width: 44px; padding: 0; }
   .attn-listed { width: 44px; justify-content: center; }
