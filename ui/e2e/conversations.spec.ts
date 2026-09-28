@@ -12,13 +12,16 @@ const PASSWORD = "correct horse";
 async function ensureSetUp(page: Page) {
   await page.goto("/#household");
   const setup = page.getByRole("heading", { name: /Set up your household|Podesi domaćinstvo/ });
-  if (await setup.isVisible({ timeout: 3000 }).catch(() => false)) {
+  const ready = page.locator(".hub-card .hub-state", { hasText: /Running|Radi/ });
+  await expect(setup.or(ready)).toBeVisible({ timeout: 10_000 });
+  if (await setup.isVisible()) {
     await page.getByLabel(/Hub name|Ime huba/).fill("E2E hub");
     await page.getByLabel(/^Household password$|^Lozinka domaćinstva$/).fill(PASSWORD);
     await page.getByLabel(/Repeat password|Ponovi lozinku/).fill(PASSWORD);
     await page.getByRole("button", { name: /Finish setup|Završi podešavanje/ }).click();
   }
-  await expect(page.getByRole("button", { name: /Add a phone|Dodaj telefon/ })).toBeVisible({ timeout: 20_000 });
+  // Setup hashes the password with Argon2, slow on purpose; a busy machine needs longer.
+  await expect(ready).toBeVisible({ timeout: 20_000 });
 }
 
 async function assistantReady(page: Page) {
