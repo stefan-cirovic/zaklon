@@ -489,7 +489,7 @@ function CategoryPage({ t, cat, setting, jump, side, children }: PageProps) {
           <a className="set-back" href="#household" aria-label={t("backToHousehold")} title={t("backToHousehold")}>
             <SettingsIcon name="back" size={20} />
           </a>
-          <nav className="crumbs" aria-label={t("breadcrumb")}>
+          <nav className="set-crumbs" aria-label={t("breadcrumb")}>
             <a href="#household">{t("household")}</a>
             <span aria-hidden="true">›</span>
           </nav>
