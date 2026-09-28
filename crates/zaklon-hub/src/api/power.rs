@@ -31,6 +31,10 @@ pub(super) struct PowerPlan {
     /// When it was last saved, and by whom ("laptop" or the phone's name).
     updated_at: Option<String>,
     updated_by: Option<String>,
+    /// New with every save (random), so a device sees that the list changed
+    /// even when two saves fall in the same second of `updated_at`.
+    #[serde(default)]
+    rev: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -53,7 +57,8 @@ fn to_save(plan: Option<Value>, at: String, by: String) -> Result<(PowerPlan, St
         Some(v @ Value::Object(_)) => Some(v),
         Some(_) => return Err(bad("the power list must be a JSON object")),
     };
-    let saved = PowerPlan { plan, updated_at: Some(at), updated_by: Some(by) };
+    let rev = format!("{:016x}", rand::random::<u64>());
+    let saved = PowerPlan { plan, updated_at: Some(at), updated_by: Some(by), rev: Some(rev) };
     let text = serde_json::to_string(&saved).map_err(anyhow::Error::from)?;
     if text.len() > MAX_PLAN_BYTES {
         return Err(bad("the power list is too large"));
@@ -86,8 +91,12 @@ mod power_plan_tests {
     fn a_list_is_kept_with_who_saved_it() {
         let plan = json!({ "v": 1, "lines": [{ "id": "fridge", "qty": 1 }], "days": 3 });
         let (saved, text) = to_save(Some(plan.clone()), "2026-09-29T10:00:00Z".into(), "Ana's phone".into()).unwrap_or_else(|_| panic!("refused"));
-        assert_eq!(saved.plan, Some(plan));
+        assert_eq!(saved.plan, Some(plan.clone()));
         assert_eq!(read(Some(text)), saved);
+        // The same list, saved again in the same second, is still a new revision.
+        let (again, _) = to_save(Some(plan), "2026-09-29T10:00:00Z".into(), "Ana's phone".into()).unwrap_or_else(|_| panic!("refused"));
+        assert!(saved.rev.as_deref().is_some_and(|r| r.len() == 16), "{:?}", saved.rev);
+        assert_ne!(again.rev, saved.rev);
         // Cleared: no list, but still who cleared it.
         let (cleared, text) = to_save(None, "t".into(), "laptop".into()).unwrap_or_else(|_| panic!("refused"));
         assert_eq!(read(Some(text)).plan, None);

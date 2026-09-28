@@ -39,8 +39,8 @@ import {
 
 type T = (k: Key) => string;
 type Props = { t: T; lang: Lang };
-/** What the hub keeps (see the hub's api/power.rs). */
-type Saved = { plan: unknown; updated_at: string | null; updated_by: string | null };
+/** What the hub keeps (see the hub's api/power.rs); `rev` is new with every save. */
+type Saved = { plan: unknown; updated_at: string | null; updated_by: string | null; rev?: string | null };
 /**
  * A list that is not the household's saved one and is not saved as it
  * changes: opened from a link, or made while the hub could not be reached.
@@ -169,7 +169,7 @@ export default function Power({ t, lang }: Props) {
   const draftRef = useRef<Draft>(null);
   const loaded = useRef(false);
   const hubPlan = useRef<Plan | null>(null);
-  const hubAt = useRef<string | null>(null);
+  const hubRev = useRef<string | null>(null);
   // A change not yet on its way to the hub, and whether one is on its way.
   const pending = useRef<Plan | null>(null);
   const sending = useRef(false);
@@ -188,7 +188,7 @@ export default function Power({ t, lang }: Props) {
   /** Remember the household's list as the hub has it. */
   const heard = useCallback((r: Saved | undefined, p: Plan) => {
     hubPlan.current = p;
-    hubAt.current = r?.updated_at ?? null;
+    hubRev.current = r?.rev ?? r?.updated_at ?? null;
     setMeta(r?.updated_at ? { at: r.updated_at, by: r.updated_by } : null);
     setHubKnown(true);
   }, []);
@@ -259,7 +259,7 @@ export default function Power({ t, lang }: Props) {
     }
     if (loaded.current && (busy() || typing() || edits.current !== before)) return true;
     const saved = r?.plan ? normalizePlan(r.plan) : defaultPlan();
-    const changedElsewhere = (r?.updated_at ?? null) !== hubAt.current;
+    const changedElsewhere = (r?.rev ?? r?.updated_at ?? null) !== hubRev.current;
     heard(r, saved);
     if (!loaded.current) {
       loaded.current = true;

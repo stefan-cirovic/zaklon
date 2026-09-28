@@ -288,6 +288,8 @@ async fn full_hub_flow() {
     assert_eq!(hub.send(reqwest::Method::PUT, "/api/power", Some(json!({ "plan": plan2 }))).await.0, 200);
     let on_phone: Value = as_phone(reqwest::Method::GET, "/api/power").send().await.unwrap().json().await.unwrap();
     assert_eq!((on_phone["plan"].clone(), on_phone["updated_by"].clone()), (plan2.clone(), json!("laptop")));
+    // Every save is a new revision, also within the same second.
+    assert!(on_phone["rev"].is_string() && on_phone["rev"] != on_laptop["rev"], "{on_phone} {on_laptop}");
     // Not a JSON object, or far too large: refused, and the list stays.
     for refused in [json!({ "plan": [1, 2, 3] }), json!({ "plan": { "lines": "x".repeat(40_000) } })] {
         let r = as_phone(reqwest::Method::PUT, "/api/power").json(&refused).send().await.unwrap();
