@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { api, type Status } from "../api";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
@@ -176,23 +176,18 @@ export function AiModel({ t, lang, isHub }: { t: T; lang: Lang; isHub: boolean }
   const [ov, setOv] = useState<AiOverview | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const load = useCallback(async () => {
-    try {
-      setOv(await api<AiOverview>("/api/assistant"));
-      setErr(null);
-    } catch (e) {
-      setErr(errText(t, e));
-    }
-  }, [t]);
   useEffect(() => {
-    load();
-  }, [load]);
+    api<AiOverview>("/api/assistant")
+      .then(setOv)
+      .catch((e) => setErr(errText(t, e)));
+  }, [t]);
 
   const select = async (id: string) => {
     setBusy(true);
+    setErr(null);
     try {
       await api("/api/assistant/model", { json: { id } });
-      await load();
+      setOv(await api<AiOverview>("/api/assistant"));
     } catch (e) {
       setErr(errText(t, e));
     } finally {
