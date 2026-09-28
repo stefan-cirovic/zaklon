@@ -37,6 +37,7 @@ const KNOWN: [RegExp, Key][] = [
   [/AI engine is not installed/i, "errAiEngineMissing"],
   [/stopped while loading the model/i, "errAiMemory"],
   [/AI is still loading/i, "errAiLoading"],
+  [/answer took too long/i, "errAiTooLong"],
   [/did not start in time|could not start the AI engine|AI engine replied|AI engine returned an empty answer|stopped answering|^AI engine:/i, "errAiEngine"],
   [/ask something first/i, "askSomething"],
   [/question is too long/i, "errQuestionLong"],

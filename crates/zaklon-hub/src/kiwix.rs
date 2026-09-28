@@ -24,6 +24,9 @@ const CHECK_INTERVAL: Duration = Duration::from_secs(5);
 /// After this many failed starts in a row, wait before trying again.
 const MAX_FAILURES: u32 = 5;
 const FAILURE_COOLDOWN: Duration = Duration::from_secs(5 * 60);
+/// Recent search results kept in memory, and for how long.
+const RECENT_SEARCHES: usize = 200;
+const RECENT_FOR: Duration = Duration::from_secs(30 * 60);
 
 /// One installed knowledge pack as the library sees it.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -70,6 +73,44 @@ pub struct SearchResult {
     pub kind: &'static str,
 }
 
+/// What one search found, and whether it was remembered from a recent one.
+#[derive(Debug, Clone, Default)]
+pub struct Found {
+    pub results: Vec<SearchResult>,
+    pub cached: bool,
+}
+
+/// Recent search results, so a question asked again, or a query two
+/// questions share, does not go to the disk again: on a hard disk a search
+/// takes from a tenth of a second to half a minute when another program
+/// keeps the disk busy. Bounded in size and age.
+pub(crate) struct Recent<V> {
+    entries: std::collections::VecDeque<(String, std::time::Instant, V)>,
+    capacity: usize,
+    ttl: Duration,
+}
+
+impl<V: Clone> Recent<V> {
+    pub(crate) fn new(capacity: usize, ttl: Duration) -> Self {
+        Self { entries: std::collections::VecDeque::new(), capacity, ttl }
+    }
+
+    pub(crate) fn get(&mut self, key: &str, now: std::time::Instant) -> Option<V> {
+        let ttl = self.ttl;
+        self.entries.retain(|(_, at, _)| now.saturating_duration_since(*at) < ttl);
+        self.entries.iter().find(|(k, _, _)| k == key).map(|(_, _, v)| v.clone())
+    }
+
+    /// Remember a value; the oldest one goes when there are too many.
+    pub(crate) fn put(&mut self, key: String, value: V, now: std::time::Instant) {
+        self.entries.retain(|(k, _, _)| *k != key);
+        self.entries.push_back((key, now, value));
+        while self.entries.len() > self.capacity {
+            self.entries.pop_front();
+        }
+    }
+}
+
 struct Running {
     child: Child,
     books: Vec<String>,
@@ -96,6 +137,8 @@ pub struct Library {
     #[cfg(windows)]
     job: job::Job,
     http: reqwest::Client,
+    /// The assistant's recent searches (keyed by kind, books, size and query).
+    recent: Mutex<Recent<Vec<SearchResult>>>,
 }
 
 impl Library {
@@ -117,11 +160,20 @@ impl Library {
                 .no_proxy()
                 .build()
                 .expect("http client"),
+            recent: Mutex::new(Recent::new(RECENT_SEARCHES, RECENT_FOR)),
         })
     }
 
     pub fn state(&self) -> EngineState {
         *self.state.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// Search a kiwix-serve that already runs on this port (for measuring a
+    /// real library in tests; nothing is started or stopped).
+    #[cfg(test)]
+    pub(crate) fn attach(&self, port: u16) {
+        self.port.store(port, std::sync::atomic::Ordering::Relaxed);
+        self.set_state(EngineState::Running);
     }
 
     fn set_state(&self, s: EngineState) {
@@ -339,15 +391,16 @@ impl Library {
     /// Title matches first, then full-text matches, across the chosen books.
     /// Serbian books are searched with the query in both Latin and Cyrillic.
     pub async fn search(&self, query: &str, only_book: Option<&str>, limit: usize) -> Vec<SearchResult> {
+        self.search_books(self.books(), query, only_book, limit).await
+    }
+
+    /// `search` over the given books.
+    pub(crate) async fn search_books(&self, books: Vec<Book>, query: &str, only_book: Option<&str>, limit: usize) -> Vec<SearchResult> {
         let query = query.trim();
         if query.is_empty() || self.state() != EngineState::Running {
             return Vec::new();
         }
-        let books: Vec<Book> = self
-            .books()
-            .into_iter()
-            .filter(|b| only_book.is_none_or(|n| n == b.name))
-            .collect();
+        let books: Vec<Book> = books.into_iter().filter(|b| only_book.is_none_or(|n| n == b.name)).collect();
 
         // Collect per book, then take turns between books so one big book
         // (e.g. Wikipedia) does not push the others out of the first page.
@@ -404,64 +457,136 @@ impl Library {
     }
 
     async fn suggest(&self, book: &Book, q: &str, limit: usize) -> Vec<SearchResult> {
+        self.titles_in(book, q, limit).await.unwrap_or_default()
+    }
+
+    async fn fulltext(&self, book: &Book, q: &str, limit: usize) -> Vec<SearchResult> {
+        self.text_in(&[book], q, limit).await.unwrap_or_default()
+    }
+
+    /// Full-text search in books of one language with a single request;
+    /// kiwix ranks their articles together. It refuses books in different
+    /// languages; then each book is asked on its own. The results of recent
+    /// searches are remembered.
+    pub async fn search_text(&self, books: &[&Book], query: &str, limit: usize) -> Found {
+        let query = query.trim();
+        if query.is_empty() || books.is_empty() || self.state() != EngineState::Running {
+            return Found::default();
+        }
+        let names: Vec<&str> = books.iter().map(|b| b.name.as_str()).collect();
+        let key = format!("text|{}|{limit}|{query}", names.join(","));
+        if let Some(results) = self.recall(&key) {
+            return Found { results, cached: true };
+        }
+        let results = match self.text_in(books, query, limit).await {
+            Ok(r) => r,
+            Err(Some(status)) if status == reqwest::StatusCode::BAD_REQUEST && books.len() > 1 => {
+                let mut all = Vec::new();
+                for &b in books {
+                    match self.text_in(&[b], query, limit).await {
+                        Ok(r) => all.extend(r),
+                        Err(_) => return Found { results: all, cached: false },
+                    }
+                }
+                all
+            }
+            Err(_) => return Found::default(),
+        };
+        self.remember(key, &results);
+        Found { results, cached: false }
+    }
+
+    /// Titles in one book that start like the query. Remembered like `search_text`.
+    pub async fn search_titles(&self, book: &Book, query: &str, limit: usize) -> Found {
+        let query = query.trim();
+        if query.is_empty() || self.state() != EngineState::Running {
+            return Found::default();
+        }
+        let key = format!("titles|{}|{limit}|{query}", book.name);
+        if let Some(results) = self.recall(&key) {
+            return Found { results, cached: true };
+        }
+        match self.titles_in(book, query, limit).await {
+            Some(results) => {
+                self.remember(key, &results);
+                Found { results, cached: false }
+            }
+            None => Found::default(),
+        }
+    }
+
+    fn recall(&self, key: &str) -> Option<Vec<SearchResult>> {
+        self.recent.lock().unwrap_or_else(|p| p.into_inner()).get(key, std::time::Instant::now())
+    }
+
+    fn remember(&self, key: String, results: &[SearchResult]) {
+        self.recent.lock().unwrap_or_else(|p| p.into_inner()).put(key, results.to_vec(), std::time::Instant::now());
+    }
+
+    /// Title suggestions from one book; None when kiwix-serve did not answer.
+    async fn titles_in(&self, book: &Book, q: &str, limit: usize) -> Option<Vec<SearchResult>> {
         let url = format!("{}{ROOT}/suggest", self.base());
         let res = self
             .http
             .get(url)
             .query(&[("content", book.name.as_str()), ("term", q), ("count", &limit.min(10).to_string())])
             .send()
-            .await;
-        let Ok(res) = res else { return Vec::new() };
-        let Ok(items) = res.json::<Vec<serde_json::Value>>().await else { return Vec::new() };
-        items
+            .await
+            .ok()?;
+        if !res.status().is_success() {
+            return None;
+        }
+        let items = res.json::<Vec<serde_json::Value>>().await.ok()?;
+        Some(
+            items
+                .into_iter()
+                .filter(|v| v.get("kind").and_then(|k| k.as_str()) == Some("path"))
+                .filter_map(|v| {
+                    let title = v.get("value")?.as_str()?.to_string();
+                    let path = v.get("path")?.as_str()?;
+                    Some(SearchResult {
+                        title,
+                        url: format!("{ROOT}/content/{}/{}", book.name, encode_path(path)),
+                        snippet: String::new(),
+                        book: book.name.clone(),
+                        book_title_en: book.title_en.clone(),
+                        book_title_sr: book.title_sr.clone(),
+                        kind: "title",
+                    })
+                })
+                .collect(),
+        )
+    }
+
+    /// One full-text request over the books; the error is the HTTP status
+    /// kiwix-serve answered with, or None when it did not answer.
+    async fn text_in(&self, books: &[&Book], q: &str, limit: usize) -> Result<Vec<SearchResult>, Option<reqwest::StatusCode>> {
+        let url = format!("{}{ROOT}/search", self.base());
+        let mut query: Vec<(&str, String)> = books.iter().map(|b| ("books.name", b.name.clone())).collect();
+        query.extend([("pattern", q.to_string()), ("format", "xml".into()), ("pageLength", limit.to_string())]);
+        let res = self.http.get(url).query(&query).send().await.map_err(|_| None)?;
+        if !res.status().is_success() {
+            return Err(Some(res.status()));
+        }
+        let xml = res.text().await.map_err(|_| None)?;
+        Ok(parse_search_rss(&xml)
             .into_iter()
-            .filter(|v| v.get("kind").and_then(|k| k.as_str()) == Some("path"))
-            .filter_map(|v| {
-                let title = v.get("value")?.as_str()?.to_string();
-                let path = v.get("path")?.as_str()?;
+            .filter_map(|(title, link, snippet)| {
+                // Each result names its book in its link.
+                let book = book_of_link(&link)
+                    .and_then(|name| books.iter().find(|b| b.name == name))
+                    .or_else(|| (books.len() == 1).then(|| &books[0]))?;
                 Some(SearchResult {
                     title,
-                    url: format!("{ROOT}/content/{}/{}", book.name, encode_path(path)),
-                    snippet: String::new(),
+                    url: link,
+                    snippet,
                     book: book.name.clone(),
                     book_title_en: book.title_en.clone(),
                     book_title_sr: book.title_sr.clone(),
-                    kind: "title",
+                    kind: "text",
                 })
             })
-            .collect()
-    }
-
-    async fn fulltext(&self, book: &Book, q: &str, limit: usize) -> Vec<SearchResult> {
-        let url = format!("{}{ROOT}/search", self.base());
-        let res = self
-            .http
-            .get(url)
-            .query(&[
-                ("books.name", book.name.as_str()),
-                ("pattern", q),
-                ("format", "xml"),
-                ("pageLength", &limit.to_string()),
-            ])
-            .send()
-            .await;
-        let Ok(res) = res else { return Vec::new() };
-        if !res.status().is_success() {
-            return Vec::new();
-        }
-        let Ok(xml) = res.text().await else { return Vec::new() };
-        parse_search_rss(&xml)
-            .into_iter()
-            .map(|(title, link, snippet)| SearchResult {
-                title,
-                url: link,
-                snippet,
-                book: book.name.clone(),
-                book_title_en: book.title_en.clone(),
-                book_title_sr: book.title_sr.clone(),
-                kind: "text",
-            })
-            .collect()
+            .collect())
     }
 }
 
@@ -564,6 +689,12 @@ fn parse_served_books(xml: &str) -> std::collections::HashSet<String> {
         .filter(|name| !name.is_empty())
         .map(str::to_string)
         .collect()
+}
+
+/// The book an article link points into: `/kiwix/content/<name>/...`.
+fn book_of_link(link: &str) -> Option<&str> {
+    let rest = link.strip_prefix(ROOT)?.strip_prefix("/content/")?;
+    rest.split('/').next().filter(|name| !name.is_empty())
 }
 
 /// Percent-encode an article path for a URL, keeping `/`.
@@ -686,6 +817,33 @@ mod tests {
         assert!(served.contains("zimgit-water_en_2024-08"));
         assert!(served.contains("wikibooks_sr_all_nopic_2026-07"));
         assert!(parse_served_books("<feed></feed>").is_empty());
+    }
+
+    #[test]
+    fn results_name_their_book() {
+        assert_eq!(book_of_link("/kiwix/content/wiktionary_sr_all_nopic_2026-07/voda"), Some("wiktionary_sr_all_nopic_2026-07"));
+        assert_eq!(book_of_link("/kiwix/content/w_2026-01/A/b%20c"), Some("w_2026-01"));
+        assert_eq!(book_of_link("/other/content/w/x"), None);
+        assert_eq!(book_of_link("/kiwix/content//x"), None);
+    }
+
+    #[test]
+    fn recent_searches_are_kept_for_a_while_and_only_a_few() {
+        let t0 = std::time::Instant::now();
+        let later = |s: u64| t0 + Duration::from_secs(s);
+        let mut r: Recent<u32> = Recent::new(2, Duration::from_secs(60));
+        assert_eq!(r.get("a", t0), None);
+        r.put("a".into(), 1, t0);
+        assert_eq!(r.get("a", later(59)), Some(1), "remembered");
+        assert_eq!(r.get("a", later(60)), None, "too old");
+        r.put("a".into(), 1, later(100));
+        r.put("a".into(), 2, later(101));
+        assert_eq!(r.get("a", later(102)), Some(2), "the newest value wins, kept once");
+        r.put("b".into(), 3, later(102));
+        r.put("c".into(), 4, later(103));
+        assert_eq!(r.get("a", later(104)), None, "the oldest goes when there are too many");
+        assert_eq!((r.get("b", later(104)), r.get("c", later(104))), (Some(3), Some(4)));
+        assert_eq!(r.entries.len(), 2);
     }
 
     #[test]

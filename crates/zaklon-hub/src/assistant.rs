@@ -6,11 +6,13 @@
 //! when left alone; grounding is the point.
 //!
 //! Answers are produced in the background and read by polling, which works
-//! the same for the laptop window and for phones.
+//! the same for the laptop window and for phones. Every step has a time
+//! limit, and a question nobody waits for any more gives way to the next.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU16, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -24,7 +26,7 @@ use zaklon_core::memory::Note;
 use zaklon_core::supplies::Item;
 
 use crate::downloads::Downloads;
-use crate::kiwix::Library;
+use crate::kiwix::{Book, Found, Library, SearchResult};
 
 /// Stop the engine after this long without questions, to give the memory back.
 const IDLE_STOP: Duration = Duration::from_secs(20 * 60);
@@ -39,11 +41,52 @@ pub const SETTING_MODEL: &str = "assistant_model";
 /// Characters of each source passage given to the model.
 const SOURCE_CHARS: usize = 1400;
 const MAX_SOURCES: usize = 3;
-/// Articles read before the final ranking (the library is local, so this is cheap).
+/// Articles read before the final ranking, best first. Reading one is cheap
+/// next to a search (a few hundredths of a second on a quiet disk), and the
+/// title ranking alone lets a word's lookalike ("Можданице" for "moždani
+/// udar") come first, so a few more are read than are used.
 const FETCH: usize = 6;
+/// The library part of a question: searches may take `LOOKUP_TIME`, searches
+/// and reading `LIBRARY_TIME`; what is done by then is used and the rest is
+/// never asked. A search takes a tenth of a second on a quiet hard disk and
+/// up to half a minute when another program keeps the disk busy.
+const LOOKUP_TIME: Duration = Duration::from_secs(12);
+const LIBRARY_TIME: Duration = Duration::from_secs(20);
+/// Library requests in flight at a time: kiwix-serve works on four at once
+/// and a hard disk reads one place at a time.
+const PARALLEL: usize = 2;
+/// Full-text searches per language, words whose titles are looked up per
+/// language, and title lookups per question.
+const MAX_QUERIES: usize = 3;
+const TITLE_KEYS: usize = 2;
+const MAX_TITLE_LOOKUPS: usize = 6;
+/// Words in the whole-topic search. kiwix wants every word in an article, so
+/// a longer query finds nothing.
+const TOPIC_WORDS: usize = 4;
+/// Results asked for per full-text search: more for several books at once.
+const TEXT_RESULTS: usize = 5;
+const TEXT_RESULTS_SHARED: usize = 8;
 const KEEP_ANSWERS: usize = 30;
 /// Questions allowed to wait for their turn (the whole household, not a crowd).
 const MAX_PENDING: usize = 4;
+/// A question's time from its turn (with the model loaded) to the end of its
+/// answer. Its engine request is stopped then, and the next question goes.
+const QUESTION_TIME: Duration = Duration::from_secs(6 * 60);
+/// A question nobody has looked at for this long is abandoned: it gives way
+/// to a question somebody waits for. (The app does not ask while it is in the
+/// background, so an answer is still written for someone who comes back.)
+const ABANDONED: Duration = Duration::from_secs(60);
+/// How often a waiting or running question checks whether to stop.
+const CHECK_EVERY: Duration = Duration::from_millis(500);
+/// How long the plan may take. With its instructions cached (after the first
+/// plan on a running engine) it takes seconds; before that the engine reads
+/// about a thousand tokens of instructions, which takes a slow computer up to
+/// two minutes. Past this, the question is routed by its own words, and the
+/// engine keeps what it has read for the next plan.
+const PLAN_TIME: Duration = Duration::from_secs(45);
+const PLAN_TIME_COLD: Duration = Duration::from_secs(120);
+/// The error of an answer stopped at `QUESTION_TIME`.
+const TOO_LONG: &str = "the answer took too long and was stopped";
 /// Characters of a whole answer prompt. A slot holds 6144 tokens, Serbian
 /// runs about 2.5 characters a token, and the answer needs room too.
 const PROMPT_CHARS: usize = 12_000;
@@ -123,16 +166,79 @@ pub struct Answer {
     pub language: &'static str,
     pub tokens_per_second: f64,
     pub error: Option<String>,
-    /// How long the steps took, in milliseconds (for measuring).
+    /// How long the steps took, in milliseconds (for measuring): waiting for
+    /// an earlier question, starting the AI engine, deciding what the question
+    /// is about, the library, the answer's first word (from asking the engine),
+    /// and everything from its turn to the end.
+    pub wait_ms: u64,
+    pub engine_ms: u64,
     pub plan_ms: u64,
     pub search_ms: u64,
     pub first_token_ms: u64,
     pub total_ms: u64,
+    /// The plan did not come in time; the question was routed by its words.
+    pub plan_fallback: bool,
+    /// Library searches started, how many of them recent results answered,
+    /// and articles read.
+    pub lookups: u32,
+    pub lookups_cached: u32,
+    pub articles_read: u32,
+    /// The library's time ran out before every search or read was done.
+    pub search_cut: bool,
     #[serde(skip)]
     created: Instant,
     /// Someone asked to stop this answer.
     #[serde(skip)]
     cancel: bool,
+    /// When someone last asked for this answer.
+    #[serde(skip)]
+    seen: Instant,
+    /// It has had its turn (it is not waiting for another question).
+    #[serde(skip)]
+    started: bool,
+    /// When it is stopped however far it got (set once the engine runs).
+    #[serde(skip)]
+    deadline: Option<Instant>,
+}
+
+impl Answer {
+    /// A question just asked, waiting for its turn.
+    fn new(id: String, question: String, language: &'static str, online: bool, now: Instant) -> Self {
+        Answer {
+            id,
+            question,
+            status: AnswerStatus::Searching,
+            text: String::new(),
+            sources: Vec::new(),
+            searched: Vec::new(),
+            from_supplies: false,
+            used_internet: online,
+            cited: false,
+            proposal: None,
+            grounded: false,
+            safety: false,
+            fixed: false,
+            language,
+            tokens_per_second: 0.0,
+            error: None,
+            wait_ms: 0,
+            engine_ms: 0,
+            plan_ms: 0,
+            search_ms: 0,
+            first_token_ms: 0,
+            total_ms: 0,
+            plan_fallback: false,
+            lookups: 0,
+            lookups_cached: 0,
+            articles_read: 0,
+            search_cut: false,
+            created: now,
+            cancel: false,
+            seen: now,
+            started: false,
+            deadline: None,
+        }
+    }
 }
 
 /// A change to the supplies the assistant proposes. Nothing changes until
@@ -209,10 +315,10 @@ pub struct Assistant {
     answers: Mutex<HashMap<String, Answer>>,
     /// One question at a time: a small computer runs one model at a time.
     turn: tokio::sync::Mutex<()>,
-    /// Questions waiting or being answered.
-    pending: std::sync::atomic::AtomicUsize,
     /// Set by `stop()` to end a model load in progress.
-    cancel_load: std::sync::atomic::AtomicBool,
+    cancel_load: AtomicBool,
+    /// The running engine has read the plan's instructions once (they stay cached).
+    plan_warm: AtomicBool,
     #[cfg(windows)]
     job: crate::kiwix::job::Job,
     http: reqwest::Client,
@@ -254,8 +360,8 @@ impl Assistant {
             epoch: Instant::now(),
             answers: Mutex::new(HashMap::new()),
             turn: tokio::sync::Mutex::new(()),
-            pending: std::sync::atomic::AtomicUsize::new(0),
-            cancel_load: std::sync::atomic::AtomicBool::new(false),
+            cancel_load: AtomicBool::new(false),
+            plan_warm: AtomicBool::new(false),
             #[cfg(windows)]
             job: crate::kiwix::job::Job::new(),
             http: reqwest::Client::builder().no_proxy().connect_timeout(Duration::from_secs(5)).build().expect("http client"),
@@ -421,6 +527,8 @@ impl Assistant {
         info!(model = %model, port, "AI engine starting");
         *running = Some(Running { child, model });
         self.port.store(port, Ordering::Relaxed);
+        // A new engine has read nothing yet.
+        self.plan_warm.store(false, Ordering::Relaxed);
 
         // Loading a model takes from seconds to a minute or two, longer for a
         // large model on a hard disk: the engine answers 503 while it loads.
@@ -498,13 +606,22 @@ impl Assistant {
         self.answers.lock().unwrap_or_else(|p| p.into_inner()).get(id).cloned()
     }
 
+    /// An answer as the one who asked reads it. Reading it shows that
+    /// somebody still waits for it.
+    pub fn poll(&self, id: &str) -> Option<Answer> {
+        let mut answers = self.answers.lock().unwrap_or_else(|p| p.into_inner());
+        let a = answers.get_mut(id)?;
+        a.seen = Instant::now();
+        Some(a.clone())
+    }
+
     fn update(&self, id: &str, f: impl FnOnce(&mut Answer)) {
         if let Some(a) = self.answers.lock().unwrap_or_else(|p| p.into_inner()).get_mut(id) {
             f(a);
         }
     }
 
-    /// Start answering; the answer is read with `answer(id)`.
+    /// Start answering; the answer is read with `poll(id)`.
     pub fn ask(self: &Arc<Self>, question: &str, app_language: &str, ctx: AskContext) -> Result<String, String> {
         let question = question.trim().to_string();
         if question.is_empty() {
@@ -513,58 +630,49 @@ impl Assistant {
         if question.chars().count() > 2000 {
             return Err("the question is too long".into());
         }
-        if self.pending.load(Ordering::SeqCst) >= MAX_PENDING {
-            return Err("the assistant is busy with other questions; try again in a moment".into());
-        }
         let language = zaklon_core::lang::question_language(&question).unwrap_or(if app_language == "sr" { "sr" } else { "en" });
         let id = uuid::Uuid::new_v4().to_string();
         {
             let mut answers = self.answers.lock().unwrap_or_else(|p| p.into_inner());
+            // Only questions somebody still waits for count: an abandoned one
+            // gives way to this one as soon as it is in line.
+            let now = Instant::now();
+            if answers.values().filter(|a| waited_for(a, now)).count() >= MAX_PENDING {
+                return Err("the assistant is busy with other questions; try again in a moment".into());
+            }
             if answers.len() >= KEEP_ANSWERS {
                 if let Some(oldest) = answers.values().min_by_key(|a| a.created).map(|a| a.id.clone()) {
                     answers.remove(&oldest);
                 }
             }
-            answers.insert(
-                id.clone(),
-                Answer {
-                    id: id.clone(),
-                    question: question.clone(),
-                    status: AnswerStatus::Searching,
-                    text: String::new(),
-                    sources: Vec::new(),
-                    searched: Vec::new(),
-                    from_supplies: false,
-                    used_internet: ctx.online,
-                    cited: false,
-                    proposal: None,
-                    grounded: false,
-                    safety: false,
-                    fixed: false,
-                    language,
-                    tokens_per_second: 0.0,
-                    error: None,
-                    plan_ms: 0,
-                    search_ms: 0,
-                    first_token_ms: 0,
-                    total_ms: 0,
-                    created: Instant::now(),
-                    cancel: false,
-                },
-            );
+            answers.insert(id.clone(), Answer::new(id.clone(), question.clone(), language, ctx.online, now));
         }
         self.last_used.store(self.epoch.elapsed().as_secs(), Ordering::Relaxed);
         let me = self.clone();
         let id2 = id.clone();
         let mut ctx = ctx;
         ctx.history = clean_history(&ctx.history);
-        self.pending.fetch_add(1, Ordering::SeqCst);
         tokio::spawn(async move {
-            let _turn = me.turn.lock().await;
-            let started = Instant::now();
-            let r = match me.stop_requested(&id2) {
-                Ok(()) => me.run(&id2, &question, language, &ctx).await,
-                Err(e) => Err(e),
+            let asked = Instant::now();
+            let r = match me.wait_turn(&id2).await {
+                Ok(_turn) => {
+                    let started = Instant::now();
+                    me.update(&id2, |a| {
+                        a.started = true;
+                        a.wait_ms = ms(asked);
+                    });
+                    let r = match me.stop_requested(&id2) {
+                        Ok(()) => me.run(&id2, &question, language, &ctx).await,
+                        Err(e) => Err(e),
+                    };
+                    me.update(&id2, |a| a.total_ms = ms(started));
+                    r
+                }
+                // It left the line without its turn.
+                Err(e) => {
+                    me.update(&id2, |a| a.wait_ms = ms(asked));
+                    Err(e)
+                }
             };
             if let Err(e) = r {
                 if e != CANCELLED {
@@ -575,9 +683,7 @@ impl Assistant {
                     a.error = Some(e);
                 });
             }
-            me.update(&id2, |a| a.total_ms = started.elapsed().as_millis() as u64);
             me.last_used.store(me.epoch.elapsed().as_secs(), Ordering::Relaxed);
-            me.pending.fetch_sub(1, Ordering::SeqCst);
         });
         Ok(id)
     }
@@ -587,7 +693,7 @@ impl Assistant {
     pub fn cancel(&self, id: &str) -> bool {
         let mut answers = self.answers.lock().unwrap_or_else(|p| p.into_inner());
         match answers.get_mut(id) {
-            Some(a) if !matches!(a.status, AnswerStatus::Done | AnswerStatus::Failed) => {
+            Some(a) if !finished(a) => {
                 a.cancel = true;
                 true
             }
@@ -596,13 +702,31 @@ impl Assistant {
         }
     }
 
-    /// `Err(CANCELLED)` once someone asked to stop this answer.
+    /// `Err` with the reason once this answer should stop (see `stop_reason`).
     fn stop_requested(&self, id: &str) -> Result<(), String> {
-        let stop = self.answers.lock().unwrap_or_else(|p| p.into_inner()).get(id).is_none_or(|a| a.cancel);
-        if stop {
-            Err(CANCELLED.into())
-        } else {
-            Ok(())
+        let answers = self.answers.lock().unwrap_or_else(|p| p.into_inner());
+        match stop_reason(&answers, id, Instant::now()) {
+            Some(why) => Err(why.into()),
+            None => Ok(()),
+        }
+    }
+
+    /// Wait for this question's turn, keeping its place in line; it leaves
+    /// the line when it should stop.
+    async fn wait_turn(&self, id: &str) -> Result<tokio::sync::MutexGuard<'_, ()>, String> {
+        self.unless_stopped(id, self.turn.lock()).await
+    }
+
+    /// Wait for `work`, but drop it as soon as this answer should stop.
+    /// Dropping a request closes its connection, and the AI engine stops
+    /// working on it.
+    async fn unless_stopped<T>(&self, id: &str, work: impl Future<Output = T>) -> Result<T, String> {
+        tokio::pin!(work);
+        loop {
+            tokio::select! {
+                done = &mut work => return Ok(done),
+                _ = tokio::time::sleep(CHECK_EVERY) => self.stop_requested(id)?,
+            }
         }
     }
 
@@ -610,14 +734,31 @@ impl Assistant {
         let (history, items, notes, online) = (&ctx.history[..], &ctx.items[..], &ctx.notes[..], ctx.online);
         // 1. Make sure the engine runs (it also decides what the question is about).
         self.update(id, |a| a.status = AnswerStatus::Starting);
+        let t = Instant::now();
         let port = self.ensure_running().await?;
+        // The question's own time starts once the model is loaded.
+        self.update(id, |a| {
+            a.engine_ms = ms(t);
+            a.deadline = Some(Instant::now() + QUESTION_TIME);
+        });
         self.stop_requested(id)?;
         self.update(id, |a| a.status = AnswerStatus::Searching);
         let t0 = Instant::now();
-        let mut plan = self.plan(port, question, language).await;
-        let plan_ms = t0.elapsed().as_millis() as u64;
-        info!(ms = plan_ms, kind = %plan.kind, "assistant: plan");
-        self.update(id, |a| a.plan_ms = plan_ms);
+        let planned = self.unless_stopped(id, self.plan(port, question, language)).await?;
+        let plan_ms = ms(t0);
+        let fallback = planned.is_none();
+        // No plan in time: a library question searched by its own words, with
+        // the keyword checks below for supplies, notes and health.
+        let mut plan = planned.unwrap_or_else(|| parse_plan(""));
+        if fallback {
+            info!(ms = plan_ms, "assistant: no plan in time; routing by the question's words");
+        } else {
+            info!(ms = plan_ms, kind = %plan.kind, "assistant: plan");
+        }
+        self.update(id, |a| {
+            a.plan_ms = plan_ms;
+            a.plan_fallback = fallback;
+        });
         self.stop_requested(id)?;
         route(&mut plan, question, items);
 
@@ -689,14 +830,26 @@ impl Assistant {
         shown.extend(terms_en.iter().filter(|t| !terms.contains(t)).cloned());
         self.update(id, |a| a.searched = shown);
         let t1 = Instant::now();
-        let mut passages = if self.library.books().is_empty() { Vec::new() } else { self.find_sources(&terms, &terms_en, question, safety).await };
+        let books = self.library.books();
+        let (mut passages, stats) = if books.is_empty() {
+            (Vec::new(), SearchStats::default())
+        } else {
+            let search = find_sources(&*self.library, &books, &terms, &terms_en, question, language, safety);
+            self.unless_stopped(id, search).await?
+        };
+        self.update(id, |a| {
+            a.lookups = stats.lookups;
+            a.lookups_cached = stats.cached;
+            a.articles_read = stats.reads;
+            a.search_cut = stats.cut;
+        });
         // For a health question the library's text is preferred to unchecked web pages.
         if online && !(safety && !passages.is_empty()) {
-            let web = self.find_web_sources(question, &plan.terms, passages.len()).await;
+            let web = self.unless_stopped(id, self.find_web_sources(question, &plan.terms, passages.len())).await?;
             passages.extend(web);
         }
-        let search_ms = t1.elapsed().as_millis() as u64;
-        info!(ms = search_ms, sources = passages.len(), "assistant: library search");
+        let search_ms = ms(t1);
+        info!(ms = search_ms, sources = passages.len(), lookups = stats.lookups, cached = stats.cached, reads = stats.reads, cut = stats.cut, "assistant: library search");
         self.stop_requested(id)?;
 
         // A health question with nothing checked to go on gets a fixed, safe
@@ -799,8 +952,11 @@ impl Assistant {
         let mut tokens = 0u64;
         let mut first: Option<Instant> = None;
         let mut last = Instant::now();
+        // Why it was stopped before the end, if it was.
+        let mut stopped: Option<String> = None;
         loop {
-            if self.stop_requested(id).is_err() {
+            if let Err(why) = self.stop_requested(id) {
+                stopped = Some(why);
                 break;
             }
             let next = match tokio::time::timeout(Duration::from_millis(500), stream.next()).await {
@@ -829,8 +985,7 @@ impl Assistant {
                     if !piece.is_empty() {
                         if first.is_none() {
                             first = Some(Instant::now());
-                            let ms = asked.elapsed().as_millis() as u64;
-                            self.update(id, |a| a.first_token_ms = ms);
+                            self.update(id, |a| a.first_token_ms = ms(asked));
                         }
                         tokens += 1;
                         raw.push_str(piece);
@@ -856,9 +1011,11 @@ impl Assistant {
             }
             if a.text.is_empty() {
                 a.status = AnswerStatus::Failed;
-                a.error = Some(if a.cancel { CANCELLED.to_string() } else { "AI engine: the answer came back empty".to_string() });
+                a.error = Some(stopped.unwrap_or_else(|| "AI engine: the answer came back empty".to_string()));
             } else {
+                // Stopped or not, what was written stays; the error says why it ends early.
                 a.status = AnswerStatus::Done;
+                a.error = stopped.filter(|why| why == TOO_LONG);
             }
         });
         Ok(())
@@ -867,8 +1024,9 @@ impl Assistant {
     /// What the question is about, decided by the model in a fixed JSON
     /// shape (the engine enforces the schema): a library question with its
     /// search terms in basic form ("konzerva, pasulj, rok trajanja"), a
-    /// question about the supplies, or a change to them.
-    async fn plan(&self, port: u16, question: &str, language: &str) -> Plan {
+    /// question about the supplies, or a change to them. None when the engine
+    /// gave no reply in time (`PLAN_TIME`).
+    async fn plan(&self, port: u16, question: &str, language: &str) -> Option<Plan> {
         let sr = language == "sr";
         let prompt = if sr {
             "Odluči o čemu je poruka i odgovori samo JSON-om.\n\
@@ -980,144 +1138,418 @@ quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; categor
             "chat_template_kwargs": { "enable_thinking": false },
             "response_format": { "type": "json_schema", "json_schema": { "name": "plan", "schema": schema } },
         });
+        let warm = self.plan_warm.load(Ordering::Relaxed);
         let reply = self
             .http
             .post(format!("http://127.0.0.1:{port}/v1/chat/completions"))
-            .timeout(Duration::from_secs(90))
+            .timeout(if warm { PLAN_TIME } else { PLAN_TIME_COLD })
             .json(&body)
             .send()
-            .await;
-        let text = match reply {
-            Ok(r) => r.json::<serde_json::Value>().await.ok().and_then(|v| v["choices"][0]["message"]["content"].as_str().map(str::to_string)),
-            Err(_) => None,
+            .await
+            .ok()?;
+        if !reply.status().is_success() {
+            warn!(status = %reply.status(), "assistant: the AI engine refused the plan");
+            return None;
         }
-        .unwrap_or_default();
-        parse_plan(&text)
+        let v = reply.json::<serde_json::Value>().await.ok()?;
+        let text = v["choices"][0]["message"]["content"].as_str()?;
+        self.plan_warm.store(true, Ordering::Relaxed);
+        Some(parse_plan(text))
     }
+}
 
-    /// The best few library passages for the search terms. Each book is
-    /// searched in its own language (the question's terms for Serbian books,
-    /// `terms_en` for English ones), for the whole topic first and then term
-    /// by term. Results are ranked by their titles, the best few are read,
-    /// and those are ranked again by how many of the terms the parts chosen
-    /// from them cover. Two good sources beat three with a wrong one.
-    async fn find_sources(&self, terms: &[String], terms_en: &[String], question: &str, safety: bool) -> Vec<Passage> {
-        if terms.is_empty() && terms_en.is_empty() {
-            return Vec::new();
-        }
-        let books = self.library.books();
-        // 0: the question's own terms, 1: the English ones.
-        let sets = [prepare_terms(terms), prepare_terms(terms_en)];
-        let queries = [search_queries(terms), search_queries(terms_en)];
-        let set_of = |b: &crate::kiwix::Book| usize::from(english_book(&b.languages) && !terms_en.is_empty());
-        let context = context_words(question, terms, terms_en);
-
-        // Every query in every book, a few at a time; the whole topic comes first.
-        let rounds = queries.iter().map(Vec::len).max().unwrap_or(0);
-        let mut jobs: Vec<(usize, &str, &str)> = Vec::new();
-        for i in 0..rounds {
-            for b in &books {
-                let set = set_of(b);
-                if let Some(q) = queries[set].get(i) {
-                    jobs.push((set, b.name.as_str(), q.as_str()));
-                }
-            }
-        }
-        // (The futures are collected first: a stream over a borrowing closure trips `Send` inference.)
-        let searches: Vec<_> = jobs.iter().map(|(_, book, q)| self.library.search(q, Some(book), 5)).collect();
-        let results: Vec<Vec<crate::kiwix::SearchResult>> = futures_util::stream::iter(searches).buffered(4).collect().await;
-
-        let mut cands: Vec<Candidate> = Vec::new();
-        for ((set, _, _), found) in jobs.iter().zip(results) {
-            for r in found {
-                let folded = zaklon_core::translit::fold(&r.title);
-                // The same article, or the same title from another book, adds nothing.
-                if cands.iter().any(|c| c.result.url == r.url || zaklon_core::translit::fold(&c.result.title) == folded) {
-                    continue;
-                }
-                let mut scored = score_result(&r.title, &r.snippet, &sets[*set], &context);
-                // A dictionary entry only explains the word.
-                let book = r.book.to_lowercase();
-                if book.contains("wiktionary") || book.contains("dictionary") {
-                    scored.score -= 3;
-                }
-                if scored.score <= 0 {
-                    continue;
-                }
-                let medical = books.iter().any(|b| b.name == r.book && medical_pack(&b.pack_id));
-                let order = cands.len();
-                cands.push(Candidate { result: r, set: *set, scored, medical, order });
-            }
-        }
-        cands.sort_by(|a, b| b.scored.score.cmp(&a.scored.score).then(a.order.cmp(&b.order)));
-
-        // Read the best few, and for a health question the best one from a medical book too.
-        let mut picked: Vec<usize> = (0..cands.len().min(FETCH)).collect();
-        if safety {
-            if let Some(i) = cands.iter().position(|c| c.medical) {
-                if !picked.contains(&i) {
-                    picked.push(i);
-                }
-            }
-        }
-        // Paragraphs are chosen by the terms and by the question's own words
-        // ("treat", "leči"), so the practical parts of an article win.
-        let stems = [passage_stems(&sets[0], question), passage_stems(&sets[1], "")];
-        let texts = futures_util::future::join_all(picked.iter().map(|&i| self.read_article(&cands[i].result.url, stems[cands[i].set].clone()))).await;
-        let mut ranked: Vec<(i32, usize, String)> = Vec::new();
-        for (&i, text) in picked.iter().zip(texts) {
-            let Some(text) = text else { continue };
-            // Outdated first aid is left out before the model ever sees it.
-            let text = if safety { without_harmful_advice(&text, question) } else { text };
-            if text.chars().count() < 80 {
-                continue;
-            }
-            let c = &cands[i];
-            let covered = coverage(&format!("{}\n{text}", c.result.title), &sets[c.set]);
-            if !enough_coverage(covered, sets[c.set].len(), c.scored.main) {
-                continue;
-            }
-            ranked.push((c.scored.score + 3 * covered as i32, i, text));
-        }
-        ranked.sort_by(|a, b| b.0.cmp(&a.0).then(cands[a.1].order.cmp(&cands[b.1].order)));
-        let mut chosen: Vec<(usize, String)> = ranked.iter().take(MAX_SOURCES).map(|(_, i, t)| (*i, t.clone())).collect();
-        // A health question keeps a place for a medical book: its first aid is current.
-        if safety && !chosen.iter().any(|(i, _)| cands[*i].medical) {
-            if let Some((_, i, t)) = ranked.iter().find(|(_, i, _)| cands[*i].medical) {
-                if chosen.len() >= MAX_SOURCES {
-                    chosen.pop();
-                }
-                chosen.push((*i, t.clone()));
-            }
-        }
-        chosen
-            .into_iter()
-            .enumerate()
-            .map(|(k, (i, text))| {
-                let r = &cands[i].result;
-                let source = Source {
-                    n: k + 1,
-                    title: zaklon_core::translit::cyrillic_to_latin(&r.title),
-                    web: false,
-                    url: r.url.clone(),
-                    book_title_en: r.book_title_en.clone(),
-                    book_title_sr: r.book_title_sr.clone(),
-                };
-                Passage { source, text }
-            })
-            .collect()
+/// When a question should stop, and why: someone cancelled it, its time is
+/// up, or nobody has looked at it for a while and another question that
+/// somebody waits for is in line. A question whose asker went away (a closed
+/// window, an evaluation that gave up) never holds up the next one, and an
+/// answer for someone who only switched away for a moment is still written.
+fn stop_reason(answers: &HashMap<String, Answer>, id: &str, now: Instant) -> Option<&'static str> {
+    let Some(a) = answers.get(id) else { return Some(CANCELLED) };
+    if a.cancel {
+        return Some(CANCELLED);
     }
+    if a.deadline.is_some_and(|d| now >= d) {
+        return Some(TOO_LONG);
+    }
+    if abandoned(a, now) && answers.values().any(|o| o.id != a.id && !o.started && waited_for(o, now)) {
+        return Some(CANCELLED);
+    }
+    None
+}
 
+fn finished(a: &Answer) -> bool {
+    matches!(a.status, AnswerStatus::Done | AnswerStatus::Failed)
+}
+
+fn abandoned(a: &Answer, now: Instant) -> bool {
+    now.saturating_duration_since(a.seen) >= ABANDONED
+}
+
+/// Not finished, not being stopped, and somebody still looks at it.
+fn waited_for(a: &Answer, now: Instant) -> bool {
+    !finished(a) && !a.cancel && !abandoned(a, now)
+}
+
+/// Milliseconds since `t`.
+fn ms(t: Instant) -> u64 {
+    t.elapsed().as_millis() as u64
+}
+
+/// The library as the assistant searches it: kiwix-serve, or a stand-in in tests.
+pub(crate) trait Shelf: Sync {
+    /// Full-text search in books of one language, with one request.
+    fn text(&self, books: &[&Book], query: &str, limit: usize) -> impl Future<Output = Found> + Send;
+    /// Titles that start like the query, in one book.
+    fn titles(&self, book: &Book, query: &str, limit: usize) -> impl Future<Output = Found> + Send;
     /// The parts of an article that matter for the stems, or None for a
     /// redirect or an almost empty page.
-    async fn read_article(&self, url: &str, stems: Vec<String>) -> Option<String> {
-        let res = self.library.fetch(url).await.ok()?;
+    fn read(&self, url: &str, stems: Vec<String>) -> impl Future<Output = Option<String>> + Send;
+}
+
+impl Shelf for Library {
+    fn text(&self, books: &[&Book], query: &str, limit: usize) -> impl Future<Output = Found> + Send {
+        self.search_text(books, query, limit)
+    }
+
+    fn titles(&self, book: &Book, query: &str, limit: usize) -> impl Future<Output = Found> + Send {
+        self.search_titles(book, query, limit)
+    }
+
+    async fn read(&self, url: &str, stems: Vec<String>) -> Option<String> {
+        let res = self.fetch(url).await.ok()?;
         if !res.status().is_success() {
             return None;
         }
         let html = res.text().await.ok()?;
         let text = tokio::task::spawn_blocking(move || relevant_text(&html, &stems, SOURCE_CHARS)).await.unwrap_or_default();
         (text.chars().count() >= 80).then_some(text)
+    }
+}
+
+/// What a library search did, for measuring.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct SearchStats {
+    /// Searches started (a cut one counts too), and those recent results answered.
+    lookups: u32,
+    cached: u32,
+    /// Articles read (started).
+    reads: u32,
+    /// The time ran out before everything planned was done.
+    cut: bool,
+}
+
+/// One request to the library, planned before any is sent.
+#[derive(Debug, Clone, PartialEq)]
+struct Lookup {
+    /// Titles that start like the query (in one book) rather than full text.
+    titles: bool,
+    /// Indexes into the books. A full-text search asks all the books of one
+    /// language at once.
+    books: Vec<usize>,
+    query: String,
+    /// Which set of terms judges its results (0: the question's, 1: English).
+    set: usize,
+}
+
+/// The library requests for a question, most useful first; the time limit
+/// may end the list early. Books of one language are searched together, in
+/// one request. In every language: titles like the word the question is
+/// about (see `title_keys`; they find the article about it, also when it was
+/// typed without diacritics), the whole topic, titles like the next word,
+/// then the terms one by one: at most `MAX_QUERIES` full-text searches per
+/// language and `MAX_TITLE_LOOKUPS` title lookups. Books in another language
+/// than their terms (Serbian books for an English question) get only the
+/// first full-text search.
+fn plan_lookups(books: &[Book], terms: &[String], terms_en: &[String], language: &str) -> Vec<Lookup> {
+    /// Books searched together: the same set of terms and the same languages.
+    struct Group {
+        set: usize,
+        languages: Vec<String>,
+        books: Vec<usize>,
+        /// Written in the language of its terms.
+        native: bool,
+        serbian: bool,
+        queries: Vec<String>,
+    }
+    let sets = [terms, terms_en];
+    let mut groups: Vec<Group> = Vec::new();
+    for (i, b) in books.iter().enumerate() {
+        let set = usize::from(english_book(&b.languages) && !terms_en.is_empty());
+        let mut languages = b.languages.clone();
+        languages.sort();
+        match groups.iter_mut().find(|g| g.set == set && g.languages == languages) {
+            Some(g) => g.books.push(i),
+            None => {
+                let wanted = if set == 1 || language == "en" { "eng" } else { "srp" };
+                let native = languages.is_empty() || languages.iter().any(|l| l == wanted);
+                let serbian = languages.iter().any(|l| l == "srp");
+                // Serbian books are written in Cyrillic.
+                let mut queries: Vec<String> = Vec::new();
+                for q in search_queries(sets[set]) {
+                    let q = if serbian { zaklon_core::translit::latin_to_cyrillic(&q) } else { q };
+                    if !queries.contains(&q) {
+                        queries.push(q);
+                    }
+                }
+                groups.push(Group { set, languages, books: vec![i], native, serbian, queries });
+            }
+        }
+    }
+    groups.sort_by_key(|g| !g.native);
+
+    let mut out: Vec<Lookup> = Vec::new();
+    let text = |g: &Group, round: usize| {
+        g.queries.get(round).map(|q| Lookup { titles: false, books: g.books.clone(), query: q.clone(), set: g.set })
+    };
+    let mut titles = 0;
+    let mut title_lookups = |out: &mut Vec<Lookup>, key: usize| {
+        for g in groups.iter().filter(|g| g.native) {
+            let Some(key) = title_keys(sets[g.set]).into_iter().nth(key) else { continue };
+            for &i in g.books.iter().filter(|&&i| !dictionary(&books[i])) {
+                for spelling in title_spellings(&key, g.serbian) {
+                    if titles < MAX_TITLE_LOOKUPS {
+                        out.push(Lookup { titles: true, books: vec![i], query: spelling, set: g.set });
+                        titles += 1;
+                    }
+                }
+            }
+        }
+    };
+    // Title lookups read only the titles' index: they are quick even on a
+    // busy disk and find the article about the word, so they go first. A
+    // full-text search also reads the articles its snippets come from.
+    for round in 0..MAX_QUERIES.max(TITLE_KEYS) {
+        if round < TITLE_KEYS {
+            title_lookups(&mut out, round);
+        }
+        out.extend(groups.iter().filter(|g| round == 0 || g.native).filter_map(|g| text(g, round)));
+    }
+    out
+}
+
+/// What titles are looked up by (kiwix finds titles by how they start): a
+/// word several terms share ("moždanog" in "znakovi moždanog udara" and
+/// "slog moždanog udara"), the terms of one word, then the first word of each
+/// phrase, all as stems ("poskoka" finds "Поскок"). Generic words ("zamena")
+/// are left out.
+fn title_keys(terms: &[String]) -> Vec<String> {
+    let words: Vec<Vec<String>> = terms
+        .iter()
+        .map(|t| {
+            let mut stems: Vec<String> = Vec::new();
+            for s in t.split_whitespace().filter(|w| !is_stop_word(w) && !GENERIC.contains(&plain(w).as_str())).map(stem) {
+                if s.chars().count() >= 3 && !stems.contains(&s) {
+                    stems.push(s);
+                }
+            }
+            stems
+        })
+        .collect();
+    let shared = |s: &String| words.iter().filter(|w| w.contains(s)).count();
+    let mut keys: Vec<String> = Vec::new();
+    let mut add = |s: &String| {
+        if !keys.contains(s) {
+            keys.push(s.clone());
+        }
+    };
+    let mut common: Vec<&String> = words.iter().flatten().filter(|s| shared(s) >= 2).collect();
+    // The most shared first; a stable sort keeps the order of the terms.
+    common.sort_by_key(|s| std::cmp::Reverse(shared(s)));
+    common.into_iter().for_each(&mut add);
+    for (t, w) in terms.iter().zip(&words) {
+        if t.split_whitespace().count() == 1 {
+            w.iter().for_each(&mut add);
+        }
+    }
+    words.iter().filter_map(|w| w.first()).for_each(&mut add);
+    keys
+}
+
+/// How a title key may be spelled in titles: in Cyrillic for Serbian
+/// books, and when it was typed without diacritics also the likeliest other
+/// spelling ("osigurac" is "Осигурач").
+fn title_spellings(term: &str, serbian: bool) -> Vec<String> {
+    use zaklon_core::translit::{cyrillic_candidates, has_diacritics, has_serbian_latin, latin_to_cyrillic};
+    if !serbian || !has_serbian_latin(term) {
+        vec![term.to_string()]
+    } else if has_diacritics(term) {
+        vec![latin_to_cyrillic(term)]
+    } else {
+        cyrillic_candidates(term, 2)
+    }
+}
+
+/// A dictionary: its entries only explain a word.
+fn dictionary(book: &Book) -> bool {
+    let name = book.name.to_lowercase();
+    name.contains("wiktionary") || name.contains("dictionary")
+}
+
+/// Run the jobs in order, `PARALLEL` at a time, until `deadline`. What is
+/// done by then counts; the rest is dropped or never started. Also says how
+/// many were started.
+async fn in_order<F: Future>(jobs: Vec<F>, deadline: tokio::time::Instant) -> (Vec<Option<F::Output>>, usize) {
+    let mut out: Vec<Option<F::Output>> = jobs.iter().map(|_| None).collect();
+    let mut waiting = jobs.into_iter().enumerate();
+    let mut running = futures_util::stream::FuturesUnordered::new();
+    let mut started = 0;
+    loop {
+        while running.len() < PARALLEL && tokio::time::Instant::now() < deadline {
+            let Some((i, job)) = waiting.next() else { break };
+            running.push(async move { (i, job.await) });
+            started += 1;
+        }
+        match tokio::time::timeout_at(deadline, running.next()).await {
+            Ok(Some((i, v))) => out[i] = Some(v),
+            // Nothing left, or the time is up.
+            Ok(None) | Err(_) => break,
+        }
+    }
+    (out, started)
+}
+
+/// The best few library passages for the search terms. Books are searched in
+/// their own language (the question's terms for Serbian books, `terms_en` for
+/// English ones), a few requests in all (see `plan_lookups`), within
+/// `LIBRARY_TIME`. Results are ranked by their titles, the best few are read,
+/// and those are ranked again by how many of the terms the parts chosen from
+/// them cover. Two good sources beat three with a wrong one.
+async fn find_sources<S: Shelf>(
+    shelf: &S,
+    books: &[Book],
+    terms: &[String],
+    terms_en: &[String],
+    question: &str,
+    language: &str,
+    safety: bool,
+) -> (Vec<Passage>, SearchStats) {
+    let mut stats = SearchStats::default();
+    if terms.is_empty() && terms_en.is_empty() {
+        return (Vec::new(), stats);
+    }
+    let start = tokio::time::Instant::now();
+    // 0: the question's own terms, 1: the English ones.
+    let sets = [prepare_terms(terms), prepare_terms(terms_en)];
+    let context = context_words(question, terms, terms_en);
+
+    let lookups = plan_lookups(books, terms, terms_en, language);
+    let jobs: Vec<_> = lookups.iter().map(|l| lookup(shelf, books, l)).collect();
+    let (results, started) = in_order(jobs, start + LOOKUP_TIME).await;
+    stats.lookups = started as u32;
+    stats.cut = started < lookups.len() || results.iter().any(Option::is_none);
+
+    let mut cands: Vec<Candidate> = Vec::new();
+    for (l, found) in lookups.iter().zip(results) {
+        let Some(found) = found else { continue };
+        stats.cached += u32::from(found.cached);
+        for r in found.results {
+            let folded = zaklon_core::translit::fold(&r.title);
+            // The same article, or the same title from another book, adds nothing.
+            if cands.iter().any(|c| c.result.url == r.url || zaklon_core::translit::fold(&c.result.title) == folded) {
+                continue;
+            }
+            let mut scored = score_result(&r.title, &r.snippet, &sets[l.set], &context);
+            // A dictionary entry only explains the word.
+            let book = r.book.to_lowercase();
+            if book.contains("wiktionary") || book.contains("dictionary") {
+                scored.score -= 3;
+            }
+            if scored.score <= 0 {
+                continue;
+            }
+            let medical = books.iter().any(|b| b.name == r.book && medical_pack(&b.pack_id));
+            let order = cands.len();
+            cands.push(Candidate { result: r, set: l.set, scored, medical, order });
+        }
+    }
+    cands.sort_by(|a, b| b.scored.score.cmp(&a.scored.score).then(a.order.cmp(&b.order)));
+
+    let picked = pick_reads(&cands, safety);
+    // Paragraphs are chosen by the terms and by the question's own words
+    // ("treat", "leči"), so the practical parts of an article win.
+    let stems = [passage_stems(&sets[0], question), passage_stems(&sets[1], "")];
+    let reads: Vec<_> = picked.iter().map(|&i| shelf.read(&cands[i].result.url, stems[cands[i].set].clone())).collect();
+    let (texts, started) = in_order(reads, start + LIBRARY_TIME).await;
+    stats.reads = started as u32;
+    stats.cut |= started < picked.len() || texts.iter().any(Option::is_none);
+    let mut ranked: Vec<(i32, usize, String)> = Vec::new();
+    for (&i, text) in picked.iter().zip(texts) {
+        let Some(Some(text)) = text else { continue };
+        // Outdated first aid is left out before the model ever sees it.
+        let text = if safety { without_harmful_advice(&text, question) } else { text };
+        if text.chars().count() < 80 {
+            continue;
+        }
+        let c = &cands[i];
+        let covered = coverage(&format!("{}\n{text}", c.result.title), &sets[c.set]);
+        if !enough_coverage(covered, sets[c.set].len(), c.scored.main) {
+            continue;
+        }
+        ranked.push((c.scored.score + 3 * covered as i32, i, text));
+    }
+    ranked.sort_by(|a, b| b.0.cmp(&a.0).then(cands[a.1].order.cmp(&cands[b.1].order)));
+    let mut chosen: Vec<(usize, String)> = ranked.iter().take(MAX_SOURCES).map(|(_, i, t)| (*i, t.clone())).collect();
+    // A health question keeps a place for a medical book: its first aid is current.
+    if safety && !chosen.iter().any(|(i, _)| cands[*i].medical) {
+        if let Some((_, i, t)) = ranked.iter().find(|(_, i, _)| cands[*i].medical) {
+            if chosen.len() >= MAX_SOURCES {
+                chosen.pop();
+            }
+            chosen.push((*i, t.clone()));
+        }
+    }
+    let passages = chosen
+        .into_iter()
+        .enumerate()
+        .map(|(k, (i, text))| {
+            let r = &cands[i].result;
+            let source = Source {
+                n: k + 1,
+                title: zaklon_core::translit::cyrillic_to_latin(&r.title),
+                web: false,
+                url: r.url.clone(),
+                book_title_en: r.book_title_en.clone(),
+                book_title_sr: r.book_title_sr.clone(),
+            };
+            Passage { source, text }
+        })
+        .collect();
+    (passages, stats)
+}
+
+/// Which candidates (sorted best first) are read: the best `FETCH`, among
+/// them the best found with each set of terms (a Serbian question keeps a
+/// Serbian article when English ones score higher, and the other way
+/// round), and for a health question the best one from a medical book too.
+fn pick_reads(cands: &[Candidate], safety: bool) -> Vec<usize> {
+    let mut picked: Vec<usize> = (0..2).filter_map(|set| cands.iter().position(|c| c.set == set)).collect();
+    for i in 0..cands.len() {
+        if picked.len() >= FETCH {
+            break;
+        }
+        if !picked.contains(&i) {
+            picked.push(i);
+        }
+    }
+    picked.sort_unstable();
+    if safety {
+        if let Some(i) = cands.iter().position(|c| c.medical) {
+            if !picked.contains(&i) {
+                picked.push(i);
+            }
+        }
+    }
+    picked
+}
+
+/// One planned library request.
+async fn lookup<S: Shelf>(shelf: &S, books: &[Book], l: &Lookup) -> Found {
+    if l.titles {
+        shelf.titles(&books[l.books[0]], &l.query, 8).await
+    } else {
+        let group: Vec<&Book> = l.books.iter().map(|&i| &books[i]).collect();
+        let limit = if group.len() > 1 { TEXT_RESULTS_SHARED } else { TEXT_RESULTS };
+        shelf.text(&group, &l.query, limit).await
     }
 }
 
@@ -1130,7 +1562,7 @@ pub struct Passage {
 
 /// A search result on its way to becoming a source.
 struct Candidate {
-    result: crate::kiwix::SearchResult,
+    result: SearchResult,
     /// Which set of terms it was found and is judged with.
     set: usize,
     scored: Scored,
@@ -1191,32 +1623,39 @@ fn prepare_terms(terms: &[String]) -> Vec<Term> {
         .collect()
 }
 
-/// What kiwix is asked, for one set of terms: all of them together first
-/// (full-text search ranks articles with several of them higher), then each
-/// term, then the words of phrases ("ubod pčele" also as "ubod", "pčel").
+/// What kiwix is asked, for one set of terms, most useful first: the first
+/// terms together (full-text search ranks articles with all of them first,
+/// but finds nothing when one word is missing, so at most `TOPIC_WORDS`
+/// words), then each term. At most `MAX_QUERIES`, each once.
 fn search_queries(terms: &[String]) -> Vec<String> {
-    let terms: Vec<&String> = terms.iter().take(4).collect();
-    let mut queries: Vec<String> = Vec::new();
-    if terms.len() > 1 {
-        queries.push(terms.iter().map(|t| t.as_str()).collect::<Vec<_>>().join(" "));
+    use zaklon_core::translit::fold;
+    let mut unique: Vec<&str> = Vec::new();
+    for t in terms.iter().map(|t| t.trim()).filter(|t| !t.is_empty()) {
+        if !unique.iter().any(|u| fold(u) == fold(t)) {
+            unique.push(t);
+        }
     }
-    for t in &terms {
-        if !queries.contains(t) {
+    let terms = unique;
+    let mut queries: Vec<String> = Vec::new();
+    let mut topic: Vec<&str> = Vec::new();
+    let mut words = 0;
+    for &t in &terms {
+        let n = t.split_whitespace().count();
+        if words + n > TOPIC_WORDS {
+            break;
+        }
+        topic.push(t);
+        words += n;
+    }
+    if topic.len() > 1 {
+        queries.push(topic.join(" "));
+    }
+    for t in terms {
+        if !queries.iter().any(|q| fold(q) == fold(t)) {
             queries.push(t.to_string());
         }
     }
-    for t in &terms {
-        let words: Vec<&str> = t.split_whitespace().collect();
-        if words.len() > 1 {
-            for w in words {
-                let st = stem(w);
-                if st.chars().count() >= 4 && !is_stop_word(w) && !queries.contains(&st) {
-                    queries.push(st);
-                }
-            }
-        }
-    }
-    queries.truncate(8);
+    queries.truncate(MAX_QUERIES);
     queries
 }
 
@@ -3060,12 +3499,23 @@ Pitanje?"));
         assert_eq!(coverage("Zmije su gmizavci bez nogu.", &phrase), 1, "half of a phrase's words is enough");
     }
 
+    fn strings(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
     #[test]
     fn the_whole_topic_is_searched_first() {
-        let q = search_queries(&["ubod pčele".into(), "alergija".into()]);
-        assert_eq!(q, vec!["ubod pčele alergija", "ubod pčele", "alergija", "ubod", "pčel"]);
-        assert_eq!(search_queries(&["hleb".into()]), vec!["hleb"]);
+        let q = search_queries(&strings(&["ubod pčele", "alergija"]));
+        assert_eq!(q, vec!["ubod pčele alergija", "ubod pčele", "alergija"]);
+        assert_eq!(search_queries(&strings(&["hleb"])), vec!["hleb"]);
         assert!(search_queries(&[]).is_empty());
+        // kiwix wants every word of a query: the topic stays short, and the
+        // queries stay few.
+        let q = search_queries(&strings(&["ujed zmije", "poskok", "prva pomoć kod ujeda", "otok"]));
+        assert_eq!(q, vec!["ujed zmije poskok", "ujed zmije", "poskok"]);
+        let q = search_queries(&strings(&["prva pomoć kod ujeda zmije", "poskok"]));
+        assert_eq!(q, vec!["prva pomoć kod ujeda zmije", "poskok"], "a long first term is the topic itself");
+        assert_eq!(search_queries(&strings(&["Hleb", "hleb", " "])), vec!["Hleb"], "the same query once");
         let t = terms(&["voda za piće"]);
         assert_eq!(t[0].stems.len(), 2, "\"za\" is not a search word");
     }
@@ -3277,5 +3727,373 @@ isisavanja otrova i hitnog transporta do lekara. Isisavanje otrova je veoma kori
         assert!(p.is_none());
         assert_eq!(convert(1.5, "l", "ml"), Some(1500.0));
         assert_eq!(convert(1.0, "pack", "pcs"), None);
+    }
+
+    fn book(name: &str, pack: &str, languages: &[&str]) -> Book {
+        Book {
+            name: name.into(),
+            pack_id: pack.into(),
+            title_en: name.into(),
+            title_sr: name.into(),
+            languages: strings(languages),
+            home: String::new(),
+            file: PathBuf::new(),
+            rel: String::new(),
+        }
+    }
+
+    /// The books on the test computer: Serbian Wikipedia and Wiktionary, English WikiMed.
+    fn three_books() -> Vec<Book> {
+        vec![
+            book("wikipedia_sr_all_maxi_2026-09", "wikipedia-sr-maxi", &["srp"]),
+            book("wiktionary_sr_all_nopic_2026-07", "wiktionary-sr", &["srp"]),
+            book("wikipedia_en_medicine_maxi_2026-04", "wikimed-en", &["eng"]),
+        ]
+    }
+
+    #[test]
+    fn a_question_makes_few_library_requests() {
+        let books = three_books();
+        let terms = strings(&["ujed zmije", "poskok", "prva pomoć kod ujeda", "otok"]);
+        let terms_en = strings(&["snakebite", "viper", "first aid"]);
+        let l = plan_lookups(&books, &terms, &terms_en, "sr");
+        // It used to be every query in every book, each with up to 13 title
+        // lookups and 2 full-text searches: well over a hundred requests.
+        assert!(l.len() <= 2 * MAX_QUERIES + MAX_TITLE_LOOKUPS, "{l:#?}");
+        let texts: Vec<&Lookup> = l.iter().filter(|x| !x.titles).collect();
+        assert_eq!(texts.len(), 2 * MAX_QUERIES, "three full-text searches per language");
+        // Quick title lookups first, then the whole topic in both languages,
+        // each language in one request.
+        assert!(l[0].titles);
+        assert_eq!(*texts[0], Lookup { titles: false, books: vec![0, 1], query: "ујед змије поскок".into(), set: 0 });
+        assert_eq!(*texts[1], Lookup { titles: false, books: vec![2], query: "snakebite viper first aid".into(), set: 1 });
+        // Titles like the words the question is about, not in the dictionary.
+        let titles: Vec<&Lookup> = l.iter().filter(|x| x.titles).collect();
+        assert!(titles.len() <= MAX_TITLE_LOOKUPS);
+        assert!(titles.iter().all(|x| x.books.len() == 1 && x.books[0] != 1), "{titles:?}");
+        assert!(titles.iter().any(|x| x.books == [0] && x.query == "ујед"), "{titles:?}");
+        assert!(titles.iter().any(|x| x.books == [0] && x.query == "поскок"), "{titles:?}");
+        assert!(titles.iter().any(|x| x.books == [2] && x.query == "snakebit"), "{titles:?}");
+        // Never two languages in one request, never the same request twice.
+        for x in &l {
+            let languages: std::collections::HashSet<&Vec<String>> = x.books.iter().map(|&i| &books[i].languages).collect();
+            assert_eq!(languages.len(), 1, "{x:?}");
+            assert_eq!(l.iter().filter(|y| *y == x).count(), 1, "{x:?}");
+        }
+        // A word written with diacritics has one spelling.
+        let l = plan_lookups(&books, &strings(&["šargarepa"]), &[], "sr");
+        assert_eq!(l.iter().filter(|x| x.titles).map(|x| x.query.as_str()).collect::<Vec<_>>(), vec!["шаргареп"]);
+        assert_eq!(title_spellings("osigurac", true), vec!["осигурац", "осигурач"], "typed without the č");
+    }
+
+    #[test]
+    fn titles_are_looked_up_by_the_words_the_question_is_about() {
+        let keys = |t: &[&str]| title_keys(&strings(t));
+        // A word the terms share: the article about it is what the question is about.
+        assert_eq!(keys(&["znakovi moždanog udara", "prepoznavanje moždanog udara", "slog moždanog udara"])[..2], ["moždan", "udar"]);
+        assert_eq!(keys(&["stroke symptoms", "recognizing stroke", "stroke signs"])[0], "strok");
+        assert_eq!(keys(&["zamena osigurača", "osigurač", "elektrika"])[..2], ["osigurač", "elektrik"], "\"zamena\" is generic");
+        // Then the terms of one word, then the first word of each phrase.
+        assert_eq!(keys(&["poskoka", "ujed zmije", "prva pomoć"])[..2], ["poskok", "ujed"]);
+        assert_eq!(keys(&["prvi srpski ustanak", "karađorđe", "ustanak"])[..2], ["ustanak", "karađorđ"]);
+        assert!(keys(&[]).is_empty());
+    }
+
+    #[test]
+    fn many_books_still_make_few_requests() {
+        let mut books = three_books();
+        books.push(book("wikipedia_en_all_nopic_2026-01", "wikipedia-en-nopic", &["eng"]));
+        books.push(book("ifixit_en_all_2025-12", "ifixit-en", &["eng"]));
+        books.push(book("wikibooks_sr_all_nopic_2026-07", "wikibooks-sr", &["srp"]));
+        books.push(book("wikipedia_de_all_nopic_2026-01", "wikipedia-de", &["deu"]));
+        let terms = strings(&["bee sting", "allergy", "swelling"]);
+        // An English question: its terms serve the English books too.
+        let l = plan_lookups(&books, &terms, &terms, "en");
+        let languages = 3;
+        assert!(l.len() <= languages * MAX_QUERIES + MAX_TITLE_LOOKUPS, "{l:#?}");
+        // The English books first, all in one request; the others get the topic only.
+        assert_eq!(l.iter().find(|x| !x.titles).unwrap().books, vec![2, 3, 4]);
+        assert_eq!(l.iter().filter(|x| x.books.contains(&0)).count(), 1, "Serbian books: once");
+        assert_eq!(l.iter().filter(|x| x.books.contains(&6)).count(), 1, "German: once");
+        assert!(l.iter().filter(|x| x.titles).all(|x| books[x.books[0]].languages == ["eng"]));
+        assert!(plan_lookups(&books, &[], &[], "sr").is_empty());
+    }
+
+    /// A library where every request takes `delay`: a full-text search or a
+    /// title lookup finds one article titled like the query.
+    struct SlowShelf {
+        delay: Duration,
+        /// Say the results were remembered from a recent search.
+        remembered: bool,
+        asked: Mutex<Vec<String>>,
+    }
+
+    impl SlowShelf {
+        fn new(delay: Duration, remembered: bool) -> Self {
+            SlowShelf { delay, remembered, asked: Mutex::new(Vec::new()) }
+        }
+
+        async fn find(&self, book: String, query: String) -> Found {
+            self.asked.lock().unwrap().push(query.clone());
+            tokio::time::sleep(self.delay).await;
+            let r = SearchResult {
+                title: query.clone(),
+                url: format!("/kiwix/content/{book}/{query}"),
+                snippet: String::new(),
+                book,
+                book_title_en: String::new(),
+                book_title_sr: String::new(),
+                kind: "text",
+            };
+            Found { results: vec![r], cached: self.remembered }
+        }
+    }
+
+    impl Shelf for SlowShelf {
+        fn text(&self, books: &[&Book], query: &str, _limit: usize) -> impl Future<Output = Found> + Send {
+            self.find(books[0].name.clone(), query.to_string())
+        }
+
+        fn titles(&self, book: &Book, query: &str, _limit: usize) -> impl Future<Output = Found> + Send {
+            self.find(book.name.clone(), query.to_string())
+        }
+
+        async fn read(&self, _url: &str, _stems: Vec<String>) -> Option<String> {
+            tokio::time::sleep(self.delay).await;
+            Some("Ујед змије: поскок је најотровнија змија у Србији. A snakebite from a viper needs first aid and a doctor at once.".to_string())
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_library_search_keeps_to_its_time() {
+        let books = three_books();
+        let terms = strings(&["ujed zmije", "poskok"]);
+        let terms_en = strings(&["snakebite", "viper"]);
+        let question = "kako da prepoznam poskoka i sta ako te ujede zmija";
+        let planned = plan_lookups(&books, &terms, &terms_en, "sr").len();
+
+        // A quiet disk: everything planned is asked and read, quickly.
+        let quick = SlowShelf::new(Duration::from_millis(100), true);
+        let t = tokio::time::Instant::now();
+        let (found, stats) = find_sources(&quick, &books, &terms, &terms_en, question, "sr", false).await;
+        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+        assert!(!stats.cut && !found.is_empty(), "{stats:?}");
+        assert_eq!((stats.lookups as usize, quick.asked.lock().unwrap().len()), (planned, planned));
+        assert_eq!(stats.cached, stats.lookups, "remembered results are counted");
+        assert_eq!(stats.reads as usize, FETCH);
+
+        // A disk another program keeps busy: 5 s a request. The question gets
+        // what was done in time, and nothing more is asked.
+        let slow = SlowShelf::new(Duration::from_secs(5), false);
+        let t = tokio::time::Instant::now();
+        let (found, stats) = find_sources(&slow, &books, &terms, &terms_en, question, "sr", false).await;
+        assert!(t.elapsed() <= LIBRARY_TIME, "{:?}", t.elapsed());
+        assert!(stats.cut);
+        assert_eq!(stats.lookups, 6, "two at a time, started before 12 s: at 0, 5 and 10 s");
+        assert_eq!(slow.asked.lock().unwrap().len(), 6);
+        assert_eq!(stats.cached, 0);
+        assert_eq!(stats.reads, 4, "two at 12 s, two more at 17 s");
+        assert!(!found.is_empty(), "what was read in time is used");
+    }
+
+    /// The queries before this change: all terms together, each term, and the
+    /// words of phrases, up to 8, each asked in every book on its own.
+    fn old_queries(terms: &[String]) -> Vec<String> {
+        let terms: Vec<&String> = terms.iter().take(4).collect();
+        let mut q: Vec<String> = Vec::new();
+        if terms.len() > 1 {
+            q.push(terms.iter().map(|t| t.as_str()).collect::<Vec<_>>().join(" "));
+        }
+        for t in &terms {
+            if !q.contains(t) {
+                q.push(t.to_string());
+            }
+        }
+        for t in terms.iter().filter(|t| t.contains(' ')) {
+            for w in t.split_whitespace() {
+                let st = stem(w);
+                if st.chars().count() >= 4 && !is_stop_word(w) && !q.contains(&st) {
+                    q.push(st);
+                }
+            }
+        }
+        q.truncate(8);
+        q
+    }
+
+    /// The library step against a kiwix-serve that is already running with
+    /// the three books above (read only), for measuring a real computer:
+    /// `ZAKLON_KIWIX_PORT=50509 cargo test -p zaklon-hub --lib live_library -- --ignored --nocapture`
+    /// (`ZAKLON_LIVE_ONLY=<part of a question>` runs just that question).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore]
+    async fn live_library_search() {
+        let Some(port) = std::env::var("ZAKLON_KIWIX_PORT").ok().and_then(|p| p.parse().ok()) else { return };
+        let ai = test_assistant();
+        ai.library.attach(port);
+        let books = three_books();
+        // Terms as the 9B model planned them on the test computer, and one
+        // question routed by its words (no plan in time).
+        let cases: [(&str, &[&str], &[&str], bool); 6] = [
+            ("kako da prepoznam poskoka i sta ako te ujede zmija", &["poskoka", "ujed zmije", "prva pomoć"], &["snake bite", "first aid"], true),
+            ("koji su znaci mozdanog udara, kako da prepoznam slog", &["znakovi moždanog udara", "prepoznavanje moždanog udara", "slog moždanog udara"], &["stroke symptoms", "recognizing stroke", "stroke signs"], true),
+            ("kako da zamenim osigurac u kuci, izbacuje mi struju", &["zamena osigurača", "osigurač", "elektrika"], &["fuse replacement", "circuit breaker"], false),
+            ("kako se steriliše zimnica da se ne pokvari, tegle i poklopci", &["sterilizacija tegli", "zimnica", "poklopci"], &["jar sterilization", "canning"], false),
+            ("uhvatio me krpelj, kako da ga izvadim?", &["vađenje krpelja", "krpelj"], &["tick removal", "tick bite"], true),
+            ("kad je poceo prvi srpski ustanak i ko ga je vodio", &["prvi srpski ustanak", "karađorđe", "ustanak"], &[], false),
+        ];
+        let only = std::env::var("ZAKLON_LIVE_ONLY").unwrap_or_default();
+        for label in ["new, first time", "new, asked again"] {
+            println!("--- {label}");
+            for (q, terms, terms_en, safety) in cases.iter().filter(|c| c.0.contains(&only)) {
+                let (terms, terms_en) = (strings(terms), strings(terms_en));
+                let t = tokio::time::Instant::now();
+                let (found, stats) = find_sources(&*ai.library, &books, &terms, &terms_en, q, "sr", *safety).await;
+                let titles: Vec<&str> = found.iter().map(|p| p.source.title.as_str()).collect();
+                println!("{:>6} ms  {stats:?}  {titles:?}  <- {q}", t.elapsed().as_millis());
+            }
+        }
+        // The same questions, asked the way it was before (search only, no reading).
+        println!("--- before: every query in every book, 4 at a time");
+        for (q, terms, terms_en, _) in &cases {
+            let (terms, terms_en) = (strings(terms), strings(terms_en));
+            let queries = [old_queries(&terms), old_queries(&terms_en)];
+            let mut jobs: Vec<(&Book, String)> = Vec::new();
+            for i in 0..8 {
+                for b in &books {
+                    let set = usize::from(english_book(&b.languages) && !terms_en.is_empty());
+                    if let Some(query) = queries[set].get(i) {
+                        jobs.push((b, query.clone()));
+                    }
+                }
+            }
+            // Each search in a Serbian book: title lookups for up to 12 spellings
+            // and the query, and two full-text searches; in other books one of each.
+            let requests: usize = jobs
+                .iter()
+                .map(|(b, query)| {
+                    if b.languages.iter().any(|l| l == "srp") && zaklon_core::translit::has_serbian_latin(query) {
+                        zaklon_core::translit::cyrillic_candidates(query, 12).len() + 1 + 2
+                    } else {
+                        2
+                    }
+                })
+                .sum();
+            let t = tokio::time::Instant::now();
+            let searches: Vec<_> = jobs.iter().map(|(b, query)| ai.library.search_books(books.clone(), query, Some(b.name.as_str()), 5)).collect();
+            let found: Vec<Vec<SearchResult>> = futures_util::stream::iter(searches).buffered(4).collect().await;
+            let results = found.iter().map(Vec::len).sum::<usize>();
+            println!("{:>6} ms  {} searches, {requests} requests, {results} results  <- {q}", t.elapsed().as_millis(), jobs.len());
+        }
+    }
+
+    fn candidate(set: usize, medical: bool) -> Candidate {
+        let result = SearchResult {
+            title: String::new(),
+            url: String::new(),
+            snippet: String::new(),
+            book: String::new(),
+            book_title_en: String::new(),
+            book_title_sr: String::new(),
+            kind: "text",
+        };
+        Candidate { result, set, scored: Scored::default(), medical, order: 0 }
+    }
+
+    #[test]
+    fn each_language_keeps_an_article_to_read() {
+        // Best first: more English results than are read score above the first Serbian one.
+        let mut c: Vec<Candidate> = (0..=FETCH).map(|_| candidate(1, false)).collect();
+        c.push(candidate(0, false));
+        c.push(candidate(1, true));
+        let mut want: Vec<usize> = (0..FETCH - 1).collect();
+        want.push(FETCH + 1);
+        assert_eq!(pick_reads(&c, false), want);
+        want.push(FETCH + 2);
+        assert_eq!(pick_reads(&c, true), want, "and a medical book for a health question");
+        assert_eq!(pick_reads(&c[..2], false), vec![0, 1]);
+        assert!(pick_reads(&[], true).is_empty());
+    }
+
+    #[test]
+    fn questions_stop_when_cancelled_late_or_abandoned_for_someone_else() {
+        let t0 = Instant::now();
+        let at = |s: u64| t0 + Duration::from_secs(s);
+        let mut answers: HashMap<String, Answer> = HashMap::new();
+        let mut running = Answer::new("a".into(), "q".into(), "sr", false, t0);
+        running.started = true;
+        running.deadline = Some(at(360));
+        answers.insert("a".into(), running);
+        assert_eq!(stop_reason(&answers, "a", at(10)), None);
+        assert_eq!(stop_reason(&answers, "gone", at(10)), Some(CANCELLED), "an answer no longer kept");
+        // Nobody has looked at it for a minute, but nobody else waits: it goes
+        // on (the app does not ask while it is in the background).
+        assert_eq!(stop_reason(&answers, "a", at(61)), None);
+        // Someone asks another question: the abandoned one gives way...
+        answers.insert("b".into(), Answer::new("b".into(), "q2".into(), "sr", false, at(70)));
+        assert_eq!(stop_reason(&answers, "a", at(71)), Some(CANCELLED));
+        // ...but not while its asker still looks at it.
+        answers.get_mut("a").unwrap().seen = at(65);
+        assert_eq!(stop_reason(&answers, "a", at(71)), None);
+        assert_eq!(stop_reason(&answers, "b", at(200)), None, "nobody waits behind the waiting one");
+        assert_eq!(stop_reason(&answers, "a", at(360)), Some(TOO_LONG), "its time is up");
+        answers.get_mut("b").unwrap().cancel = true;
+        assert_eq!(stop_reason(&answers, "b", at(71)), Some(CANCELLED));
+        assert_eq!(stop_reason(&answers, "a", at(200)), None, "a question being stopped is not waited for");
+    }
+
+    fn test_assistant() -> Arc<Assistant> {
+        let root = std::env::temp_dir().join(format!("zaklon-assistant-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let catalog = zaklon_core::catalog::Catalog { version: 1, generated: String::new(), packs: Vec::new() };
+        let downloads = Downloads::new(catalog, root.join("library"), root.join("state.json"));
+        let library = Library::new(downloads.clone());
+        Assistant::new(downloads, library, None)
+    }
+
+    /// The answer once it is finished (a few seconds at most here).
+    async fn finished_answer(ai: &Assistant, id: &str) -> Answer {
+        for _ in 0..100 {
+            let a = ai.answer(id).unwrap();
+            if finished(&a) {
+                return a;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        panic!("{id} did not finish");
+    }
+
+    #[tokio::test]
+    async fn abandoned_questions_give_way_and_never_make_the_assistant_busy() {
+        let ai = test_assistant();
+        let long_ago = || Instant::now() - ABANDONED - Duration::from_secs(1);
+        // A question is being answered.
+        let turn = ai.turn.lock().await;
+        let ask = |q: &str| ai.ask(q, "sr", AskContext::default());
+        let first = ask("Koliko traje hleb?").unwrap();
+        let second = ask("Kako se čuva mleko?").unwrap();
+        // Nobody asks about the first any more (a window closed, an evaluation gave up).
+        ai.update(&first, |a| a.seen = long_ago());
+        let left = finished_answer(&ai, &first).await;
+        assert_eq!((left.status, left.error.as_deref()), (AnswerStatus::Failed, Some(CANCELLED)), "it left the line");
+        assert!(!finished(&ai.poll(&second).unwrap()), "the other one still waits for its turn");
+
+        // Only questions somebody waits for make the assistant busy.
+        let more: Vec<String> = ["a?", "b?", "c?"].iter().map(|q| ask(q).unwrap()).collect();
+        assert!(ask("d?").unwrap_err().contains("busy"));
+        ai.update(&more[2], |a| a.seen = long_ago());
+        let fresh = ask("d?").expect("an abandoned question does not count");
+
+        // A cancelled question leaves the line at once, not when its turn comes.
+        assert!(ai.cancel(&more[0]));
+        assert_eq!(finished_answer(&ai, &more[0]).await.error.as_deref(), Some(CANCELLED));
+        assert_eq!(finished_answer(&ai, &more[2]).await.error.as_deref(), Some(CANCELLED), "abandoned, with others in line");
+
+        // The rest get their turn, in order (and fail at once: there is no AI model here).
+        drop(turn);
+        for id in [&second, &more[1], &fresh] {
+            let a = finished_answer(&ai, id).await;
+            assert_eq!(a.error.as_deref(), Some("no AI model is installed"));
+        }
     }
 }

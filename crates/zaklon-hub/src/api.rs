@@ -1767,8 +1767,10 @@ async fn assistant_ask(State(state): State<Arc<HubState>>, caller: Caller, Json(
     Ok(Json(serde_json::json!({ "id": id, "conversation": conversation, "turn": turn })))
 }
 
+/// An answer so far. Asking for it tells the hub that somebody still waits
+/// for it; a question nobody asks about gives way to the next one.
 async fn assistant_answer(State(state): State<Arc<HubState>>, _caller: Caller, Path(id): Path<String>) -> Result<Json<crate::assistant::Answer>, ApiError> {
-    state.assistant.answer(&id).map(Json).ok_or_else(|| not_found("no such answer"))
+    state.assistant.poll(&id).map(Json).ok_or_else(|| not_found("no such answer"))
 }
 
 /// Stop an answer that waits or is being written; what was written so far stays.
