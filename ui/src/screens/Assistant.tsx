@@ -683,6 +683,17 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
           <div className="chat-column">
             {err && <p className="error" role="alert">{err}</p>}
             {readOnly && showing && <p className="muted chat-note">{t("aiReadOnly")}</p>}
+            {/* An open conversation must not hide the way to ask: a phone away from
+                the hub (or a hub without a model) asks its own AI in a new one. */}
+            {showing && phoneOwnAi && (
+              <div className="panel notice stack chat-note">
+                <p style={{ margin: 0 }}>{hubDown ? t("aiAwayFromHub") : t("aiHubHasNoModel")}</p>
+                <div className="row">
+                  <button className="btn" onClick={newChat}>{t("aiAskThisPhone")}</button>
+                </div>
+              </div>
+            )}
+            {showing && isHub && !!ov && !hubReady && needsModel}
             {showing && unshown && <p className="muted chat-note">{t(unshown === "notKept" ? "aiNotKept" : "errGeneric")}</p>}
             {showing && !conv && !unshown && <p className="muted">{t("aiLoading")}</p>}
             {!showing && chat.length === 0 && start}

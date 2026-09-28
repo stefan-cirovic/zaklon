@@ -54,6 +54,11 @@ jobs:
       - name: Desktop app tests
         run: cargo test -p zaklon-app
 
+      - name: Phone offline logic and help checks
+        run: |
+          node ui/e2e/unit/offline.check.mts
+          node ui/e2e/unit/help.check.mts
+
       - name: Build the hub for interface tests
         run: cargo build -p zaklon-hub
 
