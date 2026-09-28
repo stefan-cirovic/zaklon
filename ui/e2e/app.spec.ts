@@ -675,6 +675,89 @@ test("assistant: without a model it offers the one that fits this computer", asy
   await expect(page.getByText("AI engine (llama.cpp)")).toBeVisible();
 });
 
+/** The hub's assistant on an 8 GB computer with the 2B and the 9B model installed; the 9B does not fit. */
+const EIGHT_GB = {
+  engine: "stopped", engine_installed: true, selected: "qwen35-2b", recommended: "qwen35-2b", ram_total: 8.2e9, books: 1,
+  models: [
+    { id: "qwen35-08b", title_en: "Small AI model (Qwen3.5 0.8B)", title_sr: "x", size: 8.3e8, installed: false, recommended: false, fits: true, needs_ram: 3.4e9 },
+    { id: "qwen35-2b", title_en: "AI model for phones (Qwen3.5 2B)", title_sr: "x", size: 1.3e9, installed: true, recommended: true, fits: true, needs_ram: 3.9e9 },
+    { id: "qwen35-4b", title_en: "AI model for laptops (Qwen3.5 4B)", title_sr: "x", size: 2.7e9, installed: false, recommended: false, fits: true, needs_ram: 5.8e9 },
+    { id: "qwen35-9b", title_en: "AI model for 16 GB computers (Qwen3.5 9B)", title_sr: "x", size: 5.7e9, installed: true, recommended: false, fits: false, needs_ram: 8.8e9 },
+  ],
+};
+
+test("assistant: a model that needs more memory than the computer has is marked and cannot be chosen", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.route("**/api/assistant", (route) => route.fulfill({ json: EIGHT_GB }));
+  let chosen: string | null = null;
+  await page.route("**/api/assistant/model", (route) => {
+    chosen = route.request().postDataJSON().id;
+    return route.fulfill({ status: 204, body: "" });
+  });
+  await page.goto("/#assistant");
+  const model = page.getByRole("combobox", { name: "Model" });
+  await expect(model).toHaveValue("qwen35-2b");
+  const big = model.locator('option[value="qwen35-9b"]');
+  await expect(big).toHaveText(/9B · needs more memory$/);
+  await expect(big).toBeDisabled();
+  await expect(model.locator('option[value="qwen35-2b"]')).toHaveText(/2B · recommended$/);
+  await expect(model.locator('option[value="qwen35-2b"]')).toBeEnabled();
+
+  // The same on Household > AI assistant.
+  await page.goto("/#household/assistant");
+  const pick = page.getByRole("combobox", { name: "Model" });
+  await expect(pick).toHaveValue("qwen35-2b");
+  await expect(pick.locator('option[value="qwen35-9b"]')).toHaveText(/needs more memory$/);
+  await expect(pick.locator('option[value="qwen35-9b"]')).toBeDisabled();
+  await expect(page.getByText(/Recommended for this computer with .*: AI model for phones \(Qwen3\.5 2B\)/)).toBeVisible();
+  expect(chosen).toBeNull();
+
+  // And in Add-ons, where models are downloaded.
+  await page.goto("/#addons/models");
+  await expect(page.locator('[data-entry="qwen35-9b"]')).toContainText("Needs more memory than this computer has.");
+  await expect(page.locator('[data-entry="qwen35-4b"]')).not.toContainText("Needs more memory");
+  await noHorizontalScroll(page);
+});
+
+test("assistant: a computer without the memory for any model says so; the rest still works", async ({ page }) => {
+  await ensureSetUp(page);
+  const models = EIGHT_GB.models.map((m) => ({ ...m, installed: false, recommended: false, fits: false }));
+  await page.route("**/api/assistant", (route) =>
+    route.fulfill({ json: { ...EIGHT_GB, engine: "no_model", selected: null, recommended: null, ram_total: 3.2e9, models } }),
+  );
+  await page.goto("/#assistant");
+  await expect(page.getByRole("heading", { name: "The assistant is not available on this computer" })).toBeVisible();
+  await expect(page.getByText("This computer does not have enough memory for an AI model. The library, maps, supplies and phones all still work.")).toBeVisible();
+  // Nothing to download, and no question box.
+  await expect(page.getByRole("button", { name: "Download" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "The assistant needs an AI model" })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Ask something" })).toHaveCount(0);
+  await page.goto("/#household/assistant");
+  await expect(page.getByText(/The assistant is not available on this computer\. This computer does not have enough memory/)).toBeVisible();
+  // The library still opens.
+  await page.goto("/#library");
+  await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
+  await noHorizontalScroll(page);
+});
+
+test("assistant: an answer that finds too little free memory says so in the user's words", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.route("**/api/assistant", (route) => route.fulfill({ json: { ...EIGHT_GB, engine: "stopped" } }));
+  await page.route("**/api/assistant/ask", (route) => route.fulfill({ json: { id: "m1" } }));
+  await page.route("**/api/assistant/answers/m1", (route) =>
+    route.fulfill({
+      json: {
+        id: "m1", question: "How long does rice keep?", status: "failed", grounded: false, language: "en", tokens_per_second: 0, sources: [], text: "",
+        error: "not enough free memory for the AI right now; close some programs and try again",
+      },
+    }),
+  );
+  await page.goto("/#assistant");
+  await page.getByRole("textbox", { name: "Ask something" }).fill("How long does rice keep?");
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  await expect(page.locator(".exchange .error")).toHaveText("Not enough free memory for the AI right now. Close some programs and try again.");
+});
+
 test("assistant: an answer shows its sources, which open the article", async ({ page }) => {
   await ensureSetUp(page);
   // A hub with a model and a library, answering from a source (served by the test, not a real model).

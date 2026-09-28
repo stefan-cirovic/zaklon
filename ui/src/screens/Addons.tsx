@@ -74,6 +74,8 @@ export default function Addons({ t, lang, isHub }: Props) {
   const [data, setData] = useState<CatalogReply | null>(null);
   const [maps, setMaps] = useState<MapsReply | null>(null);
   const [drives, setDrives] = useState<Drive[] | null>(null);
+  // The AI models the hub does not have the memory for (they run on the hub).
+  const [tooBig, setTooBig] = useState<Set<string>>(new Set());
   const [err, setErr] = useState<string | null>(null);
   const [loc, setLoc] = useState<Loc>(locFromHash);
   const [query, setQuery] = useState("");
@@ -145,6 +147,11 @@ export default function Addons({ t, lang, isHub }: Props) {
   }, [t]);
   const busy = data?.packs.some((p) => BUSY.includes(p.state.status)) ?? false;
   useVisiblePoll(load, busy ? 1500 : 10000);
+  useEffect(() => {
+    api<{ models: { id: string; fits?: boolean }[] }>("/api/assistant")
+      .then((a) => setTooBig(new Set(a.models.filter((m) => m.fits === false).map((m) => m.id))))
+      .catch(() => {});
+  }, []);
 
   const loadMaps = useCallback(async () => {
     try {
@@ -237,7 +244,7 @@ export default function Addons({ t, lang, isHub }: Props) {
         (s.status === "downloading" || s.status === "paused" || s.status === "queued") && s.bytes_total
           ? `${fmtBytes(s.bytes_done)} / ${fmtBytes(s.bytes_total)}${s.status === "downloading" && s.speed > 0 ? ` · ${fmtBytes(s.speed)}/s` : ""}`
           : null,
-      error: s.status === "failed" && s.error ? errText(t, new Error(s.error)) : null,
+      error: s.status === "failed" && s.error ? errText(t, new Error(s.error)) : tooBig.has(p.id) ? t("aiModelTooBig") : null,
       actions: (small) => (
         <>
           {s.status === "not_installed" && button(small, true, t("download"), download)}

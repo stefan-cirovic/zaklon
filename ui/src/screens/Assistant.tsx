@@ -30,12 +30,14 @@ import { Icon } from "../components/Icon";
 
 type T = (k: Key) => string;
 type EngineState = "missing" | "no_model" | "stopped" | "starting" | "ready" | "failed";
-type ModelChoice = { id: string; title_en: string; title_sr: string; size: number; installed: boolean; recommended: boolean };
+/** `fits`: the hub has the memory for it (an older hub does not say). */
+type ModelChoice = { id: string; title_en: string; title_sr: string; size: number; installed: boolean; recommended: boolean; fits?: boolean };
 type Overview = {
   engine: EngineState;
   engine_installed: boolean;
   selected: string | null;
-  recommended: string;
+  /** null: no model fits the hub's memory. */
+  recommended: string | null;
   ram_total: number;
   models: ModelChoice[];
   books: number;
@@ -66,6 +68,16 @@ function saveChat(list: Answer[]) {
   } catch {
     /* private mode: just for this session */
   }
+}
+
+/** The model the hub would answer with needs more memory than the hub has. */
+function tooBig(ov: Overview): boolean {
+  return ov.models.find((m) => m.id === ov.selected)?.fits === false;
+}
+
+/** No AI model fits the hub's memory: the assistant is not for that computer. */
+function noAiThere(ov: Overview): boolean {
+  return ov.recommended === null && ov.models.length > 0;
 }
 
 const NARROW = "(max-width: 899px)";
@@ -443,7 +455,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
     }
     if (!ov || saved === null) return;
     pendingAsk.current = null;
-    const ready = ov.engine !== "missing" && ov.engine !== "no_model";
+    const ready = ov.engine !== "missing" && ov.engine !== "no_model" && !tooBig(ov);
     if (ready && openId === null) void send(q);
   });
 
@@ -532,9 +544,12 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
   }
 
   // A phone away from home (or a hub without the assistant) uses its own model for new questions.
-  const hubReady = !!ov && ov.engine !== "missing" && ov.engine !== "no_model";
+  // A hub whose model needs more memory than it has cannot answer either.
+  const hubReady = !!ov && ov.engine !== "missing" && ov.engine !== "no_model" && !tooBig(ov);
   const phoneOwnAi = !isHub && (hubDown || (!!ov && !hubReady));
-  const rec = ov?.models.find((m) => m.id === ov.recommended) ?? ov?.models[0];
+  const noAi = !!ov && noAiThere(ov);
+  const whyPhoneAi = hubDown ? t("aiAwayFromHub") : noAi || (!!ov && tooBig(ov)) ? t("aiHubNoMemory") : t("aiHubHasNoModel");
+  const rec = ov?.recommended ? ov.models.find((m) => m.id === ov.recommended) : undefined;
   const stateOf = (id: string) => downloads.find((d) => d.id === id)?.state;
   const installedModels = ov?.models.filter((m) => m.installed) ?? [];
   const statusText: Record<Answer["status"], Key> = {
@@ -573,9 +588,17 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
     />
   );
 
-  const needsModel = ov && !hubReady && rec && (
+  // Nothing fits this computer: say so, and that everything else still works.
+  const notHere = ov && !hubReady && noAi && (
+    <div className="panel stack left">
+      <h2>{t("aiNotHere")}</h2>
+      <p className="muted" style={{ margin: 0 }}>{t("aiNotHereLong")}</p>
+    </div>
+  );
+  const needsModel = notHere || (ov && !hubReady && rec && (
     <div className="panel stack left">
       <h2>{t("aiNeedsModel")}</h2>
+      {tooBig(ov) && <p className="warn" style={{ margin: 0 }}>{t("errAiTooBig")}</p>}
       <p className="muted" style={{ margin: 0 }}>
         {t("aiRecommendedFor")} {fmtBytes(ov.ram_total)} {t("aiRecommendedMemory")}: <strong>{title(rec)}</strong> ({fmtBytes(rec.size)})
       </p>
@@ -603,7 +626,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
         );
       })()}
     </div>
-  );
+  ));
 
   // The model and whether it runs: under the question box on a wide screen, and on a phone
   // (where room is short) on the screen a new conversation starts with.
@@ -613,8 +636,9 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
         <span>{t("aiModel")}</span>
         <select value={ov.selected ?? ""} onChange={(e) => select(e.target.value)} disabled={busy}>
           {installedModels.map((m) => (
-            <option key={m.id} value={m.id}>
+            <option key={m.id} value={m.id} disabled={m.fits === false}>
               {title(m).match(/\(([^)]+)\)/)?.[1] ?? title(m)}{m.recommended ? ` · ${t("recommended")}` : ""}
+              {m.fits === false ? ` · ${t("aiNeedsMoreMemory")}` : ""}
             </option>
           ))}
         </select>
@@ -637,7 +661,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
     <div className="stack chat-start">
       {phoneOwnAi ? (
         <>
-          <p className="muted" style={{ margin: 0 }}>{hubDown ? t("aiAwayFromHub") : t("aiHubHasNoModel")}</p>
+          <p className="muted" style={{ margin: 0 }}>{whyPhoneAi}</p>
           <PhoneAi t={t} lang={lang} question={fromHome ?? undefined} />
         </>
       ) : (
@@ -705,7 +729,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
                 the hub (or a hub without a model) asks its own AI in a new one. */}
             {showing && phoneOwnAi && (
               <div className="panel notice stack chat-note">
-                <p style={{ margin: 0 }}>{hubDown ? t("aiAwayFromHub") : t("aiHubHasNoModel")}</p>
+                <p style={{ margin: 0 }}>{whyPhoneAi}</p>
                 <div className="row">
                   <button className="btn" onClick={newChat}>{t("aiAskThisPhone")}</button>
                 </div>

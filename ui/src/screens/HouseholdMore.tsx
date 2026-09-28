@@ -168,8 +168,10 @@ export function NetworkAddresses({ t, status }: { t: T; status: Status }) {
   );
 }
 
-type ModelChoice = { id: string; title_en: string; title_sr: string; size: number; installed: boolean; recommended: boolean };
-type AiOverview = { selected: string | null; recommended: string; ram_total: number; models: ModelChoice[] };
+/** `fits`: the hub has the memory for it (an older hub does not say). */
+type ModelChoice = { id: string; title_en: string; title_sr: string; size: number; installed: boolean; recommended: boolean; fits?: boolean };
+/** `recommended` is null when no model fits the hub's memory. */
+type AiOverview = { selected: string | null; recommended: string | null; ram_total: number; models: ModelChoice[] };
 
 /** Which of the hub's AI models the assistant uses (the whole household's choice). */
 export function AiModel({ t, lang, isHub }: { t: T; lang: Lang; isHub: boolean }) {
@@ -197,30 +199,40 @@ export function AiModel({ t, lang, isHub }: { t: T; lang: Lang; isHub: boolean }
 
   const title = (m: ModelChoice) => (lang === "sr" ? m.title_sr : m.title_en);
   const installed = ov?.models.filter((m) => m.installed) ?? [];
-  const rec = ov?.models.find((m) => m.id === ov.recommended);
+  const rec = ov?.recommended ? ov.models.find((m) => m.id === ov.recommended) : undefined;
+  const selectedTooBig = ov?.models.find((m) => m.id === ov.selected)?.fits === false;
+  // No model fits: the assistant is not for this computer, and everything else still works.
+  const noAi = !!ov && ov.recommended === null && ov.models.length > 0;
   return (
     <div className="panel stack left">
       <h2>{t("catModels")}</h2>
       {err && <p className="error" role="alert">{err}</p>}
       {ov &&
         (installed.length === 0 ? (
-          <p style={{ margin: 0 }}>{t("aiNeedsModel")}.</p>
+          !noAi && <p style={{ margin: 0 }}>{t("aiNeedsModel")}.</p>
         ) : (
           <label className="field">
             {t("aiModel")}
             <select value={ov.selected ?? ""} onChange={(e) => select(e.target.value)} disabled={busy}>
               {installed.map((m) => (
-                <option key={m.id} value={m.id}>
+                <option key={m.id} value={m.id} disabled={m.fits === false && m.id !== ov.selected}>
                   {title(m)}
                   {m.recommended ? ` · ${t("recommended")}` : ""}
+                  {m.fits === false ? ` · ${t("aiNeedsMoreMemory")}` : ""}
                 </option>
               ))}
             </select>
           </label>
         ))}
+      {selectedTooBig && <p className="warn" style={{ margin: 0, fontSize: 14 }}>{t("errAiTooBig")}</p>}
       {ov && rec && (
         <p className="muted" style={{ margin: 0, fontSize: 14 }}>
           {t("aiRecommendedFor")} {fmtBytes(ov.ram_total)} {t("aiRecommendedMemory")}: <strong>{title(rec)}</strong> ({fmtBytes(rec.size)})
+        </p>
+      )}
+      {noAi && (
+        <p className="warn" style={{ margin: 0, fontSize: 14 }}>
+          {t("aiNotHere")}. {t("aiNotHereLong")}
         </p>
       )}
       {isHub ? (

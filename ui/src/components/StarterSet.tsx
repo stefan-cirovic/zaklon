@@ -27,7 +27,8 @@ export default function StarterSet({ t, lang, packs, freeBytes, onStarted }: { t
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    api<{ recommended: string }>("/api/assistant").then((a) => setModel(a.recommended)).catch(() => {});
+    // No model when none fits this computer's memory (recommended is null).
+    api<{ recommended: string | null }>("/api/assistant").then((a) => setModel(a.recommended ?? null)).catch(() => {});
     const country = MAP[lang];
     if (country) {
       api<{ countries: MapCountry[] }>("/api/maps")
