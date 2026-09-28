@@ -53,11 +53,12 @@ const GIB: u64 = 1 << 30;
 /// on the computer crawls (Windows 10 itself asks for 2 GB).
 const RESERVE: u64 = 2 * GIB;
 /// Context checkpoints each slot keeps: copies of the model's running state
-/// (a Qwen3.5 model is partly recurrent) that the engine makes near the end
-/// of each prompt, up to 32 a slot, and drops once the next prompt no
-/// longer starts with what they cover. With the hub's prompts a slot kept at
-/// most 2 when measured (see `ModelMemory`).
-const CHECKPOINTS: u64 = 2;
+/// (a Qwen3.5 model is partly recurrent) that the engine makes where the
+/// part a prompt shares with the one before ends and near its end, up to 32
+/// a slot, and drops once the next prompt no longer starts with what they
+/// cover. Twelve questions in a row, as the hub asks them, left 3 in each
+/// slot, and the engine's memory stayed the same.
+const CHECKPOINTS: u64 = 3;
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -123,18 +124,20 @@ struct ModelMemory {
     base: u64,
 }
 
+/// Measured on the test computer (see the tests): the engine's memory with
+/// the 0.8B model (its file 795 MiB) was 1,525 MiB with 5 slots and 1,237
+/// MiB with 2; with the 2B (1,222 MiB) 1,983 and 1,639, with the 4B (2,614
+/// MiB) 4,342 and 3,447. Not counted there are the parts of the file the
+/// engine copied into another layout at the start and no longer reads (491
+/// MiB of the 2B, 1,298 MiB of the 4B), which Windows drops first when
+/// memory is short.
 fn model_memory(model: &str) -> ModelMemory {
     match model {
-        // Measured with 5 slots of 6144 tokens: 1,525 MiB with the 0.8B model
-        // (its file 795 MiB), 1,983 MiB with the 2B (1,222 MiB; not counting
-        // the 491 MiB of the file the engine copied into another layout and
-        // no longer reads, which Windows drops first when memory is short).
         "qwen35-08b" => ModelMemory { kv_per_token: 12 << 10, state_per_slot: 19_266 * MIB / 1000, base: 160 * MIB },
         "qwen35-2b" => ModelMemory { kv_per_token: 12 << 10, state_per_slot: 19_266 * MIB / 1000, base: 190 * MIB },
-        // 4,342 MiB (the file 2,614 MiB; again not counting 1,298 MiB copied).
         "qwen35-4b" => ModelMemory { kv_per_token: 32 << 10, state_per_slot: 50_251 * MIB / 1000, base: 215 * MIB },
         // The 9B (its file 5,417 MiB) as the 4B, with larger working buffers
-        // (103 MiB, the 4B 88); and any model not measured.
+        // (102 MiB, the 4B's 75 to 88); and any model not measured.
         _ => ModelMemory { kv_per_token: 32 << 10, state_per_slot: 50_251 * MIB / 1000, base: 256 * MIB },
     }
 }
@@ -541,12 +544,25 @@ mod tests {
     #[test]
     fn what_each_model_needs() {
         let mib = |id: &str, slots| engine_memory(id, size(id), slots) / MIB;
-        // Measured with 5 slots (see `ModelMemory`): 1,525 MiB with the 0.8B
-        // model, 1,983 with the 2B and 4,342 with the 4B, each with 6
-        // checkpoints; the formula counts 2 for every slot.
-        assert!((1525..1650).contains(&mib("qwen35-08b", SLOTS)), "{}", mib("qwen35-08b", SLOTS));
-        assert!((1983..2100).contains(&mib("qwen35-2b", SLOTS)), "{}", mib("qwen35-2b", SLOTS));
-        assert!((4342..4600).contains(&mib("qwen35-4b", SLOTS)), "{}", mib("qwen35-4b", SLOTS));
+        // The engine's memory (MiB) measured with llama-server b11202 on the
+        // test computer after a prompt of 6,000 tokens and one in every other
+        // slot (the 0.8B with 2 slots: after 12 questions), less the parts of
+        // the file copied into another layout. The formula is never below,
+        // and not much above (it counts more checkpoints).
+        let measured = [
+            ("qwen35-08b", SLOTS, 1525),
+            ("qwen35-08b", LEAN_SLOTS, 1237),
+            ("qwen35-2b", SLOTS, 1983),
+            ("qwen35-2b", LEAN_SLOTS, 1639),
+            ("qwen35-4b", SLOTS, 4342),
+            ("qwen35-4b", LEAN_SLOTS, 3447),
+            // The engine gave back part of the 9B's copied file; more was needed.
+            ("qwen35-9b", LEAN_SLOTS, 5730),
+        ];
+        for (id, slots, used) in measured {
+            let formula = mib(id, slots);
+            assert!(formula >= used && formula < used * 115 / 100, "{id} with {slots} slots: {formula} MiB, measured {used}");
+        }
         // Fewer slots, less memory, and a bigger model always needs more.
         for id in MODEL_ORDER {
             assert!(mib(id, LEAN_SLOTS) < mib(id, SLOTS), "{id}");
