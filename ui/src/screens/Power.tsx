@@ -399,7 +399,7 @@ export default function Power({ t, lang }: Props) {
   const formulas: [Key, string][] = [
     ["pwF1", `${used.length > 1 && used.length <= 8 ? `${used.map(n0).join(" + ")} = ` : ""}${n0(res.loadWh)} Wh`],
     ["pwF2", `${n0(res.acWh)} ÷ ${n2(p.inverterEff)} + ${n0(res.dcWh)} = ${n0(res.fromBatteryWh)} Wh`],
-    ["pwF3", `${n0(res.fromBatteryWh)} × ${n2(p.days)} ÷ ${n2(p.usable)} = ${n0(res.batteryWh)} Wh; ${n0(res.batteryWh)} ÷ ${p.volts} V = ${n0(res.batteryAh)} Ah`],
+    ["pwF3", `${n0(res.fromBatteryWh)} × ${n2(p.days)} ÷ ${n2(p.usable)} = ${n0(res.batteryWh)} Wh; ${n0(res.batteryWh)} ÷ ${p.volts} V = ${n0(up(res.batteryAh))} Ah`],
     ["pwF4", `${n0(res.fromBatteryWh)} ÷ ${perWatt} = ${n0(res.keepUpW)} W`],
     ["pwF5", `${n0(res.fromBatteryWh)} × ${n2(p.days + 1)} ÷ ${perWatt} = ${n0(res.refillW)} W`],
     [
