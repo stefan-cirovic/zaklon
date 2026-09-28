@@ -265,6 +265,15 @@ const en = {
   helpTopics: "Help topics", helpOnThisPage: "On this page", helpHowItWorks: "How it works", helpBackToHelp: "Back to Help",
   helpPrevious: "Previous", helpNext: "Next", helpNote: "Good to know", helpWarn: "Important",
   helpNotLoaded: "The help could not be loaded. Reload the page.",
+  // Home: the household at a glance.
+  homePower: "Power", homeOnPower: "On power", homeAskLabel: "Ask anything", homeAskPlaceholder: "Ask anything…",
+  homeRecentChats: "Recent conversations", homeNoChats: "No conversations yet. Your first question starts one.",
+  homeAllChats: "All conversations", homeOpenSupplies: "Open Supplies", homeOpenShopping: "Open the shopping list",
+  homeNothingExpires: "Nothing expires in the next 30 days.", homeNothingLow: "Nothing is running low.",
+  homeShoppingEmpty: "The shopping list is empty.", homeMoreN: "{n} more", homeItemsTotal: "Items in the supplies",
+  homeNoSupplies: "Nothing in the supplies yet.", homeToPutAway: "To put away",
+  homeLibraryAddons: "Library and add-ons", homeDownloads: "Downloads", homeNoDownloads: "Nothing is downloading.",
+  homeQuickAccess: "Quick access",
 };
 
 const sr: typeof en = {
@@ -529,6 +538,14 @@ const sr: typeof en = {
   helpTopics: "Teme pomoći", helpOnThisPage: "Na ovoj strani", helpHowItWorks: "Kako radi", helpBackToHelp: "Nazad na Pomoć",
   helpPrevious: "Prethodna", helpNext: "Sledeća", helpNote: "Dobro je znati", helpWarn: "Važno",
   helpNotLoaded: "Pomoć nije mogla da se učita. Ponovo učitaj stranu.",
+  homePower: "Napajanje", homeOnPower: "Na struji", homeAskLabel: "Pitaj bilo šta", homeAskPlaceholder: "Pitaj bilo šta…",
+  homeRecentChats: "Nedavni razgovori", homeNoChats: "Još nema razgovora. Prvo pitanje započinje novi.",
+  homeAllChats: "Svi razgovori", homeOpenSupplies: "Otvori Zalihe", homeOpenShopping: "Otvori listu za kupovinu",
+  homeNothingExpires: "Ništa ne ističe u narednih 30 dana.", homeNothingLow: "Ničega ne ponestaje.",
+  homeShoppingEmpty: "Lista za kupovinu je prazna.", homeMoreN: "još {n}", homeItemsTotal: "Stavki u zalihama",
+  homeNoSupplies: "U zalihama još nema ničega.", homeToPutAway: "Za spremanje",
+  homeLibraryAddons: "Biblioteka i dodaci", homeDownloads: "Preuzimanja", homeNoDownloads: "Ništa se ne preuzima.",
+  homeQuickAccess: "Brzi pristup",
 };
 
 const dict: Record<Lang, typeof en> = { en, sr };

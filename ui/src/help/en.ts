@@ -183,49 +183,75 @@ const en: HelpContent = {
 
   home: {
     title: "Home",
-    summary: "The hub at a glance: whether it runs, the battery, and what expires or runs low.",
+    summary: "The household at a glance: the hub, what needs attention, the assistant, the supplies and the add-ons.",
     open: { href: "#home", label: "Open Home" },
     sections: [
       {
         id: "state",
         title: "The hub's state",
         body: [
-          { p: "At the top is the hub's name and whether it is **Running** or **Not reachable**. Below it:" },
+          { p: "At the top is the hub's name and whether it is **Running** or **Not reachable**. Next to it:" },
           {
             list: [
+              "**Power**: the laptop's battery and whether it is charging. A computer without a battery shows **On power**.",
               "**Devices**: how many phones are paired.",
-              "**Uptime**: how long the hub has been running.",
-              "**Battery**: the laptop's battery and whether it is charging. A computer without a battery shows **No battery**.",
               "**Addresses**: where phones on the Wi-Fi reach the hub.",
             ],
           },
         ],
       },
       {
+        id: "warnings",
+        title: "Warnings",
+        body: [
+          { p: "Below the hub's state come the things that need attention, only when there are any:" },
+          {
+            list: [
+              "The hub is not running, or the phone cannot reach it.",
+              "Windows Firewall keeps phones out; a button fixes it. See [Network](#household/network).",
+              "A newer version of Zaklon is out.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "ask",
+        title: "Ask anything",
+        body: [
+          { p: "Type a question into **Ask anything** and press Enter: the [Assistant](#assistant) opens and asks it in a new conversation. Below the box are the last three conversations of this device; choose one to open it." },
+        ],
+      },
+      {
         id: "lists",
-        title: "Expiring soon and running low",
+        title: "Supplies",
         body: [
           {
             list: [
               "**Expired or expiring soon** lists supplies that have expired or expire within 30 days.",
               "**Running low** lists supplies that have less than their **Warn below** amount.",
+              "**Shopping list** shows what is still to buy.",
             ],
           },
-          { p: "Each list shows up to five items. Open [Supplies](#supplies) to see them all." },
+          { p: "Each list shows up to five entries. Open [Supplies](#supplies) to see them all." },
         ],
       },
       {
-        id: "actions",
-        title: "Ask, and news",
+        id: "addons",
+        title: "Library and add-ons",
         body: [
-          { p: "**Ask the assistant** opens the [Assistant](#assistant). When a newer version of Zaklon is out, a note about it appears on Home too." },
+          { p: "How full the library's drive is, what is downloading right now, and how many add-ons have a new version, are paused or did not finish. Open [Add-ons](#addons) to manage them." },
         ],
+      },
+      {
+        id: "tools",
+        title: "Quick access",
+        body: [{ p: "A tile for every tool that is not in the bar, and one for Help." }],
       },
       {
         id: "away",
         title: "On a phone away from home",
         body: [
-          { p: "When the hub cannot be reached, Home shows the last numbers it gave, with the time they are from. See [Working without internet](#help/offline)." },
+          { p: "When the hub cannot be reached, Home shows the supplies and conversations the phone kept, with the time they are from. See [Working without internet](#help/offline)." },
         ],
       },
     ],

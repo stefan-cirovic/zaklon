@@ -110,7 +110,7 @@ test("supplies: add, adjust, running low, shopping list, history, home", async (
   await expect(page.getByText("used").first()).toBeVisible();
 
   await page.goto("/#home");
-  await expect(page.locator(".panel-list", { hasText: "Running low" }).getByText(name)).toBeVisible();
+  await expect(page.locator(".home-supplies .home-part", { hasText: "Running low" }).getByText(name)).toBeVisible();
 });
 
 test("supplies: an expired item is flagged and a bad date is refused", async ({ page }, info) => {
@@ -788,7 +788,8 @@ test("updates: Home tells about a newer version; Household has the switch", asyn
   );
   await page.goto("/#home");
   await expect(page.getByText("A newer Zaklon is available:")).toBeVisible();
-  await expect(page.locator(".update-banner strong")).toHaveText("0.2.0");
+  // With the warnings, above the cards.
+  await expect(page.locator(".home-alerts .update-banner strong")).toHaveText("0.2.0");
   // The top of Household says so too, and leads to the switch.
   await page.goto("/#household");
   await page.locator(".hub-card").getByRole("link", { name: "New version 0.2.0" }).click();
@@ -797,6 +798,237 @@ test("updates: Home tells about a newer version; Household has the switch", asyn
   await expect(page.getByText(/Check once a day whether a newer Zaklon is out/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Check now" })).toBeVisible();
   await noHorizontalScroll(page);
+});
+
+/** An item as the hub lists it, for simulated answers. */
+function fakeItem(id: string, name: string, more: Record<string, unknown> = {}) {
+  return {
+    id, name, quantity: 1, unit: "pcs", category: "food", place: null, expiry: null, barcode: null, min_quantity: null, notes: null,
+    updated_at: "2026-09-28T08:00:00Z", updated_by: null, ...more,
+  };
+}
+
+test("home: the hub at the top, the supplies at a glance, and the tools not in the bar", async ({ page }, info) => {
+  await ensureSetUp(page);
+  await page.request.post("/api/pinned-tool", { data: { tool: null } });
+  const soon = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+  // The supplies and the shopping list, simulated so the lists are known.
+  await page.route("**/api/supplies/summary", (r) =>
+    r.fulfill({
+      json: {
+        total_items: 42,
+        expired: [fakeItem("e1", "Beans", { expiry: "2020-01-31" })],
+        expiring_soon: [1, 2, 3, 4, 5, 6].map((n) => fakeItem(`s${n}`, `Yogurt ${n}`, { expiry: soon })),
+        running_low: [fakeItem("l1", "Rice", { unit: "kg", min_quantity: 4 })],
+        to_put_away: 2,
+      },
+    }),
+  );
+  await page.route("**/api/shopping", (r) =>
+    r.fulfill({
+      json: [
+        { id: "b1", item_id: null, text: "Matches", quantity: 2, unit: "pack", status: "open", source: "manual" },
+        { id: "b2", item_id: null, text: "Candles", quantity: null, unit: null, status: "open", source: "manual" },
+        { id: "b3", item_id: null, text: "Salt", quantity: 1, unit: "kg", status: "bought", source: "manual" },
+      ],
+    }),
+  );
+  const hub = await (await page.request.get("/api/status")).json();
+  await page.goto("/#home");
+
+  // The hub in one line: its name, that it runs, its power, the paired devices and the address.
+  const head = page.locator(".home-head");
+  await expect(head.getByRole("heading", { level: 1 })).toHaveText(hub.hub_name);
+  await expect(head.locator(".home-state")).toHaveText("Running");
+  const facts = head.locator(".home-facts");
+  await expect(facts.locator("dt")).toHaveText(["Power", "Devices", "Addresses"]);
+  // The power comes with the add-ons' answer: a battery, or "On power".
+  await expect(facts.locator("dd").first()).toHaveText(/^(On power|\d+% · (charging|on battery))$/);
+  await expect(facts.locator("dd").nth(1)).toHaveText(/^\d+$/);
+  await expect(head.getByRole("link", { name: "How it works" })).toBeVisible();
+
+  // The supplies: what expires (expired first), what runs low, and what is to buy.
+  const supplies = page.getByRole("region", { name: "Supplies" });
+  const expiring = supplies.getByRole("region", { name: /^Expired or expiring soon/ });
+  await expect(expiring.getByRole("heading")).toHaveText("Expired or expiring soon 7");
+  await expect(expiring.locator(".mini-row")).toHaveCount(5);
+  await expect(expiring.locator(".mini-row").first()).toContainText("Beans");
+  await expect(expiring.locator(".mini-row").first()).toContainText("expired · 31 Jan 2020");
+  await expect(expiring.getByRole("link", { name: "2 more" })).toHaveAttribute("href", "#supplies");
+  const low = supplies.getByRole("region", { name: /^Running low/ });
+  await expect(low.locator(".mini-row")).toHaveText([/Rice\s*1 \/ 4 kg/]);
+  const shopping = supplies.getByRole("region", { name: /^Shopping list/ });
+  await expect(shopping.getByRole("heading")).toHaveText("Shopping list 2");
+  await expect(shopping.locator(".mini-row")).toHaveText([/Matches\s*2 packs/, "Candles"]);
+  await expect(supplies.locator(".home-foot")).toContainText("Items in the supplies: 42");
+  await expect(supplies.getByRole("link", { name: "To put away: 2" })).toHaveAttribute("href", "#supplies/putaway");
+
+  // The tools not in the bar, and Help.
+  const tools = page.getByRole("region", { name: "Quick access" });
+  await expect(tools.getByRole("link")).toHaveText(["Supplies", "Library", "Maps", "Add-ons", "Help"]);
+  await noHorizontalScroll(page);
+
+  const box = async (name: string) => (await page.getByRole("region", { name, exact: true }).boundingBox())!;
+  if (info.project.name === "laptop") {
+    // A tall window: the assistant across the top, the supplies and the library side by side
+    // sharing the height that is left, the tools along the bottom, just above the bar.
+    await page.setViewportSize({ width: 1400, height: 1200 });
+    const [ask, sup, lib, quick] = [await box("Assistant"), await box("Supplies"), await box("Library and add-ons"), await box("Quick access")];
+    expect(ask.width).toBeGreaterThan(1250);
+    expect(Math.abs(sup.y - lib.y)).toBeLessThan(2);
+    expect(Math.abs(sup.height - lib.height)).toBeLessThan(2);
+    expect(lib.x).toBeGreaterThan(sup.x + sup.width);
+    expect(sup.width).toBeGreaterThan(lib.width * 1.5);
+    // Below them only the version line (about 100 px with its spacing).
+    const nav = (await page.locator("nav.nav").boundingBox())!;
+    expect(nav.y - (quick.y + quick.height), "the cards reach down to the bar").toBeLessThan(120);
+    await noHorizontalScroll(page);
+  } else {
+    // A phone: one card under the other, and everything to tap a fingertip wide.
+    const [sup, lib] = [await box("Supplies"), await box("Library and add-ons")];
+    expect(lib.y).toBeGreaterThanOrEqual(sup.y + sup.height);
+    const small = await page.evaluate(() =>
+      [...document.querySelectorAll(".home a, .home button, .home input")]
+        .map((el) => ({ el, r: el.getBoundingClientRect() }))
+        .filter(({ r }) => r.width > 0 && (r.height < 44 || r.width < 44))
+        .map(({ el }) => el.textContent || el.getAttribute("aria-label")),
+    );
+    expect(small, "controls smaller than 44 px").toEqual([]);
+  }
+
+  // A link opens its view of Supplies, which stays in the address.
+  await shopping.getByRole("link", { name: "Open the shopping list" }).click();
+  await expect(page).toHaveURL(/#supplies\/shopping$/);
+  await expect(page.getByRole("button", { name: "Shopping list" })).toHaveAttribute("aria-pressed", "true");
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Shopping list" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "History" }).click();
+  await expect(page).toHaveURL(/#supplies\/history$/);
+
+  // A pinned tool is in the bar, so not among the tiles.
+  await page.request.post("/api/pinned-tool", { data: { tool: "maps" } });
+  await page.goto("/#home");
+  await page.reload();
+  await expect(tools.getByRole("link")).toHaveText(["Supplies", "Library", "Add-ons", "Help"]);
+  await page.request.post("/api/pinned-tool", { data: { tool: null } });
+});
+
+test("home: a question asked there starts a new conversation; the last three open from there", async ({ page }, info) => {
+  await ensureSetUp(page);
+  // The test hub has no AI: the assistant says it is ready, and every answer then fails at once,
+  // which is enough to save the conversation.
+  await page.route("**/api/assistant", (route) =>
+    route.fulfill({
+      json: {
+        engine: "ready", engine_installed: true, selected: "qwen35-2b", recommended: "qwen35-2b", ram_total: 8e9, books: 1,
+        models: [{ id: "qwen35-2b", title_en: "AI model for phones (Qwen3.5 2B)", title_sr: "x", size: 1e9, installed: true, recommended: true }],
+      },
+    }),
+  );
+  const stamp = `${info.project.name} ${Date.now() % 1_000_000}`;
+  for (const title of [`Seeds ${stamp}`, `Batteries ${stamp}`]) await page.request.post("/api/conversations", { data: { title } });
+  const seeds = (await (await page.request.get("/api/conversations")).json()).find((c: { title: string }) => c.title === `Seeds ${stamp}`);
+  const asked: Record<string, unknown>[] = [];
+  page.on("request", (r) => {
+    if (r.url().endsWith("/api/assistant/ask")) asked.push(r.postDataJSON());
+  });
+
+  await page.goto("/#home");
+  // A conversation was left open in the Assistant; a question from Home still starts a new one.
+  await page.evaluate((id) => localStorage.setItem("zaklon.chat.open", id), seeds.id);
+  const card = page.getByRole("region", { name: "Assistant" });
+  const box = card.getByRole("textbox", { name: "Ask anything" });
+  await expect(card.getByRole("button", { name: "Ask the assistant" })).toBeDisabled();
+  const question = `How do I store water for ${stamp}?`;
+  await box.fill(question);
+  await box.press("Enter");
+  await expect(page).toHaveURL(/#assistant$/);
+  await expect(page.locator(".exchange .q")).toHaveText([question]);
+  await expect(page.locator(".exchange .error")).toBeVisible();
+  expect(asked).toHaveLength(1);
+  expect(asked[0]).toMatchObject({ question, new_conversation: true });
+  expect(asked[0].conversation).toBeUndefined();
+  await expect(page.getByRole("heading", { name: question })).toBeVisible();
+
+  // Back on Home: the three used last, the newest first.
+  await page.locator("nav.nav").getByRole("button", { name: "Home" }).click();
+  const recent = card.getByRole("region", { name: "Recent conversations" }).getByRole("button");
+  await expect(recent).toHaveCount(3);
+  await expect(recent.nth(0)).toContainText(question);
+  await expect(recent.nth(1)).toContainText(`Batteries ${stamp}`);
+  await expect(recent.nth(2)).toContainText(`Seeds ${stamp}`);
+  await noHorizontalScroll(page);
+  // One of them opens in the Assistant.
+  await recent.nth(1).click();
+  await expect(page).toHaveURL(/#assistant$/);
+  await expect(page.getByRole("heading", { name: `Batteries ${stamp}` })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Ask something" })).toHaveValue("");
+
+  for (const c of (await (await page.request.get("/api/conversations")).json()) as { id: string; title: string }[]) {
+    if (c.title.includes(stamp)) await page.request.delete(`/api/conversations/${c.id}`);
+  }
+});
+
+test("home: what downloads, new versions and the library's drive (states simulated)", async ({ page }) => {
+  await ensureSetUp(page);
+  const GB = 1024 ** 3;
+  await page.route("**/api/catalog", async (r) => {
+    const json = await (await r.fetch()).json();
+    json.system = { ...json.system, disk_free: 120 * GB, disk_total: 500 * GB };
+    json.library_drive = "D:\\";
+    for (const p of json.packs) {
+      if (p.id === "wikimed-en") p.state = { ...p.state, status: "downloading", bytes_done: Math.round(p.size * 0.45), bytes_total: p.size, speed: 3_000_000 };
+      if (p.id === "kiwix-tools") p.state = { ...p.state, status: "installed", bytes_done: p.size, bytes_total: p.size, update_available: true };
+      if (p.id === "qwen35-08b") p.state = { ...p.state, status: "paused", bytes_done: Math.round(p.size * 0.2), bytes_total: p.size };
+    }
+    return r.fulfill({ json });
+  });
+  await page.route("**/api/maps", async (r) => {
+    const json = await (await r.fetch()).json();
+    const serbia = json.countries.find((c: { id: string }) => c.id === "Serbia");
+    serbia.regions[0].status = "downloading";
+    serbia.regions[0].bytes_done = Math.round(serbia.regions[0].size / 2);
+    return r.fulfill({ json });
+  });
+  await page.goto("/#home");
+  const card = page.getByRole("region", { name: "Library and add-ons" });
+  // Both downloads, with how far each is.
+  const downloads = card.getByRole("region", { name: /^Downloads/ });
+  await expect(downloads.getByRole("heading")).toHaveText("Downloads 2");
+  await expect(downloads.getByRole("progressbar", { name: /Medical Wikipedia/ })).toHaveAttribute("aria-valuenow", "45");
+  await expect(downloads.getByRole("progressbar", { name: "Maps: Serbia" })).toBeVisible();
+  await expect(downloads).toContainText(/3\sMB\/s/);
+  // What waits, and the library's drive.
+  await expect(card.getByRole("link", { name: "New version available: 1" })).toHaveAttribute("href", "#addons/library");
+  await expect(card.getByRole("link", { name: "Paused: 1" })).toBeVisible();
+  await expect(card).toContainText(/120\sGB free of 500\sGB/);
+  await expect(card).toContainText("Zaklon library");
+  await noHorizontalScroll(page);
+  await card.getByRole("button", { name: /The hub's disk \(D:\)/ }).click();
+  await expect(page).toHaveURL(/#addons\/library$/);
+  await page.goBack();
+  await card.getByRole("link", { name: "Open Add-ons" }).click();
+  await expect(page).toHaveURL(/#addons$/);
+  await expect(page.getByRole("heading", { name: "Add-ons", exact: true })).toBeVisible();
+});
+
+test("home: warnings come first: the firewall, and a hub that stopped answering (simulated)", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.route("**/api/firewall", (r) =>
+    r.fulfill({ json: { checked: true, firewall_on: true, allowed: false, blocked: true, public_network: false, error: null, ok: false } }),
+  );
+  await page.goto("/#home");
+  const firewall = page.locator(".home-alerts .firewall");
+  await expect(firewall).toContainText(/Windows Firewall is blocking Zaklon/);
+  await expect(firewall.getByRole("button", { name: "Let phones connect" })).toBeVisible();
+  const [warning, cards] = [(await firewall.boundingBox())!, (await page.locator(".home-grid").boundingBox())!];
+  expect(warning.y + warning.height).toBeLessThanOrEqual(cards.y);
+  // The hub stops answering: Home says so at the top, and the facts are marked as old.
+  await page.route("**/api/status", (r) => r.abort());
+  await expect(page.getByRole("alert").filter({ hasText: "Zaklon's hub is not running on this computer." })).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator(".home-state")).toHaveText("Not reachable");
+  await expect(page.locator(".home-asof")).toHaveText(/^as of /);
+  await expect(page.locator(".home-facts")).toHaveClass(/stale/);
 });
 
 test("assistant memory: notes can be added and deleted by hand", async ({ page }, info) => {

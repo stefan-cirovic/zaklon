@@ -343,9 +343,11 @@ export default function App() {
 
   // The assistant fills the window like a chat app: its list and conversation scroll on their own.
   const fill = tab === "assistant" && !setupOnly;
+  // Home's cards share the height of the window between them (on a laptop).
+  const homeFill = tab === "home" && !setupOnly;
 
   return (
-    <div className={"shell" + (fill ? " fill" : "")}>
+    <div className={"shell" + (fill ? " fill" : "") + (homeFill ? " home-fill" : "")}>
       <main className="content">
         {!isHub && <OfflineBanner t={t} />}
         {!isHub && hubChanged && link?.linked && (
@@ -378,7 +380,7 @@ export default function App() {
               {parkedErr && <p className="error" role="alert">{parkedErr}</p>}
             </div>
           ))}
-        {tab === "home" && <Home status={status} statusAt={statusAt} error={homeError} t={t} go={setTab} phone={!isHub} />}
+        {tab === "home" && <Home status={status} statusAt={statusAt} error={homeError} t={t} lang={lang} go={setTab} phone={!isHub} pinned={pinned} />}
         {tab === "household" && (
           <Household
             status={status}

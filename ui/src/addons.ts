@@ -5,6 +5,40 @@ import type { Glyph } from "./components/ExplorerIcons";
 /** How a list is shown, remembered per device: big tiles, or a table like Explorer's "Details". */
 export type ViewMode = "tiles" | "details";
 
+// What /api/catalog says, shared by the Add-ons screen and Home.
+
+export type Localized = { en: string; sr: string };
+export type PackStatus = "not_installed" | "queued" | "downloading" | "paused" | "verifying" | "installed" | "failed";
+export type Pack = {
+  id: string;
+  title: Localized;
+  description: Localized;
+  category: "knowledge" | "maps" | "model" | "app";
+  topic?: string;
+  version: string;
+  size: number;
+  license: string;
+  attribution: string;
+  recommended_for: string[];
+  state: { status: PackStatus; bytes_done: number; bytes_total: number; error?: string; speed: number; update_available?: boolean };
+};
+export type CatalogReply = {
+  packs: Pack[];
+  system: { disk_free: number; disk_total: number; battery_percent: number | null; plugged_in: boolean };
+  /** The root of the drive the library is on, like "D:\". */
+  library_drive?: string;
+};
+
+/** A download under way (the hub works on it now or next). */
+export const BUSY: PackStatus[] = ["queued", "downloading", "verifying"];
+/** States shown with a progress bar. */
+export const WITH_BAR: PackStatus[] = ["queued", "downloading", "verifying", "paused"];
+
+/** "E:\" -> "E:" */
+export function rootName(path: string) {
+  return path.replace(/[\\/]+$/, "");
+}
+
 export type FolderId = "reference" | "health" | "garden" | "skills" | "knowledge" | "models" | "maps" | "programs";
 
 /**

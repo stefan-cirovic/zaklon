@@ -229,3 +229,83 @@ test("help shots", async ({ page }, info) => {
   await page.waitForTimeout(400);
   await page.screenshot({ path: file("help-search"), fullPage: true });
 });
+
+// Only Home (run alone with -g "home shots"): with supplies and conversations, then with
+// downloads under way, a new version of a pack and the warnings (states made up for the picture).
+test("home shots", async ({ page }, info) => {
+  test.setTimeout(60000);
+  if (SIZE && info.project.name === "laptop") await page.setViewportSize({ width: Number(SIZE[1]), height: Number(SIZE[2]) });
+  const file = (name: string) => join(DIR ?? "", `${LANG}-${info.project.name}-${name}.png`);
+  const sr = LANG === "sr";
+  const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+  const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+  await page.addInitScript((l) => localStorage.setItem("zaklon.lang", l), LANG);
+  await page.goto("/#household");
+  const setup = page.getByText(/Set up your household|Podesi domaćinstvo/);
+  if (await setup.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await page.locator('input[type="password"]').nth(0).fill("correct horse");
+    await page.locator('input[type="password"]').nth(1).fill("correct horse");
+    await page.locator("form button.btn").click();
+    await page.waitForTimeout(800);
+    for (const it of [
+      { name: sr ? "Mleko" : "Milk", quantity: 1, unit: "l", category: "drink", expiry: day(1), min_quantity: 2 },
+      { name: sr ? "Jogurt" : "Yogurt", quantity: 2, unit: "pcs", category: "food", expiry: day(3) },
+      { name: sr ? "Tunjevina u konzervi" : "Canned tuna", quantity: 6, unit: "pcs", category: "food", expiry: day(20) },
+      { name: sr ? "Pasulj" : "Beans", quantity: 4, unit: "pcs", category: "food", expiry: day(-8) },
+      { name: sr ? "Brašno tip 500" : "Flour", quantity: 5, unit: "kg", category: "food", expiry: day(150) },
+      { name: sr ? "Pirinač" : "Rice", quantity: 1, unit: "kg", category: "food", min_quantity: 3 },
+      { name: sr ? "Baterije AA" : "AA batteries", quantity: 4, unit: "pcs", category: "equipment", min_quantity: 8 },
+      { name: "Paracetamol 500 mg", quantity: 2, unit: "pack", category: "medicine", expiry: day(400) },
+    ]) await page.request.post("/api/items", { data: it });
+    await page.request.post("/api/shopping", { data: { text: sr ? "Šećer" : "Sugar", quantity: 1, unit: "kg" } });
+    await page.request.post("/api/shopping", { data: { text: sr ? "Šibice" : "Matches", quantity: 2, unit: "pack" } });
+  }
+  // This device's conversations (the test hub has no AI, so they are simulated).
+  const conv = (id: string, en: string, srTitle: string, days: number, from?: [string, string]) => ({
+    id, title: sr ? srTitle : en, from_owner: from?.[0] ?? null, from_name: from?.[1] ?? null, created_at: ago(days), updated_at: ago(days), turns: 2,
+  });
+  await page.route("**/api/conversations", (route) =>
+    route.fulfill({
+      json: [
+        conv("c1", "How do I purify water without a filter?", "Kako da prečistim vodu bez filtera?", 0.02),
+        conv("c2", "First aid for a burn", "Prva pomoć kod opekotine", 1, ["p1", sr ? "Anin telefon" : "Ana's phone"]),
+        conv("c3", "How long do dry beans keep?", "Koliko dugo traje suvi pasulj?", 3),
+        conv("c4", "Bread without yeast", "Hleb bez kvasca", 20),
+      ],
+    }),
+  );
+  await page.goto("/#home");
+  await page.reload();
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: file("home"), fullPage: true });
+
+  // Downloads under way, a new version and a paused download; a newer Zaklon; the firewall (laptop).
+  await page.route("**/api/catalog", async (r) => {
+    const json = await (await r.fetch()).json();
+    for (const p of json.packs) {
+      if (["wikipedia-sr-maxi", "wikimed-en", "llama-cpp", "qwen35-4b"].includes(p.id)) p.state = { ...p.state, status: "installed", bytes_done: p.size, bytes_total: p.size };
+      if (p.id === "kiwix-tools") p.state = { ...p.state, status: "installed", bytes_done: p.size, bytes_total: p.size, update_available: true };
+      if (p.id === "ifixit-en") p.state = { ...p.state, status: "downloading", bytes_done: Math.round(p.size * 0.45), bytes_total: p.size, speed: 3_400_000 };
+      if (p.id === "qwen35-9b") p.state = { ...p.state, status: "paused", bytes_done: Math.round(p.size * 0.2), bytes_total: p.size };
+    }
+    return r.fulfill({ json });
+  });
+  await page.route("**/api/maps", async (r) => {
+    const json = await (await r.fetch()).json();
+    const serbia = json.countries.find((c: { id: string }) => c.id === "Serbia");
+    serbia.regions.forEach((reg: { status: string; bytes_done: number; size: number }, i: number) => {
+      reg.status = i === 0 ? "downloading" : "installed";
+      reg.bytes_done = i === 0 ? Math.round(reg.size * 0.6) : reg.size;
+    });
+    return r.fulfill({ json });
+  });
+  await page.route("**/api/updates", (route) =>
+    route.fulfill({ json: { enabled: true, current: "0.1.0", latest: "0.2.0", newer: true, url: "https://github.com/stefan-cirovic/zaklon/releases/tag/v0.2.0", checked_at: ago(0), error: null } }),
+  );
+  await page.route("**/api/firewall", (r) =>
+    r.fulfill({ json: { checked: true, firewall_on: true, allowed: false, blocked: true, public_network: false, error: null, ok: false } }),
+  );
+  await page.reload();
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: file("home-busy"), fullPage: true });
+});

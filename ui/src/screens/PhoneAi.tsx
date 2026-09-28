@@ -27,12 +27,12 @@ type Answer = { text: string; tokens: number; tokens_per_second: number; prompt_
 /**
  * On-device AI on the phone: copy a model from the hub, start the engine
  * that ships in the app, and ask it something. Works without the hub once
- * the model is on the phone.
+ * the model is on the phone. `question` starts in the box (one typed on Home).
  */
-export default function PhoneAi({ t, lang }: { t: T; lang: Lang }) {
+export default function PhoneAi({ t, lang, question }: { t: T; lang: Lang; question?: string }) {
   const [st, setSt] = useState<Status | null>(null);
   const [hubModels, setHubModels] = useState<HubModel[] | null>(null);
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(question ?? "");
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);

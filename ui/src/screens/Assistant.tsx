@@ -6,7 +6,19 @@ import { errText } from "../errors";
 import { useVisiblePoll, whenVisible } from "../poll";
 import { fmtBytes, fmtQty } from "../format";
 import { forget, onBackOnline } from "../offline";
-import { filterByTitle, toAnswer, type Answer, type Conversation, type SavedTurn, type Source, type Summary } from "../conversations";
+import {
+  clearQuestionFromHome,
+  filterByTitle,
+  questionFromHome,
+  readOpen,
+  toAnswer,
+  writeOpen,
+  type Answer,
+  type Conversation,
+  type SavedTurn,
+  type Source,
+  type Summary,
+} from "../conversations";
 import Reader from "../components/Reader";
 import PhoneAi from "./PhoneAi";
 import Memory from "../components/Memory";
@@ -35,8 +47,6 @@ type Unshown = "notKept" | "failed" | null;
 /** A hub from before saved conversations: the conversation stays on this device, as it did then. */
 const STORE = "zaklon.chat";
 const KEEP = 20;
-/** The conversation open when the screen was left, opened again on return. */
-const OPEN = "zaklon.chat.open";
 /** How often the list is asked for again (a copy sent from another device shows up). */
 const LIST_EVERY = 30_000;
 
@@ -53,23 +63,6 @@ function loadChat(): Answer[] {
 function saveChat(list: Answer[]) {
   try {
     localStorage.setItem(STORE, JSON.stringify(list.filter((a) => a.status === "done").slice(-KEEP)));
-  } catch {
-    /* private mode: just for this session */
-  }
-}
-
-function readOpen(): string | null {
-  try {
-    return localStorage.getItem(OPEN) || null;
-  } catch {
-    return null;
-  }
-}
-
-function writeOpen(id: string | null) {
-  try {
-    if (id) localStorage.setItem(OPEN, id);
-    else localStorage.removeItem(OPEN);
   } catch {
     /* private mode: just for this session */
   }
@@ -130,7 +123,12 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
   // older hub does not), this device's list, and the one that is open.
   const [saved, setSaved] = useState<boolean | null>(null);
   const [list, setList] = useState<Summary[] | null>(null);
-  const [openId, setOpenId] = useState<string | null>(readOpen);
+  // A question typed on Home: it starts a new conversation here (read without
+  // taking it, so a second render sees it too; it is taken once shown).
+  const [fromHome] = useState(questionFromHome);
+  const pendingAsk = useRef(fromHome);
+  useEffect(() => clearQuestionFromHome(), []);
+  const [openId, setOpenId] = useState<string | null>(() => (questionFromHome() ? null : readOpen()));
   const [conv, setConv] = useState<Summary | null>(null);
   const [unshown, setUnshown] = useState<Unshown>(null);
   const [chat, setChat] = useState<Answer[]>([]);
@@ -142,7 +140,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
   const [found, setFound] = useState<Summary[] | null>(null);
   const [drawer, setDrawer] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState(() => questionFromHome() ?? "");
   const [err, setErr] = useState<string | null>(null);
   const [reader, setReader] = useState<Source | null>(null);
   const [downloads, setDownloads] = useState<PackState[]>([]);
@@ -393,9 +391,12 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
     setOpenId(id);
   };
 
-  const ask = async (e: React.FormEvent) => {
+  const ask = (e: React.FormEvent) => {
     e.preventDefault();
-    const q = question.trim();
+    void send(question.trim());
+  };
+
+  const send = async (q: string) => {
     if (!q || busy || asking.current) return;
     asking.current = true;
     setErr(null);
@@ -428,6 +429,23 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
       asking.current = false;
     }
   };
+
+  // The question from Home is asked in a new conversation as soon as the hub's
+  // assistant is known to be ready. When it cannot be asked (no AI model yet)
+  // it waits in the question box; a phone away from the hub gets it in the
+  // box of its own AI.
+  useEffect(() => {
+    const q = pendingAsk.current;
+    if (!q) return;
+    if (hubDown) {
+      pendingAsk.current = null;
+      return;
+    }
+    if (!ov || saved === null) return;
+    pendingAsk.current = null;
+    const ready = ov.engine !== "missing" && ov.engine !== "no_model";
+    if (ready && openId === null) void send(q);
+  });
 
   // Stop the answer being written; the hub keeps what was written so far.
   const stop = (id: string) => {
@@ -620,7 +638,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
       {phoneOwnAi ? (
         <>
           <p className="muted" style={{ margin: 0 }}>{hubDown ? t("aiAwayFromHub") : t("aiHubHasNoModel")}</p>
-          <PhoneAi t={t} lang={lang} />
+          <PhoneAi t={t} lang={lang} question={fromHome ?? undefined} />
         </>
       ) : (
         <>

@@ -10,33 +10,26 @@ import StarterSet from "../components/StarterSet";
 import HelpLink from "../components/HelpLink";
 import { BatteryTile, DriveTile, Entries, Folders } from "../components/AddonViews";
 import { ToolIcon } from "../components/ExplorerIcons";
-import { FOLDERS, folderOf, folderStat, isFolderId, packFolder, type Entry, type FolderId, type ViewMode } from "../addons";
+import {
+  BUSY,
+  FOLDERS,
+  folderOf,
+  folderStat,
+  isFolderId,
+  packFolder,
+  rootName,
+  WITH_BAR,
+  type CatalogReply,
+  type Entry,
+  type FolderId,
+  type Localized,
+  type Pack,
+  type ViewMode,
+} from "../addons";
 import { countryState, SUGGESTED, type Country, type MapsReply } from "../maps";
 
 type T = (k: Key) => string;
 type Props = { t: T; lang: Lang; isHub: boolean };
-
-type Localized = { en: string; sr: string };
-type PackStatus = "not_installed" | "queued" | "downloading" | "paused" | "verifying" | "installed" | "failed";
-type Pack = {
-  id: string;
-  title: Localized;
-  description: Localized;
-  category: "knowledge" | "maps" | "model" | "app";
-  topic?: string;
-  version: string;
-  size: number;
-  license: string;
-  attribution: string;
-  recommended_for: string[];
-  state: { status: PackStatus; bytes_done: number; bytes_total: number; error?: string; speed: number; update_available?: boolean };
-};
-type CatalogReply = {
-  packs: Pack[];
-  system: { disk_free: number; disk_total: number; battery_percent: number | null; plugged_in: boolean };
-  /** The root of the drive the library is on, like "D:\". */
-  library_drive?: string;
-};
 
 /**
  * Where on the screen one is, as in a file explorer: the top ("This PC"), a
@@ -48,8 +41,6 @@ type Loc = { kind: "root" } | { kind: "folder"; id: FolderId } | { kind: "librar
 
 const ROOT: Loc = { kind: "root" };
 const VIEW_KEY = "zaklon.addonsView";
-const BUSY: PackStatus[] = ["queued", "downloading", "verifying"];
-const WITH_BAR: PackStatus[] = ["queued", "downloading", "verifying", "paused"];
 
 function locFromHash(): Loc {
   const [tab, a, b] = location.hash.replace(/^#/, "").split("/");
@@ -73,11 +64,6 @@ function readView(): ViewMode {
   } catch {
     return "tiles";
   }
-}
-
-/** "E:\" -> "E:" */
-function rootName(path: string) {
-  return path.replace(/[\\/]+$/, "");
 }
 
 function sameRoot(a: string, b: string) {

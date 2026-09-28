@@ -71,6 +71,52 @@ export type Conversation = Summary & { turns: SavedTurn[] };
 /** The owner name of the laptop, as the hub stores it. */
 export const LAPTOP = "laptop";
 
+/** The conversation open when the Assistant was left, opened again on return. */
+const OPEN = "zaklon.chat.open";
+
+export function readOpen(): string | null {
+  try {
+    return localStorage.getItem(OPEN) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeOpen(id: string | null) {
+  try {
+    if (id) localStorage.setItem(OPEN, id);
+    else localStorage.removeItem(OPEN);
+  } catch {
+    /* private mode: just for this session */
+  }
+}
+
+/**
+ * A question typed on Home, waiting for the Assistant: the Assistant opens
+ * with a new conversation and asks it there, in its usual way, as soon as it
+ * knows the hub's assistant is ready (or puts it in the box when it cannot).
+ */
+let handedOver: string | null = null;
+
+export function askInAssistant(question: string) {
+  handedOver = question;
+}
+
+/** The question handed over from Home, if any (reading it does not take it). */
+export function questionFromHome(): string | null {
+  return handedOver;
+}
+
+export function clearQuestionFromHome() {
+  handedOver = null;
+}
+
+/** Open a saved conversation when the Assistant is shown next. */
+export function openInAssistant(id: string) {
+  handedOver = null;
+  writeOpen(id);
+}
+
 /** A saved turn as the screen shows it; one still pending is followed until its answer is done. */
 export function toAnswer(t: SavedTurn): Answer {
   const d = t.details ?? {};

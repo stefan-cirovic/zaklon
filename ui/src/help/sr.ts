@@ -183,49 +183,75 @@ const sr: HelpContent = {
 
   home: {
     title: "Početna",
-    summary: "Hub na prvi pogled: da li radi, baterija i šta ističe ili ponestaje.",
+    summary: "Domaćinstvo na prvi pogled: hub, ono što traži pažnju, asistent, zalihe i dodaci.",
     open: { href: "#home", label: "Otvori Početnu" },
     sections: [
       {
         id: "state",
         title: "Stanje huba",
         body: [
-          { p: "Na vrhu je ime huba i da li **Radi** ili **Nije dostupan**. Ispod toga:" },
+          { p: "Na vrhu je ime huba i da li **Radi** ili **Nije dostupan**. Pored toga:" },
           {
             list: [
+              "**Napajanje**: baterija laptopa i da li se puni. Računar bez baterije prikazuje **Na struji**.",
               "**Uređaji**: koliko je telefona upareno.",
-              "**Radi već**: koliko dugo hub radi bez prekida.",
-              "**Baterija**: baterija laptopa i da li se puni. Računar bez baterije prikazuje **Bez baterije**.",
               "**Adrese**: gde telefoni na WiFi mreži nalaze hub.",
             ],
           },
         ],
       },
       {
+        id: "warnings",
+        title: "Upozorenja",
+        body: [
+          { p: "Ispod stanja huba stoji ono što traži pažnju, samo kad ga ima:" },
+          {
+            list: [
+              "Hub ne radi, ili ga telefon ne vidi.",
+              "Windows zaštitni zid ne pušta telefone; dugme to popravlja. Vidi [Mrežu](#household/network).",
+              "Izašla je novija verzija Zaklona.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "ask",
+        title: "Pitaj bilo šta",
+        body: [
+          { p: "Upiši pitanje u **Pitaj bilo šta** i pritisni Enter: otvara se [Asistent](#assistant) i postavlja ga u novom razgovoru. Ispod polja su poslednja tri razgovora ovog uređaja; izaberi neki da ga otvoriš." },
+        ],
+      },
+      {
         id: "lists",
-        title: "Ističe uskoro i ponestaje",
+        title: "Zalihe",
         body: [
           {
             list: [
               "**Isteklo ili ističe uskoro** prikazuje zalihe kojima je rok prošao ili ističe u narednih 30 dana.",
               "**Ponestaje** prikazuje zalihe kojih ima manje nego što piše u **Upozori kad padne ispod**.",
+              "**Za kupovinu** prikazuje šta još treba kupiti.",
             ],
           },
           { p: "Svaki spisak prikazuje do pet stavki. Sve ih vidiš u [Zalihama](#supplies)." },
         ],
       },
       {
-        id: "actions",
-        title: "Pitanje i novosti",
+        id: "addons",
+        title: "Biblioteka i dodaci",
         body: [
-          { p: "**Pitaj asistenta** otvara [Asistenta](#assistant). Kad izađe novija verzija Zaklona, obaveštenje o tome se pojavi i na Početnoj." },
+          { p: "Koliko je pun disk sa bibliotekom, šta se upravo preuzima i koliko dodataka ima novu verziju, pauzirano je ili nije završeno. Njima upravljaš u [Dodacima](#addons)." },
         ],
+      },
+      {
+        id: "tools",
+        title: "Brzi pristup",
+        body: [{ p: "Pločica za svaki alat koji nije u traci, i jedna za Pomoć." }],
       },
       {
         id: "away",
         title: "Na telefonu van kuće",
         body: [
-          { p: "Kad hub nije dostupan, Početna prikazuje poslednje brojeve koje je dobila, uz vreme od kada su. Vidi [Rad bez interneta](#help/offline)." },
+          { p: "Kad hub nije dostupan, Početna prikazuje zalihe i razgovore koje je telefon sačuvao, uz vreme od kada su. Vidi [Rad bez interneta](#help/offline)." },
         ],
       },
     ],

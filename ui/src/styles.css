@@ -135,9 +135,6 @@ p { margin: 0 0 12px; }
 @media (max-width: 380px) { .nav-items button { font-size: 11px; } .nav-items.five button { font-size: 10px; } .nav-brand { width: 40px; } }
 
 /* Panels and controls */
-.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-/* Laptop: tiles that share the row between them, however many there are (phones keep two columns). */
-@media (min-width: 900px) { .grid.fit { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); } }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
 .panel .label { color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
 .panel .value { font-size: 22px; font-weight: 600; color: #e7e7e7; }
@@ -183,7 +180,7 @@ label.field input, label.field select, label.field textarea { color: var(--text)
 .center-screen > .stack { width: 100%; max-width: 420px; text-align: center; }
 .center-screen label.field, .center-screen .list, .center-screen .panel { text-align: left; }
 
-/* Phone: bigger type and fingertip-sized controls, a centered compact dashboard. */
+/* Phone: bigger type, fingertip-sized controls and centered headings. */
 @media (max-width: 899px) {
   .btn { min-height: 44px; padding: 10px 16px; }
   input[type="text"], input[type="password"], input[type="search"], select { min-height: 44px; padding: 10px 12px; }
@@ -193,7 +190,6 @@ label.field input, label.field select, label.field textarea { color: var(--text)
   .content h1 { text-align: center; }
   .page-head { text-align: center; }
   .page-head .row { justify-content: center; }
-  .grid { grid-template-columns: 1fr 1fr; gap: 10px; }
   .panel { padding: 14px 12px; text-align: center; }
   .panel .value { font-size: 20px; }
   .actions { justify-content: center; flex-wrap: wrap; }
@@ -253,10 +249,6 @@ input[type="date"] { width: 100%; background: var(--panel-2); border: 1px solid 
 .mini-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; align-items: center; font-size: 14px; }
 .mini-row > span:first-child { flex: 1 1 8em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mini-row > :last-child { flex-shrink: 0; margin-left: auto; }
-@media (max-width: 899px) {
-  .panel.panel-list { grid-column: 1 / -1; text-align: left; }
-  .panel.panel-list .label { text-align: center; }
-}
 
 /* Review fixes */
 .wrap { flex-wrap: wrap; }
@@ -271,9 +263,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-
-.home-cta { display: flex; justify-content: center; }
-.home-cta .btn { min-width: 220px; }
 
 .answer { white-space: pre-wrap; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; line-height: 1.55; }
 
@@ -900,4 +889,123 @@ a.tool-open:hover { text-decoration: none; }
   .help-found-in { margin-left: 0; }
   .help-toc a { min-height: 44px; display: flex; align-items: center; font-size: 15px; }
   .help-pager a { min-height: 56px; }
+}
+
+/* Home: the household at a glance, over the whole window. The hub in one line, then what needs
+   attention, then cards: the assistant across the top, the supplies and the library side by side
+   (they share the height that is left), and the tools along the bottom. One column on a phone. */
+.home { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.home-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+.home-head h1 { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.home-state { display: inline-flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); font-size: 13px; }
+.home-state .status-dot { width: 8px; height: 8px; flex-shrink: 0; }
+.home-facts { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 28px; margin: 0 0 0 18px; }
+.home-facts > div { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.home-facts dt { color: var(--muted); font-size: 12px; }
+.home-facts dd { margin: 0; font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
+.home-facts dd.warn { color: var(--warn); }
+/* Old values: dimmed, still readable (4.6:1). */
+.home-facts.stale { opacity: 0.88; }
+.home-head .help-link { margin-left: auto; }
+.home-asof { flex-basis: 100%; margin: 0; font-size: 12px; }
+
+.home-alerts { display: grid; gap: 12px; }
+.home-alerts:empty { display: none; }
+.home-alert { display: flex; align-items: center; gap: 10px; border-color: var(--warn); text-align: left; }
+.home-alert .icon { flex-shrink: 0; color: var(--warn); }
+
+.home-grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) and (max-width: 1099px) { .home-grid { grid-template-rows: auto 1fr auto auto; } }
+@media (min-width: 1100px) {
+  .home-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas: "ask ask" "supplies addons" "tools tools";
+  }
+  .home-ask { grid-area: ask; }
+  .home-supplies { grid-area: supplies; }
+  .home-addons { grid-area: addons; }
+  .home-tools { grid-area: tools; }
+}
+/* A laptop window: the cards reach down to the bar, whatever its height. */
+@media (min-width: 900px) and (min-height: 560px) {
+  .shell.home-fill .content { display: flex; flex-direction: column; }
+  .shell.home-fill .home, .shell.home-fill .home-grid { flex: 1 0 auto; }
+}
+
+.home-card { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.home-card-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 16px; }
+.home-card-head h2 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 15px; }
+.home-card-icon { flex: 0 0 auto; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 6px; background: var(--panel-2); color: var(--accent); }
+.home-link { display: inline-flex; align-items: center; min-height: 28px; font-size: 13px; }
+.home-link.warn { color: var(--warn); }
+.home-sub { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+.home-count { min-width: 22px; padding: 0 7px; border-radius: 999px; background: var(--panel-2); color: var(--text); font-size: 12px; line-height: 20px; text-align: center; letter-spacing: 0; }
+.home-count.warn { color: var(--warn); }
+.home-count.soon { color: var(--accent); }
+.home-empty { margin: 0; font-size: 14px; }
+.home-note { margin: 0; font-size: 12px; }
+.home-part { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.home-part > .mini-list, .home-part > ul { align-self: stretch; }
+.home-part > .home-link { margin-top: 4px; }
+.home-cols { display: grid; gap: 18px 28px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+.home-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; }
+
+/* The question box, like the Assistant's, and the conversations used last. */
+.composer-box.home-ask-box { max-width: none; margin: 0; padding: 5px 5px 5px 14px; }
+.home-ask-box input[type="text"] { flex: 1; min-width: 0; min-height: 36px; padding: 6px 0; background: transparent; border: 0; border-radius: 0; font-size: 15px; }
+.home-ask-box input[type="text"]:focus-visible { outline: none; }
+.home-recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
+.home-recent-item {
+  display: grid; gap: 2px; width: 100%; min-height: 44px; padding: 8px 12px; text-align: left; cursor: pointer;
+  background: transparent; border: 1px solid var(--line-2); border-radius: var(--radius); color: inherit; font: inherit;
+}
+.home-recent-item:hover { background: var(--hover); }
+.home-recent-title { display: flex; align-items: center; gap: 6px; min-width: 0; color: #e7e7e7; font-size: 14px; }
+.home-recent-text, .home-recent-meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-recent-meta { font-size: 12px; }
+
+/* The library's drive and the downloads. */
+.home-downloads { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.home-dl-line { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }
+.home-dl-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #e7e7e7; }
+.home-dl-line .muted { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.home-notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+
+/* The tools, a tile each. */
+.home-tools { display: grid; gap: 10px; align-content: start; }
+.home-tool-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
+.home-tool-grid > li { display: flex; min-width: 0; }
+.home-tool {
+  flex: 1; display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 10px 14px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); color: #e7e7e7; font-weight: 600;
+}
+.home-tool:hover { background: var(--hover); border-color: var(--line-2); text-decoration: none; }
+.home-tool:focus-visible { outline-offset: -2px; }
+.home-tool .tool-icon { width: 38px; height: 38px; }
+.home-tool-title { min-width: 0; overflow-wrap: anywhere; }
+
+@media (max-width: 899px) {
+  .home, .home-grid { gap: 12px; }
+  /* The name in the middle, as on every screen, with the "?" beside it; the facts in a strip below. */
+  .home-head {
+    display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 2px 4px;
+    grid-template-areas: ". name help" "state state state" "facts facts facts" "asof asof asof";
+  }
+  .home-head h1 { grid-area: name; align-self: center; text-align: center; }
+  .home-state { grid-area: state; justify-content: center; }
+  .home-head .help-link { grid-area: help; margin-left: 0; }
+  .home-facts {
+    grid-area: facts; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 8px 0 0; padding: 10px 8px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); text-align: center;
+  }
+  .home-facts > div { display: grid; gap: 2px; justify-items: center; }
+  .home-asof { grid-area: asof; margin-top: 4px; text-align: center; }
+  .home-card { gap: 12px; }
+  .home-link { min-height: 44px; min-width: 44px; font-size: 14px; }
+  .home-part > .home-link { margin-top: 0; }
+  .home-ask-box input[type="text"] { min-height: 44px; font-size: 16px; }
+  .home-recent { grid-template-columns: minmax(0, 1fr); }
+  .home-tool-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .home-tool { min-height: 56px; padding: 8px 12px; }
 }

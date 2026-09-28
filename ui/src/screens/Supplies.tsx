@@ -42,6 +42,7 @@ type History = { seq: number; at: string; actor: string | null; entity: string; 
 type BarcodeReply = { barcode: string; item: Item | null; known: { name: string; unit: string | null; category: string | null } | null };
 type View = "items" | "shopping" | "putaway" | "history";
 
+const VIEWS: View[] = ["items", "shopping", "putaway", "history"];
 const CATEGORIES = ["food", "drink", "medicine", "hygiene", "equipment", "fuel", "other"] as const;
 const UNITS = ["pcs", "kg", "g", "l", "ml", "pack"] as const;
 
@@ -49,12 +50,31 @@ const catKey = (c: string) => ("cat_" + c) as Key;
 const unitKey = (u: string) => ("unit_" + u) as Key;
 const placeKey = (p: string) => ("place_" + p) as Key;
 
-function unitName(t: T, unit: string, qty: number) {
+/** A unit as the screen writes it after a quantity ("kg", "2 liters"). */
+export function unitName(t: T, unit: string, qty: number) {
   return unitLabel(unit, qty, (u) => (UNITS.includes(u as (typeof UNITS)[number]) ? t(unitKey(u)) : u));
 }
 
+/** The view in the address ("#supplies/shopping"); the items without one. */
+function viewFromHash(): View {
+  const [tab, v] = location.hash.replace(/^#/, "").split("/");
+  return tab === "supplies" && VIEWS.includes(v as View) ? (v as View) : "items";
+}
+
 export default function Supplies({ t }: { t: T }) {
-  const [view, setView] = useState<View>("items");
+  const [view, setViewState] = useState<View>(viewFromHash);
+  // A link to another view (from Home, say) while the screen is open.
+  useEffect(() => {
+    const onHash = () => setViewState(viewFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  /** Show a view and keep it in the address (without a step in the history), so a reload keeps it. */
+  const setView = (v: View) => {
+    setViewState(v);
+    const hash = v === "items" ? "#supplies" : `#supplies/${v}`;
+    if (location.hash !== hash) history.replaceState(history.state, "", hash);
+  };
   const [items, setItems] = useState<Item[] | null>(null);
   const [places, setPlaces] = useState<Place[]>([]);
   const [awayCount, setAwayCount] = useState(0);
