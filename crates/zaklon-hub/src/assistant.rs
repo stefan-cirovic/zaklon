@@ -2083,8 +2083,11 @@ const HEALTH_NOTE: &[&str] = &[
 /// any of its forms or as another name of the same medicine. At most eight,
 /// and not too long together.
 pub fn relevant_notes(notes: &[Note], question: &str, terms: &[String]) -> Vec<String> {
-    let mut words: Vec<String> = search_words(question).iter().map(|w| root(w)).collect();
-    words.extend(terms.iter().flat_map(|t| t.split_whitespace().map(root).collect::<Vec<_>>()));
+    // Short words ("na", "je", "i") say nothing about a note; a name like
+    // "Ana" does (its root "an" is short, so words are measured before rooting).
+    let long_enough = |w: &&str| w.chars().count() >= 3;
+    let mut words: Vec<String> = search_words(question).iter().map(String::as_str).filter(long_enough).map(root).collect();
+    words.extend(terms.iter().flat_map(|t| t.split_whitespace().filter(long_enough).map(root).collect::<Vec<_>>()));
     // "brufen" also as "ibuprofen", "nurofen"...
     let said: Vec<String> = question.split(|c: char| !c.is_alphanumeric()).chain(terms.iter().flat_map(|t| t.split_whitespace())).map(plain).collect();
     for group in MEDICINES {
@@ -2096,11 +2099,22 @@ pub fn relevant_notes(notes: &[Note], question: &str, terms: &[String]) -> Vec<S
     let picked = notes
         .iter()
         .filter(|n| {
-            let note_words: Vec<String> = n.text.split(|c: char| !c.is_alphanumeric()).filter(|w| w.chars().count() >= 2).map(root).collect();
-            words.iter().any(|w| note_words.iter().any(|nw| nw == w || (w.chars().count() >= 5 && (nw.starts_with(w.as_str()) || w.starts_with(nw.as_str())))))
+            let note_words: Vec<String> = n.text.split(|c: char| !c.is_alphanumeric()).filter(long_enough).map(root).collect();
+            words.iter().any(|w| note_words.iter().any(|nw| nw == w || prefix_match(nw, w)))
         })
         .map(|n| n.text.clone());
     limit_notes(picked)
+}
+
+/// The same word in another form: one begins the other and the shorter is
+/// long enough to mean something, or they share a long beginning
+/// ("alergija" / "alergična"). So "na" never matches "nalazi".
+fn prefix_match(a: &str, b: &str) -> bool {
+    let (short, long) = if a.chars().count() <= b.chars().count() { (a, b) } else { (b, a) };
+    if short.chars().count() >= 4 && long.starts_with(short) {
+        return true;
+    }
+    a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count() >= 5
 }
 
 /// For a health question: the notes found for it, and every note about
@@ -4639,5 +4653,29 @@ isisavanja otrova i hitnog transporta do lekara. Isisavanje otrova je veoma kori
             let a = finished_answer(&ai, id).await;
             assert_eq!(a.error.as_deref(), Some("no AI model is installed"));
         }
+    }
+}
+
+#[cfg(test)]
+mod note_matching_tests {
+    use super::*;
+
+    fn note(text: &str) -> Note {
+        Note { id: "n1".into(), text: text.into(), created_at: "2026-09-28T10:00:00Z".into(), created_by: None }
+    }
+
+    #[test]
+    fn a_short_note_word_does_not_match_a_longer_question_word() {
+        let notes = [note("Ana je alergična na ibuprofen.")];
+        assert!(relevant_notes(&notes, "Koliko je visok Midžor i gde se nalazi?", &[]).is_empty());
+        assert!(relevant_notes(&notes, "koja je najduza reka kroz srbiju", &[]).is_empty());
+    }
+
+    #[test]
+    fn the_note_is_found_by_name_and_by_medicine() {
+        let notes = [note("Ana je alergična na ibuprofen.")];
+        assert_eq!(relevant_notes(&notes, "Ana ima temperaturu, šta da joj dam?", &[]).len(), 1);
+        assert_eq!(relevant_notes(&notes, "jel moze da popije brufen", &[]).len(), 1);
+        assert_eq!(relevant_notes(&notes, "da li je alergija opasna", &[]).len(), 1);
     }
 }
