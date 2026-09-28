@@ -493,6 +493,19 @@ async fn full_hub_flow() {
     let tail = tail.bytes().await.unwrap();
     assert_eq!(&first[2_000_000..], &tail[..], "resumed part matches");
     assert_eq!(sha256_hex(&first), models[0]["sha256"].as_str().unwrap());
+    // A range with an end gets only up to that byte; a suffix range the last bytes.
+    for (range, from, to) in [("bytes=10-19", 10, 19), ("bytes=-100", 2_999_900, 2_999_999), ("bytes=2999990-5000000", 2_999_990, 2_999_999)] {
+        let r = as_phone(reqwest::Method::GET, "/api/models/test-model/file").header("range", range).send().await.unwrap();
+        assert_eq!(r.status().as_u16(), 206, "{range}");
+        assert_eq!(r.headers()["content-range"], format!("bytes {from}-{to}/3000000").as_str(), "{range}");
+        assert_eq!(r.headers()["content-length"], (to - from + 1).to_string().as_str(), "{range}");
+        assert_eq!(&r.bytes().await.unwrap()[..], &first[from..=to], "{range}");
+    }
+    for range in ["bytes=3000000-", "bytes=20-10", "bytes=-0", "bytes=x-"] {
+        let r = as_phone(reqwest::Method::GET, "/api/models/test-model/file").header("range", range).send().await.unwrap();
+        assert_eq!(r.status().as_u16(), 416, "{range}");
+        assert_eq!(r.headers()["content-range"], "bytes */3000000", "{range}");
+    }
     let r = as_phone(reqwest::Method::GET, "/api/models/test-pack/file").send().await.unwrap();
     assert_eq!(r.status().as_u16(), 404, "only models are served this way");
 

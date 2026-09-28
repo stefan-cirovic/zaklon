@@ -259,8 +259,50 @@ pub(super) async fn model_file(
     stream_library_file(&state, &files[0], &headers, "application/octet-stream").await
 }
 
+/// What a request's `Range` header asks of a file.
+#[derive(Debug, PartialEq, Eq)]
+enum Wanted {
+    /// The whole file (no range asked for).
+    Whole,
+    /// Bytes `first..=last` of the file.
+    Part { first: u64, last: u64 },
+    /// A range that cannot be served.
+    Unsatisfiable,
+}
+
+/// What a `Range` header asks of a file of `total` bytes. One range of bytes
+/// is served: `bytes=N-` (from N to the end), `bytes=N-M` (N to M, or to the
+/// end if the file is shorter) and `bytes=-N` (the last N bytes, or the whole
+/// file if it is shorter). Anything else in bytes cannot be served: several
+/// ranges, a range that starts past the end, or one that is malformed. A
+/// range in another unit is ignored, as HTTP asks.
+fn wanted_range(range: Option<&axum::http::HeaderValue>, total: u64) -> Wanted {
+    let Some(range) = range else { return Wanted::Whole };
+    let Ok(range) = range.to_str() else { return Wanted::Unsatisfiable };
+    let range = range.trim();
+    let Some(spec) = range.get(..6).filter(|unit| unit.eq_ignore_ascii_case("bytes=")).map(|_| &range[6..]) else {
+        return Wanted::Whole;
+    };
+    let Some((from, to)) = spec.split_once('-') else { return Wanted::Unsatisfiable };
+    let (from, to) = (from.trim(), to.trim());
+    let number = |s: &str| if !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()) { s.parse::<u64>().ok() } else { None };
+    let end = total.saturating_sub(1);
+    let (first, last) = match (number(from), number(to)) {
+        (Some(first), None) if to.is_empty() => (first, end),
+        (Some(first), Some(last)) if first <= last => (first, last.min(end)),
+        (None, Some(suffix)) if from.is_empty() && suffix > 0 => (total.saturating_sub(suffix), end),
+        _ => return Wanted::Unsatisfiable,
+    };
+    if first < total {
+        Wanted::Part { first, last }
+    } else {
+        Wanted::Unsatisfiable
+    }
+}
+
 /// Stream a verified file from the library with its SHA-256 (of the file
-/// on disk) and `Range: bytes=N-` support.
+/// on disk) and support for one `Range` (see `wanted_range`), so a phone can
+/// resume a large copy.
 pub(super) async fn stream_library_file(
     state: &HubState,
     f: &zaklon_core::catalog::InstalledFile,
@@ -268,53 +310,91 @@ pub(super) async fn stream_library_file(
     content_type: &str,
 ) -> Result<Response, ApiError> {
     use axum::http::header;
-    use tokio::io::AsyncSeekExt;
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
     let path = state.downloads.library_dir().join(&f.path);
     let mut file = tokio::fs::File::open(&path).await.map_err(|e| anyhow::anyhow!(e))?;
     let total = file.metadata().await.map_err(|e| anyhow::anyhow!(e))?.len();
-
-    let start = headers
-        .get(header::RANGE)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("bytes="))
-        .and_then(|v| v.split('-').next())
-        .and_then(|v| v.trim().parse::<u64>().ok());
     let name = std::path::Path::new(&f.path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
 
-    match start {
-        Some(from) if from >= total => Ok((StatusCode::RANGE_NOT_SATISFIABLE, [(header::CONTENT_RANGE, format!("bytes */{total}"))]).into_response()),
-        Some(from) => {
-            file.seek(std::io::SeekFrom::Start(from)).await.map_err(|e| anyhow::anyhow!(e))?;
-            let body = axum::body::Body::from_stream(tokio_util::io::ReaderStream::with_capacity(file, 1 << 20));
-            Ok((
-                StatusCode::PARTIAL_CONTENT,
-                [
-                    (header::CONTENT_TYPE, content_type.to_string()),
-                    (header::CONTENT_LENGTH, (total - from).to_string()),
-                    (header::CONTENT_RANGE, format!("bytes {from}-{}/{total}", total - 1)),
-                    (header::ACCEPT_RANGES, "bytes".to_string()),
-                    (header::HeaderName::from_static("x-zaklon-file"), name),
-                    (header::HeaderName::from_static("x-zaklon-sha256"), f.sha256.clone()),
-                ],
-                body,
-            )
-                .into_response())
+    let (status, first, len) = match wanted_range(headers.get(header::RANGE), total) {
+        Wanted::Unsatisfiable => {
+            return Ok((StatusCode::RANGE_NOT_SATISFIABLE, [(header::CONTENT_RANGE, format!("bytes */{total}"))]).into_response());
         }
-        None => {
-            let body = axum::body::Body::from_stream(tokio_util::io::ReaderStream::with_capacity(file, 1 << 20));
-            Ok((
-                StatusCode::OK,
-                [
-                    (header::CONTENT_TYPE, content_type.to_string()),
-                    (header::CONTENT_LENGTH, total.to_string()),
-                    (header::ACCEPT_RANGES, "bytes".to_string()),
-                    (header::HeaderName::from_static("x-zaklon-file"), name),
-                    (header::HeaderName::from_static("x-zaklon-sha256"), f.sha256.clone()),
-                ],
-                body,
-            )
-                .into_response())
+        Wanted::Whole => (StatusCode::OK, 0, total),
+        Wanted::Part { first, last } => (StatusCode::PARTIAL_CONTENT, first, last - first + 1),
+    };
+    if first > 0 {
+        file.seek(std::io::SeekFrom::Start(first)).await.map_err(|e| anyhow::anyhow!(e))?;
+    }
+    // Only the bytes asked for, even if a range ends before the file does.
+    let body = axum::body::Body::from_stream(tokio_util::io::ReaderStream::with_capacity(file.take(len), 1 << 20));
+    let mut response = (
+        status,
+        [
+            (header::CONTENT_TYPE, content_type.to_string()),
+            (header::CONTENT_LENGTH, len.to_string()),
+            (header::ACCEPT_RANGES, "bytes".to_string()),
+            (header::HeaderName::from_static("x-zaklon-file"), name),
+            (header::HeaderName::from_static("x-zaklon-sha256"), f.sha256.clone()),
+        ],
+        body,
+    )
+        .into_response();
+    if status == StatusCode::PARTIAL_CONTENT {
+        let range = format!("bytes {first}-{}/{total}", first + len - 1);
+        response.headers_mut().insert(header::CONTENT_RANGE, header::HeaderValue::from_str(&range).expect("digits make a header value"));
+    }
+    Ok(response)
+}
+
+#[cfg(test)]
+mod range_tests {
+    use super::*;
+    use axum::http::HeaderValue;
+
+    fn wanted(range: &str, total: u64) -> Wanted {
+        wanted_range(Some(&HeaderValue::from_str(range).unwrap()), total)
+    }
+
+    #[test]
+    fn one_range_of_bytes_is_served() {
+        let part = |first, last| Wanted::Part { first, last };
+        assert_eq!(wanted_range(None, 10), Wanted::Whole);
+        // From a byte to the end: resuming a copy.
+        assert_eq!(wanted("bytes=4-", 10), part(4, 9));
+        assert_eq!(wanted("bytes=0-", 10), part(0, 9));
+        // From a byte to a byte: only up to it, or to the end of a shorter file.
+        assert_eq!(wanted("bytes=2-5", 10), part(2, 5));
+        assert_eq!(wanted("bytes=3-3", 10), part(3, 3));
+        assert_eq!(wanted("bytes=6-100", 10), part(6, 9));
+        assert_eq!(wanted("Bytes= 2 - 5 ", 10), part(2, 5), "the unit in any case, spaces around the numbers");
+        // The last bytes, or all of a shorter file.
+        assert_eq!(wanted("bytes=-3", 10), part(7, 9));
+        assert_eq!(wanted("bytes=-10", 10), part(0, 9));
+        assert_eq!(wanted("bytes=-50", 10), part(0, 9));
+        // Another unit is ignored.
+        assert_eq!(wanted("items=0-5", 10), Wanted::Whole);
+    }
+
+    #[test]
+    fn a_range_that_cannot_be_served_is_refused() {
+        for range in [
+            "bytes=10-",
+            "bytes=10-12",
+            "bytes=5-2",
+            "bytes=-0",
+            "bytes=-",
+            "bytes=",
+            "bytes=5",
+            "bytes=x-",
+            "bytes=+1-2",
+            "bytes=0-5,7-8",
+            "bytes=99999999999999999999999-",
+        ] {
+            assert_eq!(wanted(range, 10), Wanted::Unsatisfiable, "{range}");
         }
+        assert_eq!(wanted("bytes=0-", 0), Wanted::Unsatisfiable, "an empty file has no bytes to send");
+        assert_eq!(wanted("bytes=-5", 0), Wanted::Unsatisfiable);
     }
 }
