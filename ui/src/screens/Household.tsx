@@ -12,6 +12,7 @@ import Memory from "../components/Memory";
 import { UpdateSettings, type UpdateState } from "../components/Updates";
 import { Brand, Mark } from "../components/Brand";
 import { SettingsIcon } from "../components/SettingsIcon";
+import HelpLink from "../components/HelpLink";
 import { categoriesFor, categoryOf, findSettings, householdRoute, settingsHref, type Category, type CategoryId, type Setting } from "../settings";
 import { AboutZaklon, AiModel, Appearance, ChangePassword, LanguageSettings, Licenses, NetworkAddresses, Privacy, ThisHub, type Look } from "./HouseholdMore";
 
@@ -100,7 +101,10 @@ export default function Household({ status, online, t, lang, setLang, refresh, i
   if (!cat) {
     return (
       <div className="stack settings-home">
-        <h1>{t("household")}</h1>
+        <div className="title-line">
+          <h1>{t("household")}</h1>
+          <HelpLink t={t} topic="household" />
+        </div>
         <HubCard t={t} status={status} online={online} isHub={isHub} />
         {isHub && status && <Firewall t={t} />}
         {search(<Tiles t={t} cats={cats} isHub={isHub} from={from} landed={landed} />)}
@@ -494,6 +498,7 @@ function CategoryPage({ t, cat, setting, jump, side, children }: PageProps) {
             <span aria-hidden="true">›</span>
           </nav>
           <h1 ref={title} tabIndex={-1}>{t(cat.title)}</h1>
+          <HelpLink t={t} topic="household" section={cat.id} />
         </div>
         <div className="set-panels" key={cat.id}>
           {children}

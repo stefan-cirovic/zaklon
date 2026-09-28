@@ -192,3 +192,40 @@ test("shots", async ({ page }, info) => {
   await page.waitForTimeout(600);
   await page.screenshot({ path: file("assistant-memory"), fullPage: false });
 });
+
+// Only Help (run alone with -g "help shots"): its home, a search, topics, and the links to it.
+test("help shots", async ({ page }, info) => {
+  test.setTimeout(60000);
+  if (SIZE && info.project.name === "laptop") await page.setViewportSize({ width: Number(SIZE[1]), height: Number(SIZE[2]) });
+  const file = (name: string) => join(DIR ?? "", `${LANG}-${info.project.name}-${name}.png`);
+  await page.addInitScript((l) => localStorage.setItem("zaklon.lang", l), LANG);
+  await page.goto("/#household");
+  const setup = page.getByText(/Set up your household|Podesi domaćinstvo/);
+  if (await setup.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await page.locator('input[type="password"]').nth(0).fill("correct horse");
+    await page.locator('input[type="password"]').nth(1).fill("correct horse");
+    await page.locator("form button.btn").click();
+    await page.waitForTimeout(800);
+  }
+  for (const [name, url, full] of [
+    ["help-tools", "/#tools", true],
+    ["help-home", "/#help", true],
+    ["help-start", "/#help/start", true],
+    ["help-pairing", "/#help/pairing", true],
+    ["help-assistant", "/#help/assistant", true],
+    ["help-supplies", "/#help/supplies", true],
+    ["help-household-backups", "/#help/household/backups", false],
+    ["help-troubleshooting", "/#help/troubleshooting", false],
+    ["help-link-supplies", "/#supplies", false],
+    ["help-link-household", "/#household/network", false],
+    ["help-link-assistant", "/#assistant", false],
+  ] as const) {
+    await page.goto(url);
+    await page.waitForTimeout(900);
+    await page.screenshot({ path: file(name), fullPage: full });
+  }
+  await page.goto("/#help");
+  await page.locator(".help-search input").fill(LANG === "sr" ? "lozinka" : "password");
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: file("help-search"), fullPage: true });
+});

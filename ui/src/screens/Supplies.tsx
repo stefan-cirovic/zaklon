@@ -8,6 +8,7 @@ import { errCode, errText } from "../errors";
 import { fmtDateTime, fmtQty, parseNumber, unitLabel } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
 import ExpiryBadge from "../components/ExpiryBadge";
+import HelpLink from "../components/HelpLink";
 
 type T = (k: Key) => string;
 
@@ -152,7 +153,10 @@ export default function Supplies({ t }: { t: T }) {
   return (
     <div className="stack">
       <div className="page-head">
-        <h1>{t("supplies")}</h1>
+        <div className="title-line">
+          <h1>{t("supplies")}</h1>
+          <HelpLink t={t} topic="supplies" />
+        </div>
       </div>
       <div className="segmented tabs-4">
         {tabs.map(([v, label]) => (

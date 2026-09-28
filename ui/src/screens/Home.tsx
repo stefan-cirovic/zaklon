@@ -8,6 +8,7 @@ import { fmtDateTime, fmtQty } from "../format";
 import type { Key } from "../i18n";
 import { offlineState, onOfflineChange } from "../offline";
 import type { Item } from "./Supplies";
+import HelpLink from "../components/HelpLink";
 
 type T = (k: Key) => string;
 type Props = {
@@ -88,7 +89,10 @@ export default function Home({ status, statusAt, error, t, go, phone }: Props) {
   return (
     <div className="stack">
       <div className="page-head">
-        <h1>{status?.hub_name ?? "Zaklon"}</h1>
+        <div className="title-line">
+          <h1>{status?.hub_name ?? "Zaklon"}</h1>
+          <HelpLink t={t} topic="home" />
+        </div>
         <p className="muted row">
           <span className={"status-dot" + (up ? "" : " off")} aria-hidden="true" /> {up ? t("online") : t("offline")}
         </p>

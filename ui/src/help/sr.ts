@@ -1,0 +1,874 @@
+import type { HelpContent } from "./types";
+
+/** The user guide in Serbian (Latin script), with the same topics and sections as en.ts. */
+const sr: HelpContent = {
+  start: {
+    title: "Prvi koraci",
+    summary: "Šta je Zaklon, kako laptop i telefoni rade zajedno i čime da počneš.",
+    sections: [
+      {
+        id: "what",
+        title: "Šta je Zaklon",
+        body: [
+          { p: "Zaklon je kućna baza koja radi bez interneta. Na tvom laptopu čuva znanje (na primer Vikipediju i uputstva za prvu pomoć), mape, zalihe u kući i AI asistenta, i radi i onda kad internet ne radi." },
+          { p: "Nema naloga, nema oblaka i nema praćenja. Sve ostaje na laptopu i na tvojim telefonima." },
+        ],
+      },
+      {
+        id: "hub",
+        title: "Laptop je hub",
+        body: [
+          { p: "Zaklon radi na jednom Windows laptopu (ili stonom računaru). Zovemo ga **hub**: on čuva sve podatke domaćinstva i radi težak posao, kao što su preuzimanja i AI." },
+          {
+            list: [
+              "Zaklon se pokreće sa Windowsom i radi i kad zatvoriš njegov prozor, pa telefoni ostaju povezani. Njegova ikonica je dole desno, pored sata.",
+              "U meniju te ikonice Zaklon se otvara, **Pokreni sa Windowsom** se uključuje ili isključuje, a tu je i **Ugasi Zaklon**.",
+              "Program i svi podaci domaćinstva su u jednom folderu koji si izabrao pri instalaciji. Kad se Zaklon deinstalira, podaci ostaju.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "phones",
+        title: "Telefoni se povezuju preko WiFi-ja",
+        body: [
+          { p: "Android telefoni dobijaju aplikaciju Zaklon od samog huba i povezuju se sa njim preko kućne WiFi mreže. Za to ne treba internet, samo ista WiFi mreža." },
+          {
+            list: [
+              "Kod kuće telefon koristi sve što hub ima: zalihe, biblioteku, asistenta i mape.",
+              "Van kuće telefon i dalje prikazuje poslednje stanje zaliha, a lista za kupovinu radi. Vidi [Rad bez interneta](#help/offline).",
+              "Kad nema rutera (nestanak struje, vikendica), laptop može da napravi [sopstvenu WiFi mrežu](#help/household/network).",
+            ],
+          },
+        ],
+      },
+      {
+        id: "first-steps",
+        title: "Čime da počneš",
+        body: [
+          {
+            steps: [
+              "**Podesi domaćinstvo.** Kad se Zaklon prvi put otvori, izaberi jezik, ime huba i lozinku domaćinstva (najmanje 8 znakova).",
+              "**Upari telefone.** Na laptopu otvori [Domaćinstvo › Uređaji](#household/devices) i izaberi **Dodaj telefon**. Vidi [Uparivanje telefona](#help/pairing).",
+              "**Preuzmi sadržaj.** U [Dodacima](#addons) osnovni paket jednim dugmetom preuzima znanje, uputstva za prvu pomoć i popravke i AI model koji odgovara ovom računaru. Za to jednom treba internet; posle sve radi i bez njega.",
+              "**Unesi zalihe** u [Zalihama](#supplies) i pitaj [Asistenta](#assistant) šta god te zanima.",
+            ],
+          },
+          { note: "Svako ko zna lozinku domaćinstva ima ista prava: može da upari telefon i da menja sve. Izaberi lozinku koju će domaćinstvo zapamtiti i čuvaj je; treba i za šifrovane rezervne kopije." },
+          { p: "Prelaziš sa drugog računara? Na ekranu za podešavanje umesto toga vrati kopiju prethodnog huba i telefoni nastavljaju da rade. Vidi [Rezervne kopije](#help/household/backups)." },
+        ],
+      },
+      {
+        id: "finding-your-way",
+        title: "Kako da se snađeš",
+        body: [
+          { p: "Traka na dnu je ista na laptopu i na telefonima:" },
+          {
+            list: [
+              "**Početna**: stanje huba, šta uskoro ističe i čega ponestaje.",
+              "**Asistent**: pitaj šta te zanima, običnim rečima.",
+              "**Alati**: svi alati ([Zalihe](#supplies), [Biblioteka](#library), [Mape](#maps) i [Dodaci](#addons)) i ova pomoć.",
+              "**Domaćinstvo**: telefoni, mreža, rezervne kopije i ostala podešavanja.",
+            ],
+          },
+          { p: "Na laptopu se na ekranu [Alati](#tools) jedan alat može prikačiti na traku. Tada se pojavljuje u traci na svim uređajima u domaćinstvu." },
+          { p: "Svaki ekran na vrhu ima vezu **Kako radi** koja otvara njegovu stranu u ovoj pomoći." },
+        ],
+      },
+    ],
+  },
+
+  pairing: {
+    title: "Uparivanje telefona",
+    summary: "Instaliraj aplikaciju na Android telefon i poveži ga sa hubom, QR kodom ili kodom od 6 cifara.",
+    open: { href: "#household/devices", label: "Otvori Domaćinstvo › Uređaji" },
+    sections: [
+      {
+        id: "before",
+        title: "Pre nego što počneš",
+        body: [
+          {
+            list: [
+              "Telefon ima Android 9 ili noviji.",
+              "Telefon i laptop su na **istoj WiFi mreži**. Preko mobilnog interneta ovo ne radi.",
+              "Zaklon radi na laptopu i znaš lozinku domaćinstva.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "laptop",
+        title: "Na laptopu",
+        body: [
+          {
+            steps: [
+              "Otvori [Domaćinstvo › Uređaji](#household/devices) i izaberi **Dodaj telefon**.",
+              "Laptop prikazuje dva QR koda, jedan za preuzimanje aplikacije i jedan za uparivanje, i kod od 6 cifara.",
+              "Kodovi važe 5 minuta. Kad isteknu, izaberi **Novi kod**.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "install",
+        title: "Instaliraj aplikaciju na telefon",
+        body: [
+          {
+            steps: [
+              "Skeniraj prvi QR kod kamerom telefona, ili adresu ispod njega upiši u pregledač na telefonu. Izgleda otprilike ovako: **http://192.168.1.10:8480/get**.",
+              "Preuzmi aplikaciju i instaliraj je. Android možda traži dozvolu za instaliranje aplikacija iz pregledača; dozvoli je za ovu instalaciju.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "qr",
+        title: "Uparivanje QR kodom (najlakše)",
+        body: [
+          {
+            steps: [
+              "Otvori Zaklon na telefonu i pritisni **Skeniraj QR kod**.",
+              "Skeniraj QR kod za uparivanje sa laptopa.",
+              "Unesi lozinku domaćinstva i ime telefona, na primer „Anin telefon“, pa pritisni **Upari**.",
+            ],
+          },
+          { p: "QR kod nosi identitet laptopa, pa telefon zna da razgovara baš sa tvojim hubom." },
+        ],
+      },
+      {
+        id: "code",
+        title: "Uparivanje preko „Pronađi hubove“ i koda od 6 cifara",
+        body: [
+          { p: "Ovo koristi kad kamera telefona ne može da skenira kod." },
+          {
+            steps: [
+              "Na telefonu pritisni **Pronađi hubove na ovoj mreži** i sa spiska izaberi svoj hub.",
+              "Ukucaj kod od 6 cifara koji piše na laptopu.",
+              "Proveri da li je **Sigurnosni kod** na telefonu isti kao onaj na laptopu.",
+              "Unesi lozinku domaćinstva i ime telefona, pa pritisni **Upari**.",
+            ],
+          },
+          { note: "Pre nego što pošalje lozinku, telefon pomoću koda od 6 cifara proverava da razgovara sa tvojim laptopom, a ne sa nekim drugim uređajem na mreži. Ako se javi neko drugi, uparivanje se prekida i lozinka se ne šalje." },
+        ],
+      },
+      {
+        id: "tries",
+        title: "Pogrešan kod ili lozinka",
+        body: [
+          {
+            list: [
+              "Jedan kod dozvoljava tri pokušaja. Posle previše pogrešnih pokušaja izaberi **Novi kod** na laptopu.",
+              "Telefon koji je previše puta pogrešio mora da sačeka nekoliko minuta pre sledećeg pokušaja.",
+              "Lozinka domaćinstva se nikad ne čuva na telefonu.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "paired",
+        title: "Upareni telefoni",
+        body: [
+          {
+            list: [
+              "[Domaćinstvo › Uređaji](#household/devices) prikazuje sve uparene telefone i kad je koji poslednji put viđen.",
+              "Na laptopu **Ukloni** trajno isključuje telefon. Sa njim se brišu i njegovi sačuvani razgovori sa asistentom.",
+              "Na samom telefonu **Zaboravi ovaj hub** (u Domaćinstvo › Uređaji) prekida vezu; da bi ponovo koristio hub, upari ga ponovo.",
+              "Ako je laptop ponovo instaliran ili zamenjen, telefon to kaže i nudi **Upari ponovo**. Do tada sve na telefonu ostaje sačuvano.",
+            ],
+          },
+        ],
+      },
+    ],
+  },
+
+  home: {
+    title: "Početna",
+    summary: "Hub na prvi pogled: da li radi, baterija i šta ističe ili ponestaje.",
+    open: { href: "#home", label: "Otvori Početnu" },
+    sections: [
+      {
+        id: "state",
+        title: "Stanje huba",
+        body: [
+          { p: "Na vrhu je ime huba i da li **Radi** ili **Nije dostupan**. Ispod toga:" },
+          {
+            list: [
+              "**Uređaji**: koliko je telefona upareno.",
+              "**Radi već**: koliko dugo hub radi bez prekida.",
+              "**Baterija**: baterija laptopa i da li se puni. Računar bez baterije prikazuje **Bez baterije**.",
+              "**Adrese**: gde telefoni na WiFi mreži nalaze hub.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "lists",
+        title: "Ističe uskoro i ponestaje",
+        body: [
+          {
+            list: [
+              "**Isteklo ili ističe uskoro** prikazuje zalihe kojima je rok prošao ili ističe u narednih 30 dana.",
+              "**Ponestaje** prikazuje zalihe kojih ima manje nego što piše u **Upozori kad padne ispod**.",
+            ],
+          },
+          { p: "Svaki spisak prikazuje do pet stavki. Sve ih vidiš u [Zalihama](#supplies)." },
+        ],
+      },
+      {
+        id: "actions",
+        title: "Pitanje i novosti",
+        body: [
+          { p: "**Pitaj asistenta** otvara [Asistenta](#assistant). Kad izađe novija verzija Zaklona, obaveštenje o tome se pojavi i na Početnoj." },
+        ],
+      },
+      {
+        id: "away",
+        title: "Na telefonu van kuće",
+        body: [
+          { p: "Kad hub nije dostupan, Početna prikazuje poslednje brojeve koje je dobila, uz vreme od kada su. Vidi [Rad bez interneta](#help/offline)." },
+        ],
+      },
+    ],
+  },
+
+  assistant: {
+    title: "Asistent",
+    summary: "Pitaj običnim rečima. Odgovori stižu iz tvoje biblioteke, sa izvorima, a asistent zna i tvoje zalihe.",
+    open: { href: "#assistant", label: "Otvori Asistenta" },
+    sections: [
+      {
+        id: "ask",
+        title: "Kako se postavlja pitanje",
+        body: [
+          {
+            steps: [
+              "Otvori [Asistenta](#assistant) i upiši pitanje u polje na dnu, na srpskom ili engleskom.",
+              "Na laptopu pritisni Enter (Shift+Enter prelazi u novi red). Na telefonu pritisni dugme sa strelicom.",
+              "Asistent prvo traži u biblioteci, pa piše odgovor. Kvadratno dugme ga zaustavlja.",
+            ],
+          },
+          { p: "Odgovara na jeziku na kom pitaš. Prvo pitanje posle pauze traje duže jer AI mora da se pokrene (do jednog minuta)." },
+        ],
+      },
+      {
+        id: "sources",
+        title: "Izvori i citati",
+        body: [
+          { p: "Asistent odgovara iz paketa znanja u tvojoj [Biblioteci](#library). Brojevi u odgovoru, na primer [1], vode do članaka pod **Izvori**. Pritisni neki da pročitaš članak." },
+          {
+            list: [
+              "Kad u biblioteci nema ničega o tom pitanju, odgovor to kaže. Tada dolazi iz opšteg znanja modela i može biti netačan.",
+              "Kad odgovor ne navodi izvore, napomena ispod njega te podseća da ga proveriš u člancima.",
+              "Ispod svakog odgovora piše šta je tražio i koliko brzo je pisao.",
+            ],
+          },
+          { warn: "AI može da pogreši. Za sve što je važno, pročitaj članke iz kojih je odgovor." },
+        ],
+      },
+      {
+        id: "supplies",
+        title: "Pitanja o zalihama",
+        body: [
+          { p: "Pitaj šta imaš u kući, na primer „Šta ističe ovog meseca?“. Takvi odgovori su označeni sa **Iz tvojih zaliha**." },
+          { p: "Možeš da tražiš i izmene, na primer „dodaj 2 litra mleka“ ili „potrošili smo pirinač“. Asistent pokaže šta bi promenio, a ništa se ne menja dok ne izabereš **Da, uradi**." },
+        ],
+      },
+      {
+        id: "memory",
+        title: "Šta pamti",
+        body: [
+          { p: "Reci „zapamti da je Ana alergična na penicilin“ i asistent će ponuditi da to zapamti; izaberi **Da, uradi** da se beleška sačuva. Beleške koristi kad su važne za pitanje." },
+          {
+            list: [
+              "Beleške su pod **Šta asistent pamti**, na dnu spiska razgovora, i u [Domaćinstvo › AI asistent](#household/assistant/memory). Tu možeš da ih dodaješ i brišeš.",
+              "Svi u domaćinstvu vide iste beleške. Asistent pamti do 500 beleški, svaku do 300 znakova.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "conversations",
+        title: "Sačuvani razgovori",
+        body: [
+          {
+            list: [
+              "Svaki razgovor se čuva na hubu. Spisak levo (na telefonu dugme sa spiskom na vrhu) ih grupiše po danima i ima pretragu.",
+              "**Novi razgovor** počinje nov.",
+              "Svaki uređaj vidi samo svoje razgovore: laptop svoje, svaki telefon svoje.",
+              "Dugme **Opcije razgovora** (⋯) pored naslova preimenuje ili briše razgovor.",
+              "Van dometa huba telefon i dalje može da čita svoj spisak i razgovore koje je poslednje otvarao, ali ne može da pita hub.",
+            ],
+          },
+          { note: "Uređaj čuva do 500 razgovora (mesto oslobađa onaj koji najduže nije korišćen) i do 200 pitanja u jednom razgovoru. Kad se telefon ukloni, brišu se i njegovi razgovori." },
+        ],
+      },
+      {
+        id: "send",
+        title: "Pošalji na…",
+        body: [
+          { p: "Da podeliš razgovor, otvori njegove opcije, izaberi **Pošalji na…** i uređaj. Tamo se kopija pojavi kao nov razgovor, označen imenom uređaja koji ga je poslao. Tvoj razgovor ostaje kakav je bio." },
+        ],
+      },
+      {
+        id: "online",
+        title: "Pretraga na internetu",
+        body: [
+          { p: "Ispod polja za pitanje je **Traži i na internetu**. Podrazumevano je isključeno. Kad ga uključiš, asistent pretražuje i veb (preko DuckDuckGo-a), samo u tom razgovoru, a stranice koje je pročitao navodi kao izvore sa oznakom **(internet)**. Za to treba internet." },
+          { note: "Dok je ovo isključeno, ništa od onoga što pitaš ne izlazi iz kuće." },
+        ],
+      },
+      {
+        id: "health",
+        title: "Zdravlje i prva pomoć",
+        body: [
+          { p: "Kod pitanja o zdravlju, povredama i lekovima asistent je posebno oprezan:" },
+          {
+            list: [
+              "Zadržava samo ono što može da potkrepi člankom iz biblioteke.",
+              "Ispod odgovora dodaje brojeve za hitne slučajeve: **194** za Hitnu pomoć u Srbiji, **112** u EU.",
+              "Kad u biblioteci nema proverenog odgovora, to kaže, navodi te brojeve i savetuje da pitaš lekara ili farmaceuta.",
+              "Beleške koje su važne, na primer alergija, prikazuju se iznad odgovora.",
+            ],
+          },
+          { warn: "Zaklon nije lekar. Kad je hitno, prvo pozovi pomoć." },
+        ],
+      },
+      {
+        id: "model",
+        title: "AI model",
+        body: [
+          { p: "Asistentu treba AI model, koji se jednom preuzme na laptopu. Kad ga nema, asistent nudi model preporučen za ovaj računar. Veći modeli bolje odgovaraju, ali su sporiji i traže više memorije. Model menjaš u samom Asistentu (polje **Model**) ili u [Domaćinstvo › AI asistent](#household/assistant)." },
+          { p: "AI se pokreće uz prvo pitanje i sam se gasi posle 20 minuta bez pitanja. Na laptopu ga **oslobodi memoriju sada** gasi odmah." },
+        ],
+      },
+      {
+        id: "phone",
+        title: "AI na samom telefonu",
+        body: [
+          { p: "Kod kuće telefon pita AI na hubu. Telefon može da ima i svoj mali model, za kad hub nije dostupan:" },
+          {
+            steps: [
+              "Na telefonu otvori Asistenta i izaberi **AI na ovom telefonu (bez huba)**.",
+              "Pod **Modeli na hubu** izaberi **Kopiraj na telefon**. To se radi jednom, preko WiFi-ja, a ekran ostaje upaljen dok se ne završi.",
+              "Izaberi **Pokreni**, pa pitaj.",
+            ],
+          },
+          { p: "Van dometa huba odgovara AI sa telefona. Manji je i ne traži u biblioteci, zato proveri ono što kaže." },
+        ],
+      },
+    ],
+  },
+
+  supplies: {
+    title: "Zalihe",
+    summary: "Šta imaš u kući, gde stoji i kad ističe, sa listom za kupovinu i skeniranjem barkoda.",
+    open: { href: "#supplies", label: "Otvori Zalihe" },
+    sections: [
+      {
+        id: "items",
+        title: "Stavke",
+        body: [
+          { p: "Zalihe su zajedničke za celo domaćinstvo: izmena na jednom uređaju vidi se na svima. Kartica **Stavke** prikazuje sve, uz pretragu i izbor kategorije. Da dodaš nešto:" },
+          {
+            steps: [
+              "Izaberi **Dodaj stavku**.",
+              "Upiši naziv, količinu i jedinicu, kategoriju i mesto (na primer Ostava ili Frižider). Možeš da dodaš i svoje mesto, na primer „Vikendica“.",
+              "Upiši rok trajanja ako ga ima, i **Upozori kad padne ispod** ako želiš da znaš kad ponestaje.",
+              "Izaberi **Sačuvaj**.",
+            ],
+          },
+          { p: "Dugmad **−** i **+** troše ili dodaju jedan komad. Pritisni stavku da je izmeniš ili obrišeš; obrisana stavka ostaje zabeležena u istoriji." },
+        ],
+      },
+      {
+        id: "batches",
+        title: "Serije i rokovi trajanja",
+        body: [
+          { p: "Ista stvar kupljena u različito vreme često ima različit rok. Svaka kupovina je **serija** sa svojom količinom i rokom. Otvori stavku da vidiš njene serije, da ih izmeniš ili dodaš novu." },
+          {
+            list: [
+              "Stavka prikazuje ukupnu količinu i najraniji rok.",
+              "Kad trošiš, troši se prvo serija kojoj rok najpre ističe.",
+              "Rokovi su označeni crveno kad su istekli, a bojom akcenta kad ističu u narednih 30 dana.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "running-low",
+        title: "Ponestaje",
+        body: [
+          { p: "Stavci postavi **Upozori kad padne ispod**, na primer 2 litra za mleko. Kad ga bude manje, stavka dobija oznaku **Ponestaje**, pojavljuje se na [Početnoj](#home) i sama odlazi na listu za kupovinu, sa količinom koja nedostaje." },
+          { p: "Ako je obrišeš sa liste za kupovinu, vratiće se kad je dopuniš i ponovo počne da ponestaje." },
+        ],
+      },
+      {
+        id: "shopping",
+        title: "Lista za kupovinu",
+        body: [
+          {
+            list: [
+              "U **Dodaj na listu…** upiši sve ostalo što ti treba.",
+              "U prodavnici pritisni **Kupljeno** za ono što si kupio. To prelazi u **Spremi**.",
+              "**Obriši** skida stavku sa liste.",
+            ],
+          },
+          { note: "Lista za kupovinu radi i na telefonu van kuće. Izmene čekaju na telefonu i stižu na hub kad se vratiš." },
+        ],
+      },
+      {
+        id: "put-away",
+        title: "Spremi",
+        body: [
+          { p: "Kad se vratiš kući, otvori **Spremi**. Za svaku kupljenu stvar proveri količinu i jedinicu, upiši rok, mesto i kategoriju, pa izaberi **Spremi**. Dodaje se u zalihe kao nova serija, ili kao nova stavka ako je do sada nisi imao." },
+        ],
+      },
+      {
+        id: "history",
+        title: "Istorija",
+        body: [
+          { p: "**Istorija** prikazuje svaku promenu: šta je dodato, izmenjeno, potrošeno, dopunjeno ili obrisano, kada i na kom uređaju." },
+        ],
+      },
+      {
+        id: "scan",
+        title: "Skeniranje barkoda (telefoni)",
+        body: [
+          {
+            steps: [
+              "Na telefonu izaberi **Skeniraj barkod** i usmeri kameru na kod. Prvi put dozvoli pristup kameri.",
+              "Ako stavka sa tim barkodom postoji, otvoriće se. Ako ne postoji, počinje nova stavka sa već upisanim barkodom; ako je domaćinstvo ranije dalo ime tom barkodu, upisuje se i ime.",
+              "U obrascu stavke, **Skeniraj** pored polja **Barkod** dodaje kod toj stavci.",
+            ],
+          },
+          { note: "Skeniranje se radi na samom telefonu. Ne treba mu internet ni Google servisi." },
+        ],
+      },
+    ],
+  },
+
+  library: {
+    title: "Biblioteka",
+    summary: "Čitaj i pretražuj pakete znanja, poput Vikipedije, bez interneta.",
+    open: { href: "#library", label: "Otvori Biblioteku" },
+    sections: [
+      {
+        id: "packs",
+        title: "Paketi znanja",
+        body: [
+          { p: "U biblioteci su **paketi znanja**: Vikipedija, rečnik, medicinski članci, uputstva za prvu pomoć, popravke, baštu i još mnogo toga. Svaki paket se jednom preuzme u [Dodacima](#addons) (ili uveze sa USB-a) i posle radi bez interneta." },
+          { p: "Dok nema nijednog paketa, Biblioteka to kaže i nudi **Otvori Dodatke**." },
+        ],
+      },
+      {
+        id: "read",
+        title: "Čitanje",
+        body: [
+          { p: "**Knjige** su paketi na hubu. Pritisni jednu da otvoriš njenu početnu stranu, pa prati veze kao na veb sajtu. **Nazad** vraća u Biblioteku." },
+        ],
+      },
+      {
+        id: "search",
+        title: "Pretraga",
+        body: [
+          { p: "Upiši nešto u **Pretraži biblioteku…** da pretražiš sve pakete odjednom. Svaki rezultat prikazuje deo članka i paket iz kog je." },
+        ],
+      },
+      {
+        id: "latin",
+        title: "Srpski članci latinicom",
+        body: [
+          { p: "Srpska Vikipedija je pisana ćirilicom. Da je čitaš latinicom, uključi **Latinica za srpske članke** u [Domaćinstvo › Jezik](#household/language/latin). Važi samo za ovaj uređaj." },
+        ],
+      },
+      {
+        id: "assistant",
+        title: "Biblioteka i asistent",
+        body: [
+          { p: "[Asistent](#assistant) pretražuje iste pakete i navodi članke koje je koristio. Što više paketa imaš, na više pitanja može da odgovori." },
+          { note: "Telefoni čitaju biblioteku sa huba, pa moraju da budu na kućnoj WiFi mreži." },
+        ],
+      },
+    ],
+  },
+
+  maps: {
+    title: "Mape",
+    summary: "Mape sveta bez interneta: hub ih preuzme jednom, a telefoni ih prikazuju u aplikaciji CoMaps.",
+    open: { href: "#maps", label: "Otvori Mape" },
+    sections: [
+      {
+        id: "how",
+        title: "Kako radi",
+        body: [
+          { p: "Mape su podeljene na delove: države, a velike države i na regione. Hub jednom preuzme delove koje izabereš, a telefoni ih dobijaju od huba preko WiFi-ja, bez interneta. Na telefonima mape prikazuje **CoMaps**, besplatna aplikacija za mape koju takođe daje hub." },
+        ],
+      },
+      {
+        id: "download",
+        title: "Preuzimanje mapa na hub",
+        body: [
+          {
+            steps: [
+              "Otvori [Mape](#maps) i potraži državu ili region.",
+              "Izaberi **Preuzmi**. Kod velike države otvori njene regione da preuzmeš samo neke.",
+              "Preuzimanja se nastavljaju posle prekida. Na laptopu **Ukloni** briše mapu.",
+            ],
+          },
+          { p: "Iste mape su i u folderu **Mape** u [Dodacima](#addons/maps)." },
+        ],
+      },
+      {
+        id: "phone",
+        title: "Mape na telefonu",
+        body: [
+          {
+            steps: [
+              "Instaliraj CoMaps sa huba: na telefonu otvori [Mape](#maps) i pritisni **Instaliraj CoMaps**, ili skeniraj QR kod sa ekrana Mape na laptopu. Aplikacija stiže na hub zajedno sa prvom mapom koju preuzmeš.",
+              "U aplikaciji CoMaps otvori Settings (gore desno), pod **Custom Map Server** upiši adresu sa ekrana Mape i pritisni **Save**. Na telefonu je **Kopiraj adresu** kopira umesto tebe.",
+              "Preuzimaj mape u CoMaps kao i obično, prvo osnovnu mapu sveta (oko 60 MB). Sada stižu sa huba, i bez interneta.",
+            ],
+          },
+          { note: "Mape preuzete u CoMaps ostaju na telefonu, pa rade i van kuće." },
+        ],
+      },
+    ],
+  },
+
+  addons: {
+    title: "Dodaci",
+    summary: "Preuzimanje paketa znanja, AI modela i mapa, i njihovo kopiranje na USB ili sa njega.",
+    open: { href: "#addons", label: "Otvori Dodatke" },
+    sections: [
+      {
+        id: "layout",
+        title: "Diskovi i folderi",
+        body: [
+          { p: "Dodaci izgledaju kao „Ovaj računar“ u Windows Exploreru." },
+          {
+            list: [
+              "**Uređaji i diskovi** prikazuju disk na kom Zaklon drži biblioteku (**Zaklon biblioteka**), koliko je pun i koliko zauzimaju dodaci. Otvori ga da vidiš šta je na njemu, od najvećeg. Traka postaje crvena kad je disk skoro pun.",
+              "Na laptopu se drugi diskovi, na primer USB, otvaraju sa kopiranjem i uvozom podešenim na taj disk.",
+              "U **Folderima** su dodaci: Vikipedija i knjige, Zdravlje i prva pomoć, Bašta i hrana, Popravke i veštine, AI modeli, Mape i Programi.",
+              "Polje za pretragu nalazi dodatke i države u svim folderima. Dugmad pored njega menjaju prikaz između pločica i tabele sa detaljima.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "starter",
+        title: "Osnovni paket",
+        body: [
+          { p: "Na laptopu osnovni paket (**Osnovni paket za Srbiju** ili **Osnovni paket (engleski)**, prema jeziku aplikacije) jednim dugmetom, **Preuzmi sve**, preuzima ono što domaćinstvu treba za početak: znanje, uputstva za prvu pomoć i popravke, AI model koji odgovara ovom računaru i, u srpskom paketu, mapu Srbije." },
+        ],
+      },
+      {
+        id: "downloads",
+        title: "Preuzimanja",
+        body: [
+          {
+            list: [
+              "Izaberi **Preuzmi** na dodatku. Preuzima ga hub, i kad si preuzimanje pokrenuo sa telefona.",
+              "Preuzimanje može da se pauzira i nastavi. Posle prekida nastavlja od mesta gde je stalo, ne kreće iz početka.",
+              "Svaki fajl se proverava pre upotrebe. Oštećen fajl se odbacuje; izaberi **Pokušaj ponovo**.",
+              "Za preuzimanje treba bar 50% baterije ili punjač, i dovoljno mesta na disku.",
+              "Programi (motori za biblioteku, asistenta i mape) stižu sami, uz ono čemu su potrebni.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "updates",
+        title: "Nove verzije i uklanjanje",
+        body: [
+          { p: "Kad izađe novija verzija instaliranog paketa ili mape, piše **Dostupna je nova verzija** i pojavi se dugme **Ažuriraj**. Na laptopu **Ukloni** briše dodatak, ili nedovršeno preuzimanje, i oslobađa mesto." },
+        ],
+      },
+      {
+        id: "usb-copy",
+        title: "Kopiranje na USB",
+        body: [
+          { p: "Da podesiš drugi Zaklon bez interneta, kopiraj dodatke na USB. Na laptopu:" },
+          {
+            steps: [
+              "Priključi USB i otvori ga pod **Uređaji i diskovi**, ili koristi **Kopiraj na USB** na dnu Dodataka.",
+              "Izaberi dodatke koje kopiraš. Na USB možeš da staviš i sam Zaklon (instalaciju za Windows i aplikaciju za telefon), za nekoga ko počinje od nule.",
+              "Izaberi **Kopiraj** i sačekaj da piše **Kopirano u**.",
+            ],
+          },
+          { note: "Na FAT32 disk ne staju fajlovi od 4 GB i veći. Za velike pakete koristi disk formatiran kao exFAT ili NTFS." },
+        ],
+      },
+      {
+        id: "usb-import",
+        title: "Uvoz sa USB-a",
+        body: [
+          {
+            steps: [
+              "Na laptopu otvori USB pod **Uređaji i diskovi**, ili koristi **Uvoz sa USB-a ili iz foldera**.",
+              "Izaberi folder sa fajlovima paketa (ili njegov podfolder **zaklon-packs**) i izaberi **Uvezi**.",
+              "Svaki paket prikazuje napredak u svom folderu. Fajlovi se proveravaju pre upotrebe.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "phone",
+        title: "Na telefonu",
+        body: [
+          { p: "Telefon vidi iste dodatke i može da pokrene preuzimanje na hubu. Osnovni paket, uklanjanje i kopiranje na USB su na laptopu." },
+        ],
+      },
+    ],
+  },
+
+  household: {
+    title: "Podešavanja domaćinstva",
+    summary: "Telefoni, mreža, rezervne kopije, lozinka i ostala podešavanja, kategoriju po kategoriju.",
+    open: { href: "#household", label: "Otvori Domaćinstvo" },
+    sections: [
+      {
+        id: "find",
+        title: "Kako da nađeš podešavanje",
+        body: [
+          { p: "[Domaćinstvo](#household) na vrhu prikazuje hub, ispod je pretraga **Pronađi podešavanje** i po jedna pločica za svaku kategoriju. Pretraga razume srpske i engleske reči, sa kvačicama i bez njih. Mreža i Rezervne kopije postoje samo na laptopu." },
+        ],
+      },
+      {
+        id: "devices",
+        title: "Uređaji",
+        body: [
+          { p: "Dodaj telefon i vidi uparene telefone, i kad je koji poslednji put viđen. Na telefonu je ovde i **Zaboravi ovaj hub**. Vidi [Uparivanje telefona](#help/pairing)." },
+        ],
+      },
+      {
+        id: "network",
+        title: "Mreža",
+        body: [
+          {
+            list: [
+              "**WiFi mreža sa ovog laptopa**: kad nema rutera (nestanak struje, vikendica), laptop može da bude WiFi mreža za telefone u domaćinstvu, pomoću Windowsove mobilne pristupne tačke. Izaberi **Napravi WiFi mrežu**; telefoni se priključuju skeniranjem QR koda ili upisivanjem prikazane lozinke, pa otvaraju Zaklon.",
+              "**Windows zaštitni zid**: kad bi Windows blokirao telefone, pojavi se upozorenje sa dugmetom **Dozvoli telefonima pristup**. Windows zatim traži potvrdu administratora računara.",
+              "**Mrežne adrese**: gde telefoni na istoj mreži nalaze laptop.",
+            ],
+          },
+          { note: "Da bi napravio WiFi mrežu, Windowsu treba veza koju deli: kabl, ili WiFi mreža na koju se ranije povezao. Probaj to jednom dok sve radi, da znaš da je spremno." },
+        ],
+      },
+      {
+        id: "backups",
+        title: "Rezervne kopije",
+        body: [
+          {
+            list: [
+              "Zaklon svaki dan sam čuva kopiju podataka domaćinstva (zalihe i njihovu istoriju, sačuvane razgovore i beleške, uparene telefone i podešavanja) i drži poslednjih 7 dana. Biblioteka, mape i AI modeli nisu u kopiji; vraćaju se preuzimanjem ili sa USB-a.",
+              "**Napravi kopiju sada**, ili **Sačuvaj kopiju na USB** da jednu čuvaš dalje od laptopa.",
+              "**Šifrovanje kopija**: jednom upiši lozinku domaćinstva i svaka nova kopija biće šifrovana njom. Kopija se otvara samo lozinkom koja je važila kad je napravljena.",
+            ],
+          },
+          { warn: "Ne zaboravi lozinku domaćinstva: bez nje ni Zaklon ne može da otvori šifrovanu kopiju." },
+          { p: "**Vrati iz fajla sa kopijom**: izaberi fajl i, za šifrovanu kopiju, lozinku domaćinstva iz vremena kad je napravljena. Zaklon proveri kopiju, a ona zamenjuje trenutne podatke kad se Zaklon sledeći put pokrene (**Pokreni Zaklon ponovo**). Današnji podaci se takođe čuvaju kao kopija. Sada upareni telefoni, lozinka domaćinstva i identitet huba ostaju kakvi jesu." },
+          { p: "Prelaziš na nov računar? Instaliraj Zaklon na njemu i na ekranu za podešavanje umesto toga vrati kopiju starog huba. Tada i upareni telefoni, lozinka i identitet huba dolaze iz kopije, pa telefoni nastavljaju da rade." },
+        ],
+      },
+      {
+        id: "privacy",
+        title: "Privatnost i bezbednost",
+        body: [
+          {
+            list: [
+              "**Lozinka domaćinstva** (laptop): ovde se menja. Treba za uparivanje telefona i za otvaranje šifrovane kopije. Već upareni telefoni ostaju povezani.",
+              "**Privatnost**: sve ostaje na hubu i tvojim telefonima. Zaklon ide na internet samo kad pokreneš nešto što to traži, na primer preuzimanje ili pretragu na internetu, i jednom dnevno da proveri da li postoji nova verzija, što može da se isključi.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "appearance",
+        title: "Izgled",
+        body: [
+          { p: "Izaberi boju akcenta, i potpuno crnu pozadinu koja štedi bateriju na OLED ekranima. Oboje se pamti samo na ovom uređaju." },
+        ],
+      },
+      {
+        id: "language",
+        title: "Jezik",
+        body: [
+          { p: "Svaki uređaj bira svoj jezik, srpski ili engleski. **Latinica za srpske članke** prikazuje srpske članke iz biblioteke latinicom, takođe samo na ovom uređaju." },
+        ],
+      },
+      {
+        id: "assistant",
+        title: "AI asistent",
+        body: [
+          { p: "Izaberi koji od preuzetih AI modela asistent koristi; onaj koji odgovara ovom računaru označen je kao preporučen. Modeli se preuzimaju na laptopu, u [Dodacima](#addons/models). Ovde je i **Šta asistent pamti**." },
+        ],
+      },
+      {
+        id: "updates",
+        title: "Ažuriranja",
+        body: [
+          { p: "Jednom dnevno, kad ima interneta, Zaklon pita GitHub za broj najnovije verzije; ništa o domaćinstvu se ne šalje. **Proveri sada** pita odmah. Kad izađe novija verzija, **Otvori stranicu za preuzimanje** je otvara u pregledaču." },
+          { note: "Zaklon nikad sam ne preuzima niti instalira ažuriranje. Dnevna provera se isključuje na laptopu." },
+        ],
+      },
+      {
+        id: "about",
+        title: "O programu",
+        body: [
+          { p: "Verzija i licenca (Zaklon je besplatan i otvorenog koda, zauvek), računar huba (procesor, memorija, slobodan prostor i, na laptopu, folder sa podacima) i licence projekata na kojima je Zaklon zasnovan." },
+        ],
+      },
+    ],
+  },
+
+  offline: {
+    title: "Rad bez interneta",
+    summary: "Šta radi bez interneta ili rutera, i na telefonu kad je laptop ugašen ili daleko.",
+    sections: [
+      {
+        id: "no-internet",
+        title: "Nema interneta",
+        body: [
+          { p: "Zaklon je napravljen baš za to. Kod kuće sve radi bez interneta dok je laptop uključen, a telefoni na istoj WiFi mreži: zalihe, biblioteka, mape i asistent." },
+          { p: "Internet treba samo za preuzimanje dodataka, za asistentovu pretragu na internetu i za dnevnu proveru nove verzije." },
+        ],
+      },
+      {
+        id: "no-router",
+        title: "Nema rutera",
+        body: [
+          { p: "Bez rutera (nestanak struje, vikendica) laptop može da napravi svoju WiFi mrežu: otvori [Domaćinstvo › Mreža](#household/network/hotspot) i izaberi **Napravi WiFi mrežu**. Telefoni se priključe na nju, pa otvore Zaklon." },
+        ],
+      },
+      {
+        id: "away",
+        title: "Telefon van dometa huba",
+        body: [
+          { p: "Kad je laptop ugašen ili je telefon van kuće, telefon javlja **Hub nije dostupan** i piše od kada su njegovi podaci. I dalje ima:" },
+          {
+            list: [
+              "poslednje stanje zaliha, za čitanje, i spiskove na Početnoj;",
+              "listu za kupovinu, koja i dalje radi: dodaj, označi kao kupljeno ili obriši;",
+              "spisak sačuvanih razgovora i one koje je poslednje otvarao, za čitanje;",
+              "svoj AI, ako je model kopiran na telefon (vidi [AI na samom telefonu](#help/assistant/phone));",
+              "mape koje su već preuzete u CoMaps.",
+            ],
+          },
+          { p: "Za ostale izmene, biblioteku i AI na hubu treba hub." },
+        ],
+      },
+      {
+        id: "waiting",
+        title: "Izmene koje čekaju",
+        body: [
+          { p: "Izmene liste za kupovinu napravljene van kuće čekaju na telefonu (**Promene koje čekaju hub**) i same se šalju čim telefon sledeći put dođe do huba." },
+          { note: "Ako telefon u međuvremenu upariš sa drugim hubom, pitaće te da li da izmene koje čekaju pošalje tom hubu ili da ih odbaci." },
+        ],
+      },
+      {
+        id: "laptop-off",
+        title: "Kad je laptop ugašen",
+        body: [
+          { p: "Hub radi dok je laptop uključen i Zaklon pokrenut (ikonica mu je pored sata). Zatvaranje prozora ga ne gasi; **Ugasi Zaklon** u meniju ikonice ga gasi. Zaklon se ponovo pokreće sa Windowsom." },
+          { p: "Dok je laptop ugašen ništa se ne gubi: telefoni sustignu sve kad se vrati." },
+        ],
+      },
+    ],
+  },
+
+  troubleshooting: {
+    title: "Rešavanje problema",
+    summary: "Telefon ne može da se poveže, asistent je spor, disk je pun i drugi problemi.",
+    sections: [
+      {
+        id: "connect",
+        title: "Telefon ne može da se poveže",
+        body: [
+          {
+            steps: [
+              "Proveri da je laptop uključen i da Zaklon radi: ikonica mu je pored sata, a [Početna](#home) na laptopu piše **Radi**.",
+              "Proveri da je telefon na **istoj WiFi mreži** kao laptop, a ne na mobilnom internetu. Mreža za goste često razdvaja uređaje; koristi glavnu mrežu.",
+              "Na laptopu otvori [Domaćinstvo](#household). Ako upozorava da **telefoni možda ne mogu da se povežu**, izaberi **Dozvoli telefonima pristup** i potvrdi u Windowsu.",
+              "Ako Windows mrežu smatra javnom, ne pušta telefone. Ako je to tvoja kućna mreža: u Windows podešavanjima otvori **Mreža i internet**, izaberi mrežu i za tip mrežnog profila izaberi **Privatno**.",
+              "Ako „Pronađi hubove“ ne nađe ništa, upari telefon QR kodom.",
+            ],
+          },
+          { p: "[Domaćinstvo › Mreža](#household/network/firewall) na laptopu pokazuje da li Windows zaštitni zid pušta telefone." },
+        ],
+      },
+      {
+        id: "pairing",
+        title: "Uparivanje ne uspeva",
+        body: [
+          {
+            list: [
+              "**Kod je istekao**: izaberi **Novi kod** na laptopu. Kod važi 5 minuta i tri pokušaja.",
+              "**Pogrešna lozinka domaćinstva**: proveri je sa onim ko ju je postavio. Menja se na laptopu, u [Domaćinstvo › Privatnost i bezbednost](#household/privacy/password).",
+              "**Umesto huba se javio drugi uređaj**: upari telefon skeniranjem QR koda.",
+              "**Hub je ponovo instaliran ili zamenjen**: telefon nudi **Upari ponovo**; do tada sve na njemu ostaje sačuvano.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "slow",
+        title: "Asistent je spor ili staje",
+        body: [
+          {
+            list: [
+              "Prvo pitanje posle pauze pokreće AI, što traje do jednog minuta.",
+              "Manji AI model odgovara brže. Izaberi ga u [Domaćinstvo › AI asistent](#household/assistant) ili ga preuzmi u [Dodacima](#addons/models).",
+              "Brzina piše ispod svakog odgovora. Ako laptop ima malo slobodne memorije, zatvori druge programe.",
+              "Odgovor koji traje predugo se zaustavlja. Pitaj ponovo, ili koristi manji model.",
+              "Ako AI stane dok se učitava, računar možda nema dovoljno slobodne memorije: probaj manji model.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "disk",
+        title: "Disk je pun",
+        body: [
+          {
+            list: [
+              "U [Dodacima](#addons) traka diska sa Zaklon bibliotekom postaje crvena kad je skoro pun. Otvori disk da vidiš šta zauzima najviše mesta.",
+              "Na laptopu **Ukloni** pakete, mape i modele koji ti ne trebaju. I pauzirana i nedovršena preuzimanja zauzimaju mesto.",
+              "Preuzimanje koje ne staje javlja **Nema dovoljno slobodnog prostora na disku**.",
+              "Na telefonu nedovršene kopije AI modela zauzimaju mesto dok ponovo ne kopiraš model ili ih ne odbaciš.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "library",
+        title: "Biblioteka se ne pokreće",
+        body: [
+          { p: "Ako Biblioteka javlja da njen motor ne može da se pokrene, otvori [Dodaci › Programi](#addons/programs), ukloni **Motor biblioteke (Kiwix)** i preuzmi ga ponovo." },
+        ],
+      },
+      {
+        id: "download",
+        title: "Preuzimanje ne uspeva",
+        body: [
+          {
+            list: [
+              "Izaberi **Pokušaj ponovo**: preuzimanje nastavlja od mesta gde je stalo.",
+              "Za preuzimanje treba bar 50% baterije ili punjač.",
+              "Oštećen fajl se sam odbacuje; ponovno preuzimanje to rešava.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "restart",
+        title: "Ponovno pokretanje Zaklona",
+        body: [
+          { p: "Ako laptop javlja **Zaklon hub ne radi na ovom računaru**, ponovo pokreni Zaklon: u meniju ikonice pored sata izaberi **Ugasi Zaklon**, pa ponovo otvori Zaklon." },
+        ],
+      },
+    ],
+  },
+};
+
+export default sr;

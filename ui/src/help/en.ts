@@ -1,0 +1,874 @@
+import type { HelpContent } from "./types";
+
+/** The user guide in English. Serbian (sr.ts) has the same topics and sections. */
+const en: HelpContent = {
+  start: {
+    title: "Getting started",
+    summary: "What Zaklon is, how the laptop and the phones work together, and the first steps.",
+    sections: [
+      {
+        id: "what",
+        title: "What Zaklon is",
+        body: [
+          { p: "Zaklon is an offline home base for your household. It keeps knowledge (such as Wikipedia and first-aid guides), maps, your supplies at home and an AI assistant on your own laptop, and it keeps working when the internet does not." },
+          { p: "There are no accounts, no cloud and no tracking. Everything stays on the laptop and on your phones." },
+        ],
+      },
+      {
+        id: "hub",
+        title: "The laptop is the hub",
+        body: [
+          { p: "One Windows laptop (or desktop computer) runs Zaklon. We call it the **hub**: it keeps all the household's data and does the heavy work, such as downloads and the AI." },
+          {
+            list: [
+              "Zaklon starts with Windows and keeps running when you close its window, so phones stay connected. Its icon sits in the tray, next to the clock.",
+              "The tray icon's menu opens Zaklon, turns **Start with Windows** off or on, and has **Quit Zaklon**.",
+              "The program and all the household's data live in the one folder you chose when installing. Uninstalling Zaklon keeps the data.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "phones",
+        title: "Phones connect over Wi-Fi",
+        body: [
+          { p: "Android phones get the Zaklon app from the hub itself and connect to it over your home Wi-Fi. This needs no internet, only the same Wi-Fi network." },
+          {
+            list: [
+              "At home, a phone uses everything the hub has: the supplies, the library, the assistant and the maps.",
+              "Away from home, a phone still shows its last copy of the supplies, and its shopping list keeps working. See [Working without internet](#help/offline).",
+              "When there is no router (a power cut, a cabin), the laptop can make [a Wi-Fi network of its own](#help/household/network).",
+            ],
+          },
+        ],
+      },
+      {
+        id: "first-steps",
+        title: "First steps",
+        body: [
+          {
+            steps: [
+              "**Set up the household.** The first time Zaklon opens, choose the language, a name for the hub and a household password (at least 8 characters).",
+              "**Pair the phones.** On the laptop, open [Household › Devices](#household/devices) and choose **Add a phone**. See [Pairing a phone](#help/pairing).",
+              "**Get the content.** In [Add-ons](#addons), the starter set downloads knowledge, first-aid and repair guides and the AI model that fits this computer with one button. This needs internet once; after that, everything works without it.",
+              "**Add your supplies** in [Supplies](#supplies), and ask the [Assistant](#assistant) anything.",
+            ],
+          },
+          { note: "Everyone who knows the household password has the same rights: they can pair a phone and change anything. Choose a password the household will remember, and keep it safe; encrypted backups need it too." },
+          { p: "Moving from another computer? On the setup screen, restore the backup of your previous hub instead of setting up, and the phones keep working. See [Backups](#help/household/backups)." },
+        ],
+      },
+      {
+        id: "finding-your-way",
+        title: "Finding your way",
+        body: [
+          { p: "The bar at the bottom is the same on the laptop and on phones:" },
+          {
+            list: [
+              "**Home**: the hub's state, what expires soon and what is running low.",
+              "**Assistant**: ask questions in plain words.",
+              "**Tools**: every tool ([Supplies](#supplies), [Library](#library), [Maps](#maps) and [Add-ons](#addons)) and this help.",
+              "**Household**: phones, network, backups and the other settings.",
+            ],
+          },
+          { p: "On the laptop, one tool can be pinned to the bar from the [Tools](#tools) screen. It then shows in the bar on every device in the household." },
+          { p: "Every screen has a **How it works** link at the top that opens its page in this help." },
+        ],
+      },
+    ],
+  },
+
+  pairing: {
+    title: "Pairing a phone",
+    summary: "Install the app on an Android phone and connect it to the hub, with the QR code or with the 6-digit code.",
+    open: { href: "#household/devices", label: "Open Household › Devices" },
+    sections: [
+      {
+        id: "before",
+        title: "Before you start",
+        body: [
+          {
+            list: [
+              "The phone runs Android 9 or newer.",
+              "The phone and the laptop are on the **same Wi-Fi network**. Mobile data does not work for this.",
+              "Zaklon is running on the laptop, and you know the household password.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "laptop",
+        title: "On the laptop",
+        body: [
+          {
+            steps: [
+              "Open [Household › Devices](#household/devices) and choose **Add a phone**.",
+              "The laptop shows two QR codes, one for downloading the app and one for pairing, and a 6-digit code.",
+              "The codes work for 5 minutes. When they run out, choose **New code**.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "install",
+        title: "Install the app on the phone",
+        body: [
+          {
+            steps: [
+              "Scan the first QR code with the phone's camera, or type the address shown under it into the phone's browser. It looks like **http://192.168.1.10:8480/get**.",
+              "Download the app and install it. Android may ask you to allow installing apps from the browser; allow it for this install.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "qr",
+        title: "Pair with the QR code (easiest)",
+        body: [
+          {
+            steps: [
+              "Open Zaklon on the phone and tap **Scan the QR code**.",
+              "Scan the pairing QR code on the laptop.",
+              "Enter the household password and a name for the phone, such as “Ana's phone”, and tap **Pair**.",
+            ],
+          },
+          { p: "The QR code carries the laptop's identity, so the phone knows it is talking to your hub." },
+        ],
+      },
+      {
+        id: "code",
+        title: "Pair with “Find hubs” and the 6-digit code",
+        body: [
+          { p: "Use this when the phone's camera cannot scan the code." },
+          {
+            steps: [
+              "On the phone, tap **Find hubs on this network** and choose your hub from the list.",
+              "Type the 6-digit code shown on the laptop.",
+              "Check that the **Security code** on the phone is the same as the one on the laptop.",
+              "Enter the household password and a name for the phone, and tap **Pair**.",
+            ],
+          },
+          { note: "Before it sends the password, the phone uses the 6-digit code to make sure it is talking to your laptop and not to another device on the network. If something else answers, pairing stops and the password is not sent." },
+        ],
+      },
+      {
+        id: "tries",
+        title: "Wrong code or password",
+        body: [
+          {
+            list: [
+              "A code allows three tries. After too many wrong tries, choose **New code** on the laptop.",
+              "A phone that made too many wrong tries has to wait a few minutes before it can try again.",
+              "The household password is never stored on the phone.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "paired",
+        title: "Paired phones",
+        body: [
+          {
+            list: [
+              "[Household › Devices](#household/devices) lists every paired phone and when it was last seen.",
+              "On the laptop, **Remove** disconnects a phone for good. Its saved assistant conversations are deleted with it.",
+              "On the phone itself, **Forget this hub** (in Household › Devices) disconnects it; to use the hub again, pair it again.",
+              "If the laptop was reinstalled or replaced, the phone says so and offers **Pair again**. Everything on the phone is kept until you do.",
+            ],
+          },
+        ],
+      },
+    ],
+  },
+
+  home: {
+    title: "Home",
+    summary: "The hub at a glance: whether it runs, the battery, and what expires or runs low.",
+    open: { href: "#home", label: "Open Home" },
+    sections: [
+      {
+        id: "state",
+        title: "The hub's state",
+        body: [
+          { p: "At the top is the hub's name and whether it is **Running** or **Not reachable**. Below it:" },
+          {
+            list: [
+              "**Devices**: how many phones are paired.",
+              "**Uptime**: how long the hub has been running.",
+              "**Battery**: the laptop's battery and whether it is charging. A computer without a battery shows **No battery**.",
+              "**Addresses**: where phones on the Wi-Fi reach the hub.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "lists",
+        title: "Expiring soon and running low",
+        body: [
+          {
+            list: [
+              "**Expired or expiring soon** lists supplies that have expired or expire within 30 days.",
+              "**Running low** lists supplies that have less than their **Warn below** amount.",
+            ],
+          },
+          { p: "Each list shows up to five items. Open [Supplies](#supplies) to see them all." },
+        ],
+      },
+      {
+        id: "actions",
+        title: "Ask, and news",
+        body: [
+          { p: "**Ask the assistant** opens the [Assistant](#assistant). When a newer version of Zaklon is out, a note about it appears on Home too." },
+        ],
+      },
+      {
+        id: "away",
+        title: "On a phone away from home",
+        body: [
+          { p: "When the hub cannot be reached, Home shows the last numbers it gave, with the time they are from. See [Working without internet](#help/offline)." },
+        ],
+      },
+    ],
+  },
+
+  assistant: {
+    title: "Assistant",
+    summary: "Ask questions in plain words. Answers come from your library, with sources, and the assistant knows your supplies.",
+    open: { href: "#assistant", label: "Open Assistant" },
+    sections: [
+      {
+        id: "ask",
+        title: "Asking a question",
+        body: [
+          {
+            steps: [
+              "Open the [Assistant](#assistant) and type your question in the box at the bottom, in English or Serbian.",
+              "On the laptop, press Enter to ask (Shift+Enter starts a new line). On a phone, tap the arrow button.",
+              "The assistant first looks in the library, then writes the answer. The square button stops it.",
+            ],
+          },
+          { p: "It answers in the language you ask in. The first question after a break takes longer, because the AI has to start (up to a minute)." },
+        ],
+      },
+      {
+        id: "sources",
+        title: "Sources and citations",
+        body: [
+          { p: "The assistant answers from the knowledge packs in your [Library](#library). Numbers in the answer, like [1], point to the articles listed under **Sources**. Tap one to read the article." },
+          {
+            list: [
+              "When the library has nothing about the question, the answer says so. It then comes from the model's general knowledge and may be wrong.",
+              "When an answer does not name its sources, a note under it asks you to check it in the articles.",
+              "Under each answer you can see what it looked up and how fast it wrote.",
+            ],
+          },
+          { warn: "The AI can make mistakes. For anything important, read the source articles." },
+        ],
+      },
+      {
+        id: "supplies",
+        title: "Questions about your supplies",
+        body: [
+          { p: "Ask about what you have at home, for example “What expires this month?”. Such answers are marked **From your supplies**." },
+          { p: "You can also ask for changes, such as “add 2 liters of milk” or “we used the rice”. The assistant shows what it would change, and nothing changes until you choose **Yes, do it**." },
+        ],
+      },
+      {
+        id: "memory",
+        title: "What it remembers",
+        body: [
+          { p: "Say “remember that Ana is allergic to penicillin” and the assistant offers to remember it; choose **Yes, do it** to keep the note. It uses the notes when they matter for a question." },
+          {
+            list: [
+              "The notes are under **What the assistant remembers**, at the bottom of the conversation list, and in [Household › AI assistant](#household/assistant/memory). You can add and delete notes there.",
+              "Everyone in the household sees the same notes. The assistant keeps up to 500 notes of up to 300 characters each.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "conversations",
+        title: "Saved conversations",
+        body: [
+          {
+            list: [
+              "Every conversation is saved on the hub. The list on the left (on a phone, the list button at the top) groups them by day and has a search.",
+              "**New conversation** starts a fresh one.",
+              "Each device sees only its own conversations: the laptop its own, each phone its own.",
+              "The **Conversation options** button (⋯) next to the title renames or deletes a conversation.",
+              "Away from the hub, a phone can still read its list and the conversations it opened last, but it cannot ask the hub.",
+            ],
+          },
+          { note: "A device keeps up to 500 conversations (the one used longest ago makes room) and up to 200 questions in one conversation. Removing a phone deletes its conversations." },
+        ],
+      },
+      {
+        id: "send",
+        title: "Send to…",
+        body: [
+          { p: "To share a conversation, open its options, choose **Send to…** and pick the device. A copy appears there as a new conversation, marked with the name of the device that sent it. Your own conversation stays as it is." },
+        ],
+      },
+      {
+        id: "online",
+        title: "Online research",
+        body: [
+          { p: "Under the question box is **Also search the internet**. It is off by default. When you switch it on, the assistant also searches the web (with DuckDuckGo) for this conversation only, and lists the pages it read as sources marked **(internet)**. It needs a working internet connection." },
+          { note: "With the switch off, nothing you ask leaves the house." },
+        ],
+      },
+      {
+        id: "health",
+        title: "Health and first aid",
+        body: [
+          { p: "For questions about health, injuries or medicines, the assistant is extra careful:" },
+          {
+            list: [
+              "It keeps only what it can back with an article from the library.",
+              "Under the answer it adds the emergency numbers: **194** for an ambulance in Serbia, **112** in the EU.",
+              "When the library has no checked answer, it says so, gives those numbers and suggests asking a doctor or pharmacist.",
+              "Notes that matter, such as an allergy, are shown above the answer.",
+            ],
+          },
+          { warn: "Zaklon is not a doctor. In an emergency, call for help first." },
+        ],
+      },
+      {
+        id: "model",
+        title: "The AI model",
+        body: [
+          { p: "The assistant needs an AI model, downloaded once on the laptop. When there is none, the assistant offers the one recommended for this computer. Larger models answer better but are slower and need more memory. Change the model in the Assistant itself (the **Model** box) or in [Household › AI assistant](#household/assistant)." },
+          { p: "The AI starts with the first question and stops by itself after 20 minutes without questions. On the laptop, **free the memory now** stops it at once." },
+        ],
+      },
+      {
+        id: "phone",
+        title: "The phone's own AI",
+        body: [
+          { p: "At home, a phone asks the hub's AI. A phone can also keep a small model of its own for when the hub is out of reach:" },
+          {
+            steps: [
+              "On the phone, open the Assistant and choose **AI on this phone (without the hub)**.",
+              "Under **Models on the hub**, choose **Copy to phone**. This happens once, over Wi-Fi, and the screen stays on until it finishes.",
+              "Choose **Start**, then ask.",
+            ],
+          },
+          { p: "Away from the hub, the phone's own AI answers by itself. It is smaller and does not look in the library, so check what it says." },
+        ],
+      },
+    ],
+  },
+
+  supplies: {
+    title: "Supplies",
+    summary: "What you have at home, where it is and when it expires, with a shopping list and barcode scanning.",
+    open: { href: "#supplies", label: "Open Supplies" },
+    sections: [
+      {
+        id: "items",
+        title: "Items",
+        body: [
+          { p: "Supplies are shared by the whole household: a change on one device shows on all of them. The **Items** tab lists everything, with a search and a filter by category. To add something:" },
+          {
+            steps: [
+              "Choose **Add item**.",
+              "Fill in the name, the quantity and unit, the category and the place (such as Pantry or Fridge). You can add a place of your own, such as “Cabin”.",
+              "Add the expiry date if it has one, and **Warn below** if you want to know when it runs low.",
+              "Choose **Save**.",
+            ],
+          },
+          { p: "The **−** and **+** buttons use one or add one. Tap an item to change it or delete it; a deleted item stays in the history." },
+        ],
+      },
+      {
+        id: "batches",
+        title: "Batches and expiry dates",
+        body: [
+          { p: "The same thing bought at different times often has different expiry dates. Each purchase is a **batch** with its own quantity and date. Open an item to see its batches, change them or add one." },
+          {
+            list: [
+              "The item shows the total and the earliest expiry date.",
+              "Using an item takes from the batch that expires first.",
+              "Dates are marked in red when expired, and in the accent color when they expire within 30 days.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "running-low",
+        title: "Running low",
+        body: [
+          { p: "Set **Warn below** on an item, for example 2 liters for milk. When there is less than that, the item is marked **Running low**, shows on [Home](#home) and goes on the shopping list by itself, with the amount that is missing." },
+          { p: "If you delete it from the shopping list, it comes back once it has been restocked and runs low again." },
+        ],
+      },
+      {
+        id: "shopping",
+        title: "Shopping list",
+        body: [
+          {
+            list: [
+              "Type in **Add to the list…** for anything else you need.",
+              "At the shop, tap **Bought** for what you bought. It moves to **Put away**.",
+              "**Delete** takes an entry off the list.",
+            ],
+          },
+          { note: "The shopping list keeps working on a phone away from home. The changes wait on the phone and reach the hub when you are back." },
+        ],
+      },
+      {
+        id: "put-away",
+        title: "Put away",
+        body: [
+          { p: "Back home, open **Put away**. For each thing you bought, check the quantity and unit, set the expiry date, the place and the category, and choose **Put away**. It is added to the stock as a new batch, or as a new item if you did not have it yet." },
+        ],
+      },
+      {
+        id: "history",
+        title: "History",
+        body: [
+          { p: "**History** shows every change: what was added, changed, used, restocked or deleted, when, and on which device." },
+        ],
+      },
+      {
+        id: "scan",
+        title: "Barcode scanning (phones)",
+        body: [
+          {
+            steps: [
+              "On a phone, choose **Scan a barcode** and point the camera at the code. The first time, allow the camera.",
+              "If an item with that barcode exists, it opens. If not, a new item starts with the barcode filled in; a name the household gave the same barcode before is filled in too.",
+              "In an item's form, **Scan** next to **Barcode** adds a code to that item.",
+            ],
+          },
+          { note: "Scanning happens on the phone itself. It needs no internet and no Google services." },
+        ],
+      },
+    ],
+  },
+
+  library: {
+    title: "Library",
+    summary: "Read and search knowledge packs such as Wikipedia, without internet.",
+    open: { href: "#library", label: "Open Library" },
+    sections: [
+      {
+        id: "packs",
+        title: "Knowledge packs",
+        body: [
+          { p: "The library holds **knowledge packs**: Wikipedia, a dictionary, medical articles, first-aid, repair and gardening guides and more. Each pack is downloaded once in [Add-ons](#addons) (or imported from a USB drive), and then works without internet." },
+          { p: "Until there is a pack, the Library says so and offers **Open Add-ons**." },
+        ],
+      },
+      {
+        id: "read",
+        title: "Reading",
+        body: [
+          { p: "**Books** lists the packs on the hub. Tap one to open its start page, then follow links as on a website. **Back** returns to the Library." },
+        ],
+      },
+      {
+        id: "search",
+        title: "Searching",
+        body: [
+          { p: "Type in **Search the library…** to search every pack at once. Each result shows a piece of the article and the pack it comes from." },
+        ],
+      },
+      {
+        id: "latin",
+        title: "Serbian articles in Latin script",
+        body: [
+          { p: "Serbian Wikipedia is written in Cyrillic. To read it in Latin script, switch on **Latin script for Serbian articles** in [Household › Language](#household/language/latin). It applies to this device only." },
+        ],
+      },
+      {
+        id: "assistant",
+        title: "The library and the assistant",
+        body: [
+          { p: "The [Assistant](#assistant) searches the same packs and names the articles it used. The more packs you have, the more it can answer." },
+          { note: "Phones read the library from the hub, so they need to be on the home Wi-Fi." },
+        ],
+      },
+    ],
+  },
+
+  maps: {
+    title: "Maps",
+    summary: "Offline maps of the world: the hub downloads them once, and phones show them in the CoMaps app.",
+    open: { href: "#maps", label: "Open Maps" },
+    sections: [
+      {
+        id: "how",
+        title: "How it works",
+        body: [
+          { p: "Maps come in pieces: countries, and regions of large countries. The hub downloads the pieces you choose once, and phones get them from the hub over Wi-Fi, without internet. On phones, maps are shown by **CoMaps**, a free map app that the hub provides too." },
+        ],
+      },
+      {
+        id: "download",
+        title: "Download maps on the hub",
+        body: [
+          {
+            steps: [
+              "Open [Maps](#maps) and search for a country or region.",
+              "Choose **Download**. For a large country, open its regions to download only some of them.",
+              "Downloads continue after interruptions. On the laptop, **Remove** deletes a map.",
+            ],
+          },
+          { p: "The same maps are also in the **Maps** folder of [Add-ons](#addons/maps)." },
+        ],
+      },
+      {
+        id: "phone",
+        title: "Maps on a phone",
+        body: [
+          {
+            steps: [
+              "Install CoMaps from the hub: on the phone, open [Maps](#maps) and tap **Install CoMaps**, or scan its QR code on the laptop's Maps screen. The app comes to the hub with the first map you download.",
+              "In CoMaps, open Settings (top right), enter the address shown on the Maps screen under **Custom Map Server** and tap **Save**. On the phone, **Copy address** copies it for you.",
+              "Download maps in CoMaps as usual, starting with the world overview (about 60 MB). They now come from the hub, even without internet.",
+            ],
+          },
+          { note: "Maps downloaded in CoMaps stay on the phone, so they work away from home too." },
+        ],
+      },
+    ],
+  },
+
+  addons: {
+    title: "Add-ons",
+    summary: "Download knowledge packs, AI models and maps, and copy them to or from a USB drive.",
+    open: { href: "#addons", label: "Open Add-ons" },
+    sections: [
+      {
+        id: "layout",
+        title: "Drives and folders",
+        body: [
+          { p: "Add-ons looks like “This PC” in File Explorer." },
+          {
+            list: [
+              "**Devices and drives** shows the drive Zaklon keeps its library on (**Zaklon library**), how full it is and how much the add-ons take. Open it to see what is on it, largest first. Its bar turns red when the drive is nearly full.",
+              "On the laptop, other drives, such as a USB drive, open with copying and importing set to that drive.",
+              "**Folders** hold the add-ons: Wikipedia and books, Health and first aid, Garden and food, Repair and skills, AI models, Maps and Programs.",
+              "The search box finds add-ons and countries in every folder. The buttons next to it switch between tiles and a details table.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "starter",
+        title: "The starter set",
+        body: [
+          { p: "On the laptop, the starter set (**Basic pack for Serbia** or **English essentials**, by the app's language) downloads what a household needs to start with one button, **Download all**: knowledge, first-aid and repair guides, the AI model that fits this computer and, in the Serbian set, the map of Serbia." },
+        ],
+      },
+      {
+        id: "downloads",
+        title: "Downloads",
+        body: [
+          {
+            list: [
+              "Choose **Download** on an add-on. The hub downloads it, even when you started it on a phone.",
+              "A download can be paused and resumed. After an interruption it continues where it stopped instead of starting over.",
+              "Every file is checked before it is used. A damaged file is thrown away; choose **Retry**.",
+              "Downloads need at least 50% battery or the charger, and enough free disk space.",
+              "Programs (the engines for the library, the assistant and maps) come along by themselves with what needs them.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "updates",
+        title: "New versions and removing",
+        body: [
+          { p: "When a newer version of an installed pack or map is out, it shows **New version available** and an **Update** button. On the laptop, **Remove** deletes an add-on, or an unfinished download, and frees its space." },
+        ],
+      },
+      {
+        id: "usb-copy",
+        title: "Copy to a USB drive",
+        body: [
+          { p: "To set up another Zaklon without internet, copy your add-ons to a USB drive. On the laptop:" },
+          {
+            steps: [
+              "Plug in the USB drive and open it under **Devices and drives**, or use **Copy to USB** at the bottom of Add-ons.",
+              "Choose the add-ons to copy. You can also put Zaklon itself on the drive (the Windows installer and the phone app) for someone starting from scratch.",
+              "Choose **Copy** and wait until it says **Copied to**.",
+            ],
+          },
+          { note: "A FAT32 drive cannot hold files of 4 GB or more. For large packs, use a drive formatted as exFAT or NTFS." },
+        ],
+      },
+      {
+        id: "usb-import",
+        title: "Import from a USB drive",
+        body: [
+          {
+            steps: [
+              "On the laptop, open the USB drive under **Devices and drives**, or use **Import from a USB stick or folder**.",
+              "Pick the folder with the pack files (or its **zaklon-packs** subfolder) and choose **Import**.",
+              "Each pack shows its progress in its folder. The files are checked before they are used.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "phone",
+        title: "On a phone",
+        body: [
+          { p: "A phone shows the same add-ons and can start downloads on the hub. The starter set, removing and the USB copies are on the laptop." },
+        ],
+      },
+    ],
+  },
+
+  household: {
+    title: "Household settings",
+    summary: "Phones, the network, backups, the password and the other settings, category by category.",
+    open: { href: "#household", label: "Open Household" },
+    sections: [
+      {
+        id: "find",
+        title: "Finding a setting",
+        body: [
+          { p: "[Household](#household) shows the hub at the top, a **Find a setting** search and a tile for each category. The search understands English and Serbian words, with or without accents. Network and Backups are only on the laptop." },
+        ],
+      },
+      {
+        id: "devices",
+        title: "Devices",
+        body: [
+          { p: "Add a phone, and see the paired phones with when each was last seen. On a phone, **Forget this hub** is here too. See [Pairing a phone](#help/pairing)." },
+        ],
+      },
+      {
+        id: "network",
+        title: "Network",
+        body: [
+          {
+            list: [
+              "**Wi-Fi network from this laptop**: when there is no router (a power cut, a cabin), the laptop can be the Wi-Fi network for the household's phones, with the Mobile hotspot built into Windows. Choose **Make the Wi-Fi network**; phones join by scanning the QR code or typing the password shown, then open Zaklon.",
+              "**Windows Firewall**: when Windows would keep phones out, a warning appears with **Let phones connect**. Windows then asks the computer's administrator to confirm.",
+              "**Network addresses**: where phones on the same network reach the laptop.",
+            ],
+          },
+          { note: "For its Wi-Fi network, Windows needs a connection it can share: a cable, or a Wi-Fi network it has joined before. Try it once while everything works, so you know it is ready." },
+        ],
+      },
+      {
+        id: "backups",
+        title: "Backups",
+        body: [
+          {
+            list: [
+              "Every day Zaklon saves a copy of the household's data (the supplies and their history, saved conversations and notes, the paired phones and the settings) and keeps the last 7 days. The library, maps and AI models are not in backups; they come back by downloading or from USB.",
+              "**Make a backup now**, or **Save a backup to a USB drive** to keep one away from the laptop.",
+              "**Backup encryption**: enter the household password once, and every new backup is encrypted with it. A backup opens only with the password that was in force when it was made.",
+            ],
+          },
+          { warn: "Do not forget the household password: without it, not even Zaklon can open an encrypted backup." },
+          { p: "**Restore from a backup file**: choose the file and, for an encrypted backup, the household password from when it was made. Zaklon checks the backup, and it replaces the current data the next time Zaklon starts (**Restart Zaklon now**). Today's data is kept as a backup too. The phones paired now, the household password and the hub's identity stay as they are." },
+          { p: "Moving to a new computer? Install Zaklon there and, on the setup screen, restore the old hub's backup instead of setting up. Then the paired phones, the password and the hub's identity come from the backup too, and the phones keep working." },
+        ],
+      },
+      {
+        id: "privacy",
+        title: "Privacy & security",
+        body: [
+          {
+            list: [
+              "**Household password** (laptop): change it here. It is needed to pair a phone and to open an encrypted backup. Phones already paired stay connected.",
+              "**Privacy**: everything stays on the hub and your phones. Zaklon goes online only when you start something that needs it, such as a download or online research, and once a day to look for a new version, which can be switched off.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "appearance",
+        title: "Appearance",
+        body: [
+          { p: "Choose the accent color, and a pure black background that saves battery on OLED screens. Both are remembered on this device only." },
+        ],
+      },
+      {
+        id: "language",
+        title: "Language",
+        body: [
+          { p: "Each device chooses its own language, English or Serbian. **Latin script for Serbian articles** shows Serbian library articles in Latin script, also on this device only." },
+        ],
+      },
+      {
+        id: "assistant",
+        title: "AI assistant",
+        body: [
+          { p: "Choose which downloaded AI model the assistant uses; the one that fits this computer is marked recommended. Models are downloaded on the laptop, in [Add-ons](#addons/models). **What the assistant remembers** is here too." },
+        ],
+      },
+      {
+        id: "updates",
+        title: "Updates",
+        body: [
+          { p: "Once a day, when there is internet, Zaklon asks GitHub for the number of the newest version; nothing about your household is sent. **Check now** asks right away. When a newer version is out, **Open the download page** opens it in the browser." },
+          { note: "Zaklon never downloads or installs an update by itself. The daily check can be switched off on the laptop." },
+        ],
+      },
+      {
+        id: "about",
+        title: "About",
+        body: [
+          { p: "The version and the license (Zaklon is free and open source, forever), the hub's computer (processor, memory, free disk and, on the laptop, the data folder), and the licenses of the projects Zaklon is built on." },
+        ],
+      },
+    ],
+  },
+
+  offline: {
+    title: "Working without internet",
+    summary: "What works with no internet or no router, and on a phone when the laptop is off or far away.",
+    sections: [
+      {
+        id: "no-internet",
+        title: "No internet",
+        body: [
+          { p: "Zaklon is made for this. At home, everything works without internet as long as the laptop is on and the phones are on the same Wi-Fi: the supplies, the library, the maps and the assistant." },
+          { p: "Internet is needed only to download add-ons, for the assistant's online research and for the daily check for a new version." },
+        ],
+      },
+      {
+        id: "no-router",
+        title: "No router",
+        body: [
+          { p: "Without a router (a power cut, a cabin), the laptop can make its own Wi-Fi network: open [Household › Network](#household/network/hotspot) and choose **Make the Wi-Fi network**. Phones join it, then open Zaklon." },
+        ],
+      },
+      {
+        id: "away",
+        title: "A phone away from the hub",
+        body: [
+          { p: "When the laptop is off, or the phone is away from home, the phone says **The hub is out of reach** and shows how old its data is. It still has:" },
+          {
+            list: [
+              "its last copy of the supplies, to read, and the lists on Home;",
+              "the shopping list, which keeps working: add things, mark them bought or delete them;",
+              "its list of saved conversations and the ones it opened last, to read;",
+              "its own AI, if a model was copied to the phone (see [The phone's own AI](#help/assistant/phone));",
+              "the maps already downloaded in CoMaps.",
+            ],
+          },
+          { p: "Other changes, the library and the hub's AI need the hub." },
+        ],
+      },
+      {
+        id: "waiting",
+        title: "Changes that wait",
+        body: [
+          { p: "Shopping list changes made away from home wait on the phone (**Changes waiting for the hub**) and are sent by themselves the next time the phone reaches the hub." },
+          { note: "If the phone is paired with a different hub in the meantime, it asks whether to send the waiting changes to that hub or discard them." },
+        ],
+      },
+      {
+        id: "laptop-off",
+        title: "When the laptop is off",
+        body: [
+          { p: "The hub runs while the laptop is on and Zaklon is running (its icon is in the tray). Closing the window does not stop it; **Quit Zaklon** in the tray menu does. Zaklon starts again with Windows." },
+          { p: "Nothing is lost while the laptop is off: phones catch up when it is back." },
+        ],
+      },
+    ],
+  },
+
+  troubleshooting: {
+    title: "Troubleshooting",
+    summary: "A phone cannot connect, the assistant is slow, the disk is full, and other problems.",
+    sections: [
+      {
+        id: "connect",
+        title: "A phone cannot connect",
+        body: [
+          {
+            steps: [
+              "Check that the laptop is on and Zaklon is running: its icon is in the tray, and [Home](#home) on the laptop says **Running**.",
+              "Check that the phone is on the **same Wi-Fi** as the laptop, not on mobile data. A guest network often keeps devices apart; use the main one.",
+              "On the laptop, open [Household](#household). If it warns that **phones may not be able to connect**, choose **Let phones connect** and confirm in Windows.",
+              "If Windows treats the network as public, phones are kept out. If it is your home network: in Windows Settings, open **Network & internet**, choose the network, and set its network profile type to **Private**.",
+              "If “Find hubs” finds nothing, pair with the QR code instead.",
+            ],
+          },
+          { p: "[Household › Network](#household/network/firewall) on the laptop shows whether Windows Firewall lets phones in." },
+        ],
+      },
+      {
+        id: "pairing",
+        title: "Pairing does not work",
+        body: [
+          {
+            list: [
+              "**The code has expired**: choose **New code** on the laptop. A code works for 5 minutes and three tries.",
+              "**Wrong household password**: check it with whoever set it up. It can be changed on the laptop, in [Household › Privacy & security](#household/privacy/password).",
+              "**Another device answered in place of the hub**: pair by scanning the QR code instead.",
+              "**The hub was reinstalled or replaced**: the phone offers **Pair again**; everything on it is kept until then.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "slow",
+        title: "The assistant is slow or stops",
+        body: [
+          {
+            list: [
+              "The first question after a break starts the AI, which takes up to a minute.",
+              "A smaller AI model answers faster. Choose one in [Household › AI assistant](#household/assistant) or download one in [Add-ons](#addons/models).",
+              "The speed is shown under each answer. If the laptop has little free memory, close other programs.",
+              "An answer that takes too long is stopped. Ask again, or use a smaller model.",
+              "If the AI stops while it loads, the computer may not have enough free memory: try a smaller model.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "disk",
+        title: "The disk is full",
+        body: [
+          {
+            list: [
+              "In [Add-ons](#addons), the bar of the Zaklon library drive turns red when it is nearly full. Open the drive to see what takes the most space.",
+              "On the laptop, **Remove** the packs, maps and models you do not need. Paused and unfinished downloads take space too.",
+              "A download that does not fit says **Not enough free disk space**.",
+              "On a phone, unfinished copies of an AI model take space until you copy the model again or discard them.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "library",
+        title: "The library does not start",
+        body: [
+          { p: "If the Library says its engine could not start, open [Add-ons › Programs](#addons/programs), remove **Library engine (Kiwix)** and download it again." },
+        ],
+      },
+      {
+        id: "download",
+        title: "A download fails",
+        body: [
+          {
+            list: [
+              "Choose **Retry**: downloads pick up where they stopped.",
+              "Downloads need at least 50% battery or the charger.",
+              "A damaged file is thrown away by itself; downloading it again fixes it.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "restart",
+        title: "Restarting Zaklon",
+        body: [
+          { p: "If the laptop says **Zaklon's hub is not running on this computer**, restart Zaklon: choose **Quit Zaklon** in the tray menu, then open Zaklon again." },
+        ],
+      },
+    ],
+  },
+};
+
+export default en;

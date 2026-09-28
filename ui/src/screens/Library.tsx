@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, contentBase } from "../api";
 import Reader from "../components/Reader";
+import HelpLink from "../components/HelpLink";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
 import { useVisiblePoll } from "../poll";
@@ -89,7 +90,10 @@ export default function Library({ t, lang, go }: Props) {
   return (
     <div className="stack">
       <div className="page-head">
-        <h1>{t("library")}</h1>
+        <div className="title-line">
+          <h1>{t("library")}</h1>
+          <HelpLink t={t} topic="library" />
+        </div>
         <p className="muted">{t("libraryIntro")}</p>
       </div>
       {err && <p className="error" role="alert">{err}</p>}

@@ -15,6 +15,7 @@ import Supplies from "./screens/Supplies";
 import Maps from "./screens/Maps";
 import Assistant from "./screens/Assistant";
 import Tools from "./screens/Tools";
+import Help from "./screens/Help";
 import OfflineBanner from "./components/OfflineBanner";
 import { BrandLink } from "./components/Brand";
 import { Icon, type IconName } from "./components/Icon";
@@ -28,7 +29,8 @@ const NAV: { id: string; key: Key; icon: IconName }[] = [
   { id: "tools", key: "tools", icon: "tools" },
   { id: "household", key: "household", icon: "household" },
 ];
-const TAB_IDS = [...NAV.map((x) => x.id), ...TOOLS.map((x) => x.id)];
+/** Help is opened from Tools and from the "How it works" link on each screen. */
+const TAB_IDS = [...NAV.map((x) => x.id), ...TOOLS.map((x) => x.id), "help"];
 
 /** Poll every 2 s until the hub answers, then every 10 s. Never overlapping. */
 const POLL_FAST = 2000;
@@ -310,8 +312,8 @@ export default function App() {
     pinnedAt.current = Date.now();
   };
   const bar: typeof NAV = pinned ? [NAV[0], NAV[1], { id: pinned, key: toolOf(pinned).title, icon: pinned }, NAV[2], NAV[3]] : NAV;
-  // A tool that is not in the bar belongs under Tools there.
-  const barTab = isToolId(tab) && tab !== pinned ? "tools" : tab;
+  // A tool that is not in the bar belongs under Tools there, and so does Help.
+  const barTab = (isToolId(tab) && tab !== pinned) || tab === "help" ? "tools" : tab;
   // Setup comes first: until then there is nothing to go to.
   const setupOnly = isHub && needsSetup;
   let homeError = error ? errText(t, new Error(error)) : null;
@@ -409,6 +411,7 @@ export default function App() {
         {tab === "supplies" && <Supplies t={t} />}
         {tab === "assistant" && <Assistant t={t} lang={lang} isHub={isHub} go={setTab} />}
         {tab === "addons" && <Addons t={t} lang={lang} isHub={isHub} />}
+        {tab === "help" && <Help t={t} lang={lang} />}
         {status?.version && !fill && <p className="muted footer-note">Zaklon {status.version}</p>}
       </main>
       {!setupOnly && (

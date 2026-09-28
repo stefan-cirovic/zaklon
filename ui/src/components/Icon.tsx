@@ -3,7 +3,8 @@ import type { ReactNode } from "react";
 /** Line icons for the bar, the Tools screen and the assistant, drawn on a 24 px grid in the text color. */
 export type IconName =
   | "home" | "assistant" | "tools" | "household" | "supplies" | "library" | "maps" | "addons" | "pin"
-  | "plus" | "list" | "more" | "close" | "send" | "stop" | "memory" | "shared";
+  | "plus" | "list" | "more" | "close" | "send" | "stop" | "memory" | "shared"
+  | "help" | "phone" | "offline" | "wrench";
 
 const SHAPES: Record<IconName, ReactNode> = {
   home: (
@@ -87,6 +88,31 @@ const SHAPES: Record<IconName, ReactNode> = {
       <path d="M13.5 5H19v5.5M19 5l-8 8" />
       <path d="M17 14v5H5V7h5" />
     </>
+  ),
+  help: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M9.7 9.6a2.4 2.4 0 1 1 3.3 2.2c-.6.3-1 .8-1 1.5v.5" />
+      <circle cx="12" cy="16.5" r="1" fill="currentColor" stroke="none" />
+    </>
+  ),
+  phone: (
+    <>
+      <rect x="7" y="3.5" width="10" height="17" rx="2" />
+      <path d="M11 17.5h2" />
+    </>
+  ),
+  offline: (
+    <>
+      <path d="M3.5 9.5a12 12 0 0 1 5-3M13 5.6a12 12 0 0 1 7.5 3.9" />
+      <path d="M6.5 12.8a7.7 7.7 0 0 1 3.5-2M15.2 11.2a7.7 7.7 0 0 1 2.3 1.6" />
+      <path d="M9.5 16a3.4 3.4 0 0 1 5 0" />
+      <circle cx="12" cy="19.2" r="1" fill="currentColor" stroke="none" />
+      <path d="M4 4l16 16" />
+    </>
+  ),
+  wrench: (
+    <path d="M14.5 4.2a4.5 4.5 0 0 0-4.8 5.9L4.4 15.4a1.9 1.9 0 0 0 2.7 2.7l5.3-5.3a4.5 4.5 0 0 0 5.9-4.8l-2.6 2.6-2.4-.6-.6-2.4z" />
   ),
 };
 

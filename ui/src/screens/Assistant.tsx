@@ -13,6 +13,7 @@ import Memory from "../components/Memory";
 import ConversationList from "../components/ConversationList";
 import ChatTitle from "../components/ChatTitle";
 import SidePanel from "../components/SidePanel";
+import HelpLink from "../components/HelpLink";
 import { Icon } from "../components/Icon";
 
 type T = (k: Key) => string;
@@ -659,6 +660,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
               <Icon name="list" />
             </button>
             <h1>{t("assistant")}</h1>
+            <HelpLink t={t} topic="assistant" className="ghost-icon" />
             <button type="button" className="ghost-icon" onClick={newChat} aria-label={t("aiNewChat")} title={t("aiNewChat")}>
               <Icon name="plus" />
             </button>
@@ -667,11 +669,13 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
         {showing && conv ? (
           <div className="chat-head">
             <ChatTitle key={conv.id} t={t} conv={conv} readOnly={readOnly} onRenamed={renamed} onDeleted={deleted} />
+            {!narrow && <HelpLink t={t} topic="assistant" />}
           </div>
         ) : (
           !narrow && (
             <div className="chat-head">
               <div className="chat-title"><h2 className="muted">{t("aiNewChat")}</h2></div>
+              <HelpLink t={t} topic="assistant" />
             </div>
           )
         )}

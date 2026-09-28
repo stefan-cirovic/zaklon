@@ -8,6 +8,7 @@ import { countWord, fmtBytes, fold } from "../format";
 import { countryState, SUGGESTED, type Country, type MapsReply } from "../maps";
 import ConfirmButton from "../components/ConfirmButton";
 import Qr from "../components/Qr";
+import HelpLink from "../components/HelpLink";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 type T = (k: Key) => string;
@@ -102,7 +103,10 @@ export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: bool
   return (
     <div className="stack">
       <div className="page-head">
-        <h1>{t("maps")}</h1>
+        <div className="title-line">
+          <h1>{t("maps")}</h1>
+          <HelpLink t={t} topic="maps" />
+        </div>
         <p className="muted">{t("mapsIntro")}</p>
       </div>
       {err && <p className="error" role="alert">{err}</p>}

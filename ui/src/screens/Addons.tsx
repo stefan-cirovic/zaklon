@@ -7,6 +7,7 @@ import { fmtBytes, fold } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
 import { CopyToUsb, DrivePicker, type CopyItem, type Drive } from "../components/Usb";
 import StarterSet from "../components/StarterSet";
+import HelpLink from "../components/HelpLink";
 import { BatteryTile, DriveTile, Entries, Folders } from "../components/AddonViews";
 import { ToolIcon } from "../components/ExplorerIcons";
 import { FOLDERS, folderOf, folderStat, isFolderId, packFolder, type Entry, type FolderId, type ViewMode } from "../addons";
@@ -526,7 +527,10 @@ export default function Addons({ t, lang, isHub }: Props) {
   return (
     <div className="stack addons">
       <div className="page-head">
-        <h1 ref={headRef} tabIndex={-1}>{heading}</h1>
+        <div className="title-line">
+          <h1 ref={headRef} tabIndex={-1}>{heading}</h1>
+          <HelpLink t={t} topic="addons" />
+        </div>
         <p className="muted">{intro}</p>
       </div>
       <div className="explorer-bar">

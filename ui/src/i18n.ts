@@ -256,7 +256,14 @@ const en = {
   updateUpToDate: "This is the newest version.", updateNoReleases: "No version has been published yet.",
   updateNotChecked: "Not checked yet.", updateNoInternet: "No internet right now.", updateFailed: "Could not check",
   updateChecked: "checked",
-
+  // Help: the user guide (its pages are in help/en.ts and help/sr.ts).
+  help: "Help", helpIntro: "How Zaklon works, step by step: setting it up, pairing a phone, every tool, and what to do when something does not work.",
+  helpToolDesc: "How to use Zaklon: setting it up, pairing a phone, every tool, and fixing problems.",
+  helpSearch: "Search help", helpFound: "Help topics found:", helpNoResults: "No help topic matches that. Try another word.", helpFoundIn: "Found in",
+  helpGroupStart: "Start here", helpGroupScreens: "Screens and tools", helpGroupTrouble: "Offline and troubleshooting",
+  helpTopics: "Help topics", helpOnThisPage: "On this page", helpHowItWorks: "How it works", helpBackToHelp: "Back to Help",
+  helpPrevious: "Previous", helpNext: "Next", helpNote: "Good to know", helpWarn: "Important",
+  helpNotLoaded: "The help could not be loaded. Reload the page.",
 };
 
 const sr: typeof en = {
@@ -513,7 +520,13 @@ const sr: typeof en = {
   updateUpToDate: "Ovo je najnovija verzija.", updateNoReleases: "Još nije objavljena nijedna verzija.",
   updateNotChecked: "Još nije provereno.", updateNoInternet: "Trenutno nema interneta.", updateFailed: "Provera nije uspela",
   updateChecked: "provereno",
-
+  help: "Pomoć", helpIntro: "Kako Zaklon radi, korak po korak: podešavanje, uparivanje telefona, svaki alat i šta da radiš kad nešto ne radi.",
+  helpToolDesc: "Kako se koristi Zaklon: podešavanje, uparivanje telefona, svi alati i rešavanje problema.",
+  helpSearch: "Pretraži pomoć", helpFound: "Pronađene teme pomoći:", helpNoResults: "Nijedna tema pomoći ne odgovara. Probaj drugu reč.", helpFoundIn: "Pronađeno u",
+  helpGroupStart: "Za početak", helpGroupScreens: "Ekrani i alati", helpGroupTrouble: "Bez interneta i problemi",
+  helpTopics: "Teme pomoći", helpOnThisPage: "Na ovoj strani", helpHowItWorks: "Kako radi", helpBackToHelp: "Nazad na Pomoć",
+  helpPrevious: "Prethodna", helpNext: "Sledeća", helpNote: "Dobro je znati", helpWarn: "Važno",
+  helpNotLoaded: "Pomoć nije mogla da se učita. Ponovo učitaj stranu.",
 };
 
 const dict: Record<Lang, typeof en> = { en, sr };
