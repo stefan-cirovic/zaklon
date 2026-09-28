@@ -51,7 +51,7 @@ test("power calculator: a list adds up, the days and the month change the answer
   await ensureSetUp(page);
   await page.request.put("/api/power", { data: { plan: null } });
   await page.goto("/#tools");
-  await page.locator(".tool-grid").getByRole("button", { name: /^Power calculator/ }).click();
+  await page.locator(".topic-grid").getByRole("button", { name: /^Power calculator/ }).click();
   await expect(page).toHaveURL(/#power$/);
   await expect(page.getByRole("heading", { name: "Power calculator", level: 1 })).toBeVisible();
   // The safety notes are always there, open.
