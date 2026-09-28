@@ -133,7 +133,8 @@ export default function Home({ status, statusAt, error, t, lang, go, phone, pinn
     }
   }, live ? (mapsBusy ? BUSY_EVERY : MAPS_EVERY) : null);
   // The Zaklon map and the household's home on it.
-  const { info: mapInfo, err: mapErr } = useMapInfo(t, live);
+  // Away from home a phone draws the overview it carries (see useMapInfo).
+  const { info: mapInfo, err: mapErr } = useMapInfo(t, canLoad);
 
   // No data at all: say so instead of "nothing expires", which would read as all is well.
   const unavailable = sum === null && (sumFailed || (!canLoad && !!error));
@@ -173,7 +174,7 @@ export default function Home({ status, statusAt, error, t, lang, go, phone, pinn
       <div className="home-grid">
         <AssistantCard t={t} go={go} chats={chats} failed={chatsFailed} saved={chatsSaved} />
         <SuppliesCard t={t} sum={sum} shop={shop} unavailable={unavailable} note={suppliesNote} reload={reload} />
-        <HomeMapCard t={t} lang={lang} info={mapInfo} unreachable={away || (!!mapErr && !mapInfo)} />
+        <HomeMapCard t={t} lang={lang} info={mapInfo} unreachable={!!mapErr && !mapInfo} />
         <AddonsCard t={t} lang={lang} cat={cat} maps={maps} failed={catFailed} away={away} go={go} />
         <QuickAccess t={t} pinned={pinned} />
       </div>
@@ -689,7 +690,7 @@ function HomeMapCard({ t, lang, info, unreachable }: { t: T; lang: Lang; info: M
       <CardHead id={id} icon="maps" title={t("homeMapTitle")} href="#maps" link={t("openMaps")} />
       <ZaklonMap t={t} lang={lang} info={info} home={home} start="home" compact label={t("homeMapTitle")}>
         {unreachable && !info && <p className="zmap-note warn">{t("mapUnreachable")}</p>}
-        {info && !home && (
+        {info && !home && !info.phone && (
           <a className="btn small zmap-set-home" href="#maps/home">
             {t("homeLocationSet")}
           </a>

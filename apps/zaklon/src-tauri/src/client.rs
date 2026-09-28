@@ -138,6 +138,8 @@ pub struct ClientState {
     /// One HTTPS client per hub fingerprint, reused so connections stay open.
     http: Mutex<Option<(String, reqwest::Client)>>,
     reach: Mutex<Reach>,
+    /// The map's assets the app carries, read when the map first needs them.
+    map: tokio::sync::OnceCell<crate::phone_map::PhoneMap>,
 }
 
 impl ClientState {
@@ -152,7 +154,13 @@ impl ClientState {
             content_base: tokio::sync::Mutex::new(None),
             http: Mutex::new(None),
             reach: Mutex::new(Reach::default()),
+            map: tokio::sync::OnceCell::new(),
         }
+    }
+
+    /// The map's assets this app carries (none on a laptop).
+    pub async fn phone_map(&self) -> &crate::phone_map::PhoneMap {
+        self.map.get_or_init(crate::phone_map::PhoneMap::bundled).await
     }
 
     fn client_for(&self, fingerprint: &str) -> Result<reqwest::Client, String> {
@@ -1020,7 +1028,9 @@ fn short_err(e: &reqwest::Error) -> String {
 // runs a tiny read-only proxy on 127.0.0.1 that does both. It only forwards
 // GET /<secret>/kiwix/... and the Zaklon map's tiles, fonts and icons
 // (/<secret>/tiles/..., /<secret>/map/...); the random secret keeps other
-// apps on the phone from using it.
+// apps on the phone from using it. What of the map the app carries itself
+// (the world overview, the font and the icons, see phone_map.rs) is answered
+// here, at home and away; the hub answers the rest.
 
 impl ClientState {
     /// Start the proxy on first use and return its base URL.
@@ -1070,6 +1080,11 @@ impl ClientState {
         if !(rest.starts_with("/kiwix/") || rest.starts_with("/kiwix-lat/") || map_part) || escapes {
             return StatusCode::NOT_FOUND.into_response();
         }
+        if map_part {
+            if let Some(local) = self.phone_map().await.answer(rest).await {
+                return local_map_answer(local);
+            }
+        }
         let Some(link) = self.link() else {
             return (StatusCode::SERVICE_UNAVAILABLE, "not paired").into_response();
         };
@@ -1116,6 +1131,28 @@ impl ClientState {
         (StatusCode::BAD_GATEWAY, "hub not reachable").into_response()
     }
 
+}
+
+/// A map request the app answers from what it carries.
+fn local_map_answer(local: crate::phone_map::Local) -> axum::response::Response {
+    use crate::phone_map::Local;
+    use axum::http::{header, HeaderValue, StatusCode};
+    use axum::response::IntoResponse;
+    const TILE: &str = "application/vnd.mapbox-vector-tile";
+    let (status, kind, body, gzip): (StatusCode, &str, axum::body::Body, bool) = match local {
+        Local::Tile(data) => (StatusCode::OK, TILE, axum::body::Body::from(data), true),
+        Local::Empty => (StatusCode::NO_CONTENT, TILE, axum::body::Body::empty(), false),
+        Local::File(data, kind) => (StatusCode::OK, kind, axum::body::Body::from(data), false),
+    };
+    let mut out = (status, [(header::CONTENT_TYPE, kind), (header::CACHE_CONTROL, "public, max-age=604800")], body).into_response();
+    out.headers_mut().insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
+    if gzip {
+        out.headers_mut().insert(header::CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+    }
+    out
+}
+
+impl ClientState {
     /// An app copied from the hub and checked (see `fetch_app`), for the
     /// phone's browser to download and hand to the system installer.
     async fn serve_app(&self, file: &str) -> axum::response::Response {

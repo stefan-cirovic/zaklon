@@ -6,6 +6,7 @@
 mod autostart;
 mod client;
 mod local_ai;
+mod phone_map;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod desktop;
 
@@ -114,6 +115,13 @@ async fn client_fetch_app(state: tauri::State<'_, Arc<ClientState>>, name: Strin
 
 /// Phones: shopping list changes waiting for the hub ("outbox", "parked"),
 /// kept in files that are on the disk before the change counts as saved.
+/// What of the map this app carries itself (the world overview on phones),
+/// for drawing it away from home.
+#[tauri::command]
+async fn client_map_local(state: tauri::State<'_, Arc<ClientState>>) -> Result<phone_map::LocalInfo, String> {
+    Ok(state.phone_map().await.info())
+}
+
 #[tauri::command]
 fn outbox_read(state: tauri::State<'_, Arc<ClientState>>, name: String) -> Result<Option<String>, String> {
     state.read_store(&name)
@@ -231,6 +239,7 @@ pub fn run() {
             client_discover,
             client_content_base,
             client_fetch_app,
+            client_map_local,
             outbox_read,
             outbox_write,
             local_ai_status,

@@ -573,7 +573,7 @@ const sr: HelpContent = {
         title: "Zaklon mapa",
         body: [
           { p: "Mapu pomeraš prevlačenjem, a uvećavaš i umanjuješ točkićem miša, sa dva prsta ili dugmadima **+** i **−**. Dugme s kućicom vraća mapu na tvoj dom, a globus prikazuje ceo svet. Nazivi su na jeziku aplikacije gde ih mapa ima." },
-          { p: "Uz Zaklon stiže pregled celog sveta: države, granice i veći gradovi. Za mesta, ulice i zgrade preuzmi **mapu sveta** u folderu Mape u [Dodacima](#addons/maps). Veoma je velika (oko 138 GB), pa joj treba veliki disk i vreme; preuzimanje se nastavlja posle prekida i ponovnog pokretanja, a mapa je prikazuje čim je proverena." },
+          { p: "Uz Zaklon stiže pregled celog sveta: države, granice i veći gradovi. Nosi ga i telefon, pa i van kuće njegova mapa prikazuje svet (sa domom koji je poslednji video). Za mesta, ulice i zgrade preuzmi **mapu sveta** u folderu Mape u [Dodacima](#addons/maps). Veoma je velika (oko 138 GB), pa joj treba veliki disk i vreme; preuzimanje se nastavlja posle prekida i ponovnog pokretanja, a mapa je prikazuje čim je proverena." },
           { note: "Podaci mapa © OpenStreetMap saradnici. Oznaka u uglu mape vodi do detalja. Mapa nikada ništa ne traži od interneta: sve što prikazuje stiže sa huba." },
         ],
       },
@@ -989,6 +989,7 @@ const sr: HelpContent = {
               "listu za kupovinu, koja i dalje radi: dodaj, označi kao kupljeno ili obriši;",
               "spisak sačuvanih razgovora i one koje je poslednje otvarao, za čitanje;",
               "svoj AI, ako je model kopiran na telefon (vidi [AI na samom telefonu](#help/assistant/phone));",
+              "pregled sveta na Zaklon mapi, sa domom koji je poslednji video;",
               "mape koje su već preuzete u CoMaps.",
             ],
           },

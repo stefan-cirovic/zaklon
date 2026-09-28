@@ -17,6 +17,7 @@
     "allow-client-discover",
     "allow-client-content-base",
     "allow-client-fetch-app",
+    "allow-client-map-local",
     "allow-outbox-read",
     "allow-outbox-write",
     "allow-local-ai-status",

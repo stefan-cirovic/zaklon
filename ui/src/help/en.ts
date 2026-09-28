@@ -573,7 +573,7 @@ const en: HelpContent = {
         title: "The Zaklon map",
         body: [
           { p: "Drag the map to move it, and zoom with the mouse wheel, two fingers or the **+** and **−** buttons. The house button goes back to your home; the globe shows the whole world. Labels are in the app's language where the map has names in it." },
-          { p: "Zaklon comes with an overview of the whole world: countries, borders and larger cities. For towns, streets and buildings, download **the world map** in the Maps folder of [Add-ons](#addons/maps). It is very large (about 138 GB), so it needs a big disk and time; the download continues after interruptions and restarts, and the map shows it as soon as it is checked." },
+          { p: "Zaklon comes with an overview of the whole world: countries, borders and larger cities. A phone carries it too, so away from home its map still shows the world (with the home it saw last). For towns, streets and buildings, download **the world map** in the Maps folder of [Add-ons](#addons/maps). It is very large (about 138 GB), so it needs a big disk and time; the download continues after interruptions and restarts, and the map shows it as soon as it is checked." },
           { note: "Map data © OpenStreetMap contributors. The credit in the map's corner leads to the details. The map never asks the internet for anything: everything it shows comes from the hub." },
         ],
       },
@@ -989,6 +989,7 @@ const en: HelpContent = {
               "the shopping list, which keeps working: add things, mark them bought or delete them;",
               "its list of saved conversations and the ones it opened last, to read;",
               "its own AI, if a model was copied to the phone (see [The phone's own AI](#help/assistant/phone));",
+              "the world overview on the Zaklon map, with the home it saw last;",
               "the maps already downloaded in CoMaps.",
             ],
           },

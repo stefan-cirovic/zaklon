@@ -4,7 +4,7 @@ import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
 import { useVisiblePoll } from "../poll";
 import { fmtDateTime } from "../format";
-import { coords, distanceKm, hasTiles, placeLabel, wrapLon, type FoundPlace, type HomePlace, type LatLon, type MapInfo } from "../map/info";
+import { coords, distanceKm, hasTiles, phoneMapInfo, placeLabel, rememberHome, wrapLon, type FoundPlace, type HomePlace, type LatLon, type MapInfo } from "../map/info";
 import ConfirmButton from "./ConfirmButton";
 import ZaklonMap, { type ZaklonMapHandle } from "./ZaklonMap";
 
@@ -19,7 +19,11 @@ const SAME_TOWN_KM = 20;
 /** Typing pauses this long before "find a place" asks the hub. */
 const SEARCH_DELAY = 250;
 
-/** What the hub says about its map (and the home), asked for again now and then. */
+/**
+ * What the hub says about its map (and the home), asked for again now and
+ * then. A phone that cannot reach the hub draws the world overview it
+ * carries instead, with the home it saw last.
+ */
 export function useMapInfo(t: T, enabled = true) {
   const [info, setInfo] = useState<MapInfo | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -27,10 +31,14 @@ export function useMapInfo(t: T, enabled = true) {
   const reload = useVisiblePoll(
     useCallback(async () => {
       try {
-        setInfo(await api<MapInfo>("/api/map"));
+        const fromHub = await api<MapInfo>("/api/map");
+        rememberHome(fromHub.home);
+        setInfo(fromHub);
         setErr(null);
         return true;
       } catch (e) {
+        const onPhone = await phoneMapInfo().catch(() => null);
+        if (onPhone) setInfo(onPhone);
         setErr(errText(t, e));
         return false;
       }
@@ -48,6 +56,7 @@ export function useMapInfo(t: T, enabled = true) {
 export function MapNote({ t, info, err }: { t: T; info: MapInfo | null; err: string | null }) {
   if (err && !info) return <p className="zmap-note warn">{t("mapUnreachable")}</p>;
   if (!info) return null;
+  if (info.phone) return <p className="zmap-note">{t("mapPhoneOverview")}</p>;
   const w = info.world;
   const pct = w && w.bytes_total ? Math.min(100, Math.floor((w.bytes_done / w.bytes_total) * 100)) : 0;
   const addons = (

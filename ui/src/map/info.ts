@@ -1,4 +1,5 @@
-import { contentBase } from "../api";
+import { invoke } from "@tauri-apps/api/core";
+import { contentBase, getMode } from "../api";
 
 // What /api/map says about the Zaklon map, shared by Home and the Maps screen.
 
@@ -22,6 +23,8 @@ export type MapInfo = {
   places: boolean;
   /** The household's home, if it was set. */
   home: HomePlace | null;
+  /** Drawn from what this phone carries (away from the hub), not from the hub. */
+  phone?: boolean;
 };
 
 /** The household's home, as the hub keeps it. */
@@ -36,6 +39,48 @@ export type LatLon = { lat: number; lon: number };
 /** Map data exists at all: the overview or a map pack. */
 export function hasTiles(info: MapInfo | null): boolean {
   return !!info && (info.tiles.detailed || info.tiles.overview);
+}
+
+/** Where this device keeps the home it saw last, for the map away from home. It never leaves the device. */
+const LAST_HOME = "zaklon.mapHome";
+
+/** Remember the home the hub told about (a phone shows it away from home too). */
+export function rememberHome(home: HomePlace | null) {
+  try {
+    if (home) localStorage.setItem(LAST_HOME, JSON.stringify({ lat: home.lat, lon: home.lon, label: home.label ?? null }));
+    else localStorage.removeItem(LAST_HOME);
+  } catch {
+    /* private mode: not kept */
+  }
+}
+
+function lastHome(): HomePlace | null {
+  try {
+    const h = JSON.parse(localStorage.getItem(LAST_HOME) ?? "null") as HomePlace | null;
+    return h && Number.isFinite(h.lat) && Number.isFinite(h.lon) ? h : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A phone away from the hub: the map from what the app carries (the world
+ * overview), with the home it saw last. Null on the laptop, or when the app
+ * carries no map.
+ */
+export async function phoneMapInfo(): Promise<MapInfo | null> {
+  if ((await getMode()).mode !== "client") return null;
+  const local = await invoke<{ overview: boolean; min_zoom: number; max_zoom: number; glyphs: boolean; sprites: boolean }>("client_map_local").catch(() => null);
+  if (!local?.overview) return null;
+  return {
+    tiles: { min_zoom: local.min_zoom, max_zoom: local.max_zoom, key: "phone", detailed: false, overview: true },
+    glyphs: local.glyphs,
+    sprites: local.sprites,
+    world: null,
+    places: false,
+    home: lastHome(),
+    phone: true,
+  };
 }
 
 /** Where the map's tiles, fonts and icons are asked for: the hub's own address on the laptop, the app's proxy to the hub on a phone. */
