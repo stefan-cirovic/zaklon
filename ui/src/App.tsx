@@ -54,7 +54,7 @@ function writePref(key: string, value: string) {
   }
 }
 
-/** The screen in the address; a screen may add a place of its own after a slash ("#addons/maps"). */
+/** The screen in the address; a screen may add a place of its own after a slash ("#addons/maps", "#household/backups"). */
 function tabFromHash(): string {
   const id = typeof location !== "undefined" ? location.hash.replace("#", "").split("/")[0] : "";
   return TAB_IDS.includes(id) ? id : "home";
@@ -377,6 +377,7 @@ export default function App() {
         {tab === "household" && (
           <Household
             status={status}
+            online={!!status && !error}
             t={t}
             lang={lang}
             setLang={setLang}

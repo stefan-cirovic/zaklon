@@ -27,7 +27,10 @@ async function requestRestore(path: string, password: string, allowUnencrypted: 
   }
 }
 
-/** Backups of the household's data (laptop only): daily by itself, to USB on request, and restore. */
+/**
+ * Backups of the household's data (laptop only): daily by itself, to USB on request, and restore.
+ * The page it is on (Household > Backups) gives the title; each part has an id the settings search jumps to.
+ */
 export default function Backups({ t }: { t: T }) {
   const [data, setData] = useState<Reply | null>(null);
   const [dir, setDir] = useState("");
@@ -116,49 +119,59 @@ export default function Backups({ t }: { t: T }) {
 
   return (
     <div className="panel stack left">
-      <h2>{t("backups")}</h2>
       <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("backupsIntro")}</p>
-      {data?.encryption === "on" && <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("backupsEncrypted")}</p>}
-      {data?.encryption === "off" && <TurnOnEncryption t={t} busy={busy} onTurnOn={turnOnEncryption} />}
+      {(data?.encryption === "on" || data?.encryption === "off") && (
+        <div id="set-backup-encryption" className="set-anchor stack" tabIndex={-1}>
+          {data.encryption === "on" ? (
+            <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("backupsEncrypted")}</p>
+          ) : (
+            <TurnOnEncryption t={t} busy={busy} onTurnOn={turnOnEncryption} />
+          )}
+        </div>
+      )}
       {err && !picked && <p className="error" role="alert">{err}</p>}
       {note && <p className="ok" role="status" style={{ margin: 0, wordBreak: "break-all" }}>{note}</p>}
 
       {data?.restore_pending && <RestoreReady t={t} />}
 
-      <div className="label">{t("backupsOnHub")}</div>
-      {data && data.backups.length === 0 && <p className="muted" style={{ margin: 0 }}>{t("noBackupsYet")}</p>}
-      <div className="list">
-        {data?.backups.slice(0, 10).map((b) => {
-          const open = picked !== null && !picked.fromFile && picked.path === b.path;
-          return (
-            <div className="row between wrap backup-row" key={b.path}>
-              <span>
-                {b.created ? fmtDateTime(b.created) : b.name}
-                <span className="muted" style={{ fontSize: 13 }}>
-                  {" "}· {b.automatic ? t("backupAuto") : t("backupManual")} · {b.encrypted ? t("backupEncrypted") : t("backupNotEncrypted")} · {fmtBytes(b.size)}
+      <div id="set-backup-now" className="set-anchor stack" tabIndex={-1}>
+        <div className="label">{t("backupsOnHub")}</div>
+        {data && data.backups.length === 0 && <p className="muted" style={{ margin: 0 }}>{t("noBackupsYet")}</p>}
+        <div className="list">
+          {data?.backups.slice(0, 10).map((b) => {
+            const open = picked !== null && !picked.fromFile && picked.path === b.path;
+            return (
+              <div className="row between wrap backup-row" key={b.path}>
+                <span>
+                  {b.created ? fmtDateTime(b.created) : b.name}
+                  <span className="muted" style={{ fontSize: 13 }}>
+                    {" "}· {b.automatic ? t("backupAuto") : t("backupManual")} · {b.encrypted ? t("backupEncrypted") : t("backupNotEncrypted")} · {fmtBytes(b.size)}
+                  </span>
                 </span>
-              </span>
-              {!open && (
-                <button className="btn secondary small" disabled={busy} onClick={() => pick({ path: b.path, encrypted: b.encrypted, fromFile: false })}>
-                  {t("restore")}
-                </button>
-              )}
-              {open && confirm(b.encrypted)}
-            </div>
-          );
-        })}
-      </div>
-      <div>
-        <button className="btn secondary" onClick={() => save("")} disabled={busy}>{t("backupNow")}</button>
-      </div>
-
-      <div className="label">{t("backupToUsb")}</div>
-      <DrivePicker t={t} value={dir} onChange={setDir} label={t("backupToUsb")} />
-      <div>
-        <button className="btn secondary" onClick={() => save(dir)} disabled={busy || !dir.trim()}>{t("saveBackup")}</button>
+                {!open && (
+                  <button className="btn secondary small" disabled={busy} onClick={() => pick({ path: b.path, encrypted: b.encrypted, fromFile: false })}>
+                    {t("restore")}
+                  </button>
+                )}
+                {open && confirm(b.encrypted)}
+              </div>
+            );
+          })}
+        </div>
+        <div>
+          <button className="btn secondary" onClick={() => save("")} disabled={busy}>{t("backupNow")}</button>
+        </div>
       </div>
 
-      <div className="stack restore-file" style={{ gap: 8 }}>
+      <div id="set-backup-usb" className="set-anchor stack" tabIndex={-1}>
+        <div className="label">{t("backupToUsb")}</div>
+        <DrivePicker t={t} value={dir} onChange={setDir} label={t("backupToUsb")} />
+        <div>
+          <button className="btn secondary" onClick={() => save(dir)} disabled={busy || !dir.trim()}>{t("saveBackup")}</button>
+        </div>
+      </div>
+
+      <div id="set-restore" className="set-anchor stack restore-file" style={{ gap: 8 }} tabIndex={-1}>
         <div className="label">{t("restoreFromFile")}</div>
         <input
           type="text"

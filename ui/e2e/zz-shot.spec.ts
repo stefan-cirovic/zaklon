@@ -33,12 +33,23 @@ test("shots", async ({ page }, info) => {
   const shots: [string, string][] = [
     ["home", "/#home"], ["tools", "/#tools"], ["library", "/#library"], ["maps", "/#maps"], ["supplies", "/#supplies"],
     ["assistant", "/#assistant"], ["addons", "/#addons"], ["household", "/#household"],
+    ...["devices", "network", "backups", "privacy", "appearance", "language", "assistant", "updates", "about"].map(
+      (c) => [`household-${c}`, `/#household/${c}`] as [string, string],
+    ),
   ];
   for (const [name, url] of shots) {
     await page.goto(url);
     await page.waitForTimeout(1200);
     await page.screenshot({ path: file(name), fullPage: true });
   }
+  // Household's search, and a setting it opened.
+  await page.goto("/#household");
+  await page.locator(".set-search input").fill(LANG === "sr" ? "lozinka" : "password");
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: file("household-search"), fullPage: false });
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: file("household-search-opened"), fullPage: false });
   // Add-ons as a file explorer, with some packs on the hub, one on its way and one
   // that failed (states made up for the picture; nothing is downloaded).
   await page.route("**/api/catalog", async (r) => {

@@ -1,6 +1,6 @@
 # Network activity
 
-Zaklon goes online only for the connections below. All of them are started by the user, except the update check, which runs once a day while it is switched on. The household is asked about it in the first-run setup (the box starts ticked); the switch is also under Household → About → New versions on the laptop. There is no activity log in the app yet; this page is the complete list.
+Zaklon goes online only for the connections below. All of them are started by the user, except the update check, which runs once a day while it is switched on. The household is asked about it in the first-run setup (the box starts ticked); the switch is also under Household → Updates on the laptop. There is no activity log in the app yet; this page is the complete list.
 
 | When | Host | Purpose |
 |---|---|---|

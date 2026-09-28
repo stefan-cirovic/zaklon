@@ -7,8 +7,11 @@ import ConfirmButton from "./ConfirmButton";
 type T = (k: Key) => string;
 type Note = { id: string; text: string; created_at: string; created_by: string | null };
 
-/** What the household asked the assistant to remember: seen, added and deleted by anyone. */
-export default function Memory({ t, version }: { t: T; version: number }) {
+/**
+ * What the household asked the assistant to remember: seen, added and deleted by anyone.
+ * Folded away beside the conversation; `expanded` shows it open with its title (Household).
+ */
+export default function Memory({ t, version, expanded = false }: { t: T; version: number; expanded?: boolean }) {
   const [notes, setNotes] = useState<Note[] | null>(null);
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
@@ -44,12 +47,15 @@ export default function Memory({ t, version }: { t: T; version: number }) {
   if (!notes) return null;
   return (
     <div className="stack memory">
-      <button className="btn secondary" onClick={() => setOpen(!open)} aria-expanded={open}>
-        {open ? "▴ " : "▾ "}
-        {t("memoryTitle")} ({notes.length})
-      </button>
-      {open && (
+      {!expanded && (
+        <button className="btn secondary" onClick={() => setOpen(!open)} aria-expanded={open}>
+          {open ? "▴ " : "▾ "}
+          {t("memoryTitle")} ({notes.length})
+        </button>
+      )}
+      {(open || expanded) && (
         <div className="panel stack left">
+          {expanded && <h2>{t("memoryTitle")}</h2>}
           <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("memoryIntro")}</p>
           {err && <p className="error" role="alert">{err}</p>}
           {notes.length === 0 && <p className="muted" style={{ margin: 0 }}>{t("memoryEmpty")}</p>}

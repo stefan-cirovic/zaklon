@@ -86,10 +86,10 @@ A restore takes the household's data from the backup and, on a hub that was set 
 ### 4.1 Networking and pairing
 - The hub listens on TCP 8484 with TLS (self-signed certificate generated on first run) for phones, on 127.0.0.1:8481 without TLS for the desktop window, and on TCP 8480 without TLS for the "install the app" page and APK files only.
 - Discovery: DNS-SD `_zaklon._tcp` plus a UDP beacon on 8485 for networks that block mDNS; the pairing QR (version 2) carries the hub's addresses, port, certificate fingerprint, a 128-bit pairing secret, the hub name and the install-page port, so discovery is never required.
-- **Pairing flow**: Household → Add a phone → QR appears on the laptop. On the phone: install the app from `http://<hub>:8480/get` (the address is shown next to the QR), scan the QR, enter the household password. The phone pins the certificate fingerprint, sends the QR's secret with the password (`POST /api/pair/complete`, which never takes the 6-digit code) and receives a long-lived device token. All later traffic is TLS with the pinned certificate; the household password is never stored on the phone.
+- **Pairing flow**: Household → Devices → Add a phone → QR appears on the laptop. On the phone: install the app from `http://<hub>:8480/get` (the address is shown next to the QR), scan the QR, enter the household password. The phone pins the certificate fingerprint, sends the QR's secret with the password (`POST /api/pair/complete`, which never takes the 6-digit code) and receives a long-lived device token. All later traffic is TLS with the pinned certificate; the household password is never stored on the phone.
 - **Pairing from "Find hubs"** (no QR): a discovery answer is not authenticated, so the phone does not take the certificate from it. The person types the 6-digit code from the laptop and the password. The phone connects accepting any certificate, notes the one it got, and runs SPAKE2 with the hub on the code (`POST /api/pair/pake/start`, with the name the phone pairs under; crate `zaklon-pake`). With the shared key the hub proves (HMAC) the fingerprint of its own certificate; the phone checks that proof against the certificate it actually saw, so a device that answers in its place and passes the messages on is caught. Only then does the phone prove the key and send the password, over a connection pinned to that certificate (`POST /api/pair/pake/finish`). One run is one guess at the code: it takes one of the code's three attempts and counts as a failure of its address until it pairs.
 - **Pairing limits**: a code is open for 5 minutes with three attempts. Every failed pairing request (QR or "Find hubs") takes one, and one address may take at most two, so a single other device on the Wi-Fi cannot use them all up. A wrong QR secret gets the same answer as no open code. An address with 10 failures waits 10 minutes (checked before it takes an attempt). The pairing requests exist only on the TLS listener, not on the laptop's loopback port.
-- **Laptop as access point**: Household → "Wi-Fi network from this laptop" switches on the Mobile hotspot built into Windows (SSID `Zaklon`, password and a QR code to join shown on screen). Phones join it like any Wi-Fi network.
+- **Laptop as access point**: Household → Network → "Wi-Fi network from this laptop" switches on the Mobile hotspot built into Windows (SSID `Zaklon`, password and a QR code to join shown on screen). Phones join it like any Wi-Fi network.
 - Devices are listed with name, platform and last seen. The laptop can rename or remove any phone; a phone can rename or remove only itself.
 
 ### 4.2 Security model
@@ -151,7 +151,21 @@ Catalog screen with a starter set by UI language, downloaded with one button tog
 The screen looks and works like Windows File Explorer's "This PC": "Devices and drives" shows the drive the library is on with a usage bar (red when nearly full) and how much the add-ons take (opening it lists what is on it, largest first), the laptop's other drives (a USB drive opens with "Copy to USB" and "Import" set to it) and the battery; below, the add-ons sit in folders with their count and size: Wikipedia and books, Health and first aid, Garden and food, Repair and skills (knowledge packs, by their catalog topic), AI models, Maps (every country) and Programs. A folder opens as tiles or as a details table (name, size, status, license, actions), with a breadcrumb ("Add-ons › Maps") and Back; the place is part of the address (`#addons/maps`), so the browser's and the phone's Back button work too. The search box finds packs and countries across all folders. Tiles or details is remembered per device. Removing packs and maps is laptop only.
 
 ### Household
-Devices, profiles, backup/restore, hub status and hardware summary, "Wi-Fi network from this laptop", updates (check now; automatic daily check on/off, on by default), language, accent color, data folder, licenses and attribution, privacy statement.
+Laid out like Windows Settings: the hub at the top (its name, whether it runs, paired phones, address, version and the last backup), a "Find a setting" search, and a tile for each category, each with an icon and a line on what it holds. A category opens as its own page ("Household › Backups", with a way back); on a laptop the categories are listed beside it. Every category and setting has an address (`#household/backups`, `#household/network/hotspot`), so the browser's back button, links and the search all lead to the right place. The search finds settings by name and by other words, in English and Serbian whatever the app's language (without Serbian accents too).
+
+| Category | What is in it | Phone |
+|---|---|---|
+| Devices | Add a phone (pairing code and QR codes), paired phones | the hub this phone uses ("Forget this hub"), paired phones |
+| Network | Wi-Fi network from this laptop, Windows Firewall, the laptop's addresses | not shown |
+| Backups | encryption, backups on this computer, backup to USB, restore | not shown |
+| Privacy & security | household password, privacy statement | privacy statement |
+| Appearance | accent color, pure black (this device) | same |
+| Language | app language (this device), Latin script for Serbian articles | same |
+| AI assistant | the AI model the assistant uses, what it remembers | same (models are downloaded on the laptop) |
+| Updates | check now, automatic daily check on/off (on by default) | check now |
+| About | version and license, this hub's computer and data folder, licenses and attribution | same, without the data folder |
+
+Profiles are planned. First run shows the setup (with restoring a previous hub's backup) instead.
 
 ## 7. AI
 
@@ -180,7 +194,7 @@ The list ships in the catalog and can change without an app release.
 - Each entry: id, title and description (i18n), category (knowledge | maps | model | app), for knowledge packs a topic (reference | health | garden | skills: the Add-ons folder it shows in), version, size, files (URL list with mirrors, SHA-256, or the SHA-1 CoMaps publishes for map files), license, attribution text, source link, languages and the UI languages it is recommended for.
 - Large third-party files are not mirrored: knowledge packs point to Kiwix, maps to CoMaps, models to Hugging Face. Zaklon's own packs will live on Cloudflare R2 (planned).
 - Downloads use HTTP range requests with per-file verification; the hub can serve any installed pack to phones.
-- App updates: releases on GitHub (signed releases are planned; see `SECURITY.md`). The hub checks once a day (on by default; switch under Household → About → New versions) and on demand, and only tells: "Open the download page" opens the release page in the browser. The app never downloads or applies an update itself.
+- App updates: releases on GitHub (signed releases are planned; see `SECURITY.md`). The hub checks once a day (on by default; switch under Household → Updates) and on demand, and only tells: "Open the download page" opens the release page in the browser. The app never downloads or applies an update itself.
 
 ## 9. Localization
 

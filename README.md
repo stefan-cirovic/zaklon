@@ -36,7 +36,7 @@ Inspired by projects such as [Internet-in-a-Box](https://internet-in-a-box.org),
 
 Run `Zaklon_<version>_x64-setup.exe`. It installs for the current user, needs no internet (everything it needs is inside), and asks where to put Zaklon: the program and all household data (`data` folder) live in that one folder. Zaklon starts with Windows and keeps running in the tray when its window is closed, so phones stay connected; use the tray icon to quit or to turn off starting with Windows. Uninstalling removes the program but keeps the `data` folder. The library engine, the AI engine, knowledge packs, maps and AI models are added later, by download or from a USB stick.
 
-On a phone on the same Wi-Fi, open `http://<laptop address>:8480/get` (the address and a QR code are shown under Household → Add a phone) to install the Android app.
+On a phone on the same Wi-Fi, open `http://<laptop address>:8480/get` (the address and a QR code are shown under Household → Devices → Add a phone) to install the Android app.
 
 Releases are not signed yet: the Windows installer has no code signature and the Android app is a debug-signed test build. Check each download against the `SHA256SUMS.txt` published with the release.
 

@@ -66,6 +66,11 @@ const SHAPES: Record<IconName, ReactNode> = {
 };
 
 export function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
+  return <IconFrame size={size}>{SHAPES[name]}</IconFrame>;
+}
+
+/** The frame every line icon is drawn in (a 24 px grid, the text color); other icon sets use it too. */
+export function IconFrame({ size = 22, children }: { size?: number; children: ReactNode }) {
   return (
     <svg
       className="icon"
@@ -80,7 +85,7 @@ export function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
       aria-hidden="true"
       focusable="false"
     >
-      {SHAPES[name]}
+      {children}
     </svg>
   );
 }

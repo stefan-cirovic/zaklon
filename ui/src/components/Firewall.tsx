@@ -14,14 +14,25 @@ type State = {
   ok: boolean;
 };
 
-/** Laptop only: shows up when Windows Firewall would keep phones out, with a fix. */
-export default function Firewall({ t }: { t: T }) {
+/**
+ * Laptop only: shows up when Windows Firewall would keep phones out, with a fix.
+ * With `showOk` (Household > Network) it also says when all is well.
+ */
+export default function Firewall({ t, showOk = false }: { t: T; showOk?: boolean }) {
   const [st, setSt] = useState<State | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     api<State>("/api/firewall").then(setSt).catch(() => {});
   }, []);
-  if (!st || st.ok) return null;
+  if (!st) return null;
+  if (st.ok) {
+    return showOk ? (
+      <div className="panel stack left firewall-ok">
+        <h2>{t("firewallName")}</h2>
+        <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("firewallOk")}</p>
+      </div>
+    ) : null;
+  }
   const allow = async () => {
     setBusy(true);
     try {

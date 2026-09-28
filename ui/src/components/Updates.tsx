@@ -40,7 +40,7 @@ export function UpdateBanner({ t }: { t: T }) {
   );
 }
 
-/** In Household: the switch, a "check now" button and the last result. */
+/** Household > Updates: the switch (laptop), a "check now" button and the last result. */
 export function UpdateSettings({ t, isHub }: { t: T; isHub: boolean }) {
   const [u, setU] = useState<UpdateState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -73,8 +73,7 @@ export function UpdateSettings({ t, isHub }: { t: T; isHub: boolean }) {
   else status = t("updateUpToDate");
 
   return (
-    <div className="stack" style={{ gap: 8 }}>
-      <div className="label">{t("updates")}</div>
+    <div className="stack" style={{ gap: 10 }}>
       {isHub && (
         <label className="check-line">
           <input type="checkbox" checked={u.enabled} onChange={(e) => toggle(e.target.checked)} />

@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, type Status } from "../api";
-import type { Key } from "../i18n";
+import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
-import { fmtBytes } from "../format";
-import { UpdateSettings } from "../components/Updates";
+import { fmtBytes, latinArticles, setLatinArticles } from "../format";
 import { Brand } from "../components/Brand";
+
+// The panels Household's category pages are built from (see Household.tsx).
+// A setting the search can jump to carries the id "set-<setting>" (settings.ts).
 
 type T = (k: Key) => string;
 
@@ -24,27 +26,59 @@ export type Look = { accent: Accent; setAccent: (a: Accent) => void; oled: boole
 /** Accent color and pure black, remembered on this device. */
 export function Appearance({ t, look }: { t: T; look: Look }) {
   return (
-    <div className="panel stack left">
-      <h2>{t("appearance")}</h2>
-      <div className="label">{t("accentColor")}</div>
-      <div className="swatches" role="radiogroup" aria-label={t("accentColor")}>
-        {ACCENTS.map((a) => (
-          <button
-            key={a}
-            role="radio"
-            aria-checked={look.accent === a}
-            aria-label={t(ACCENT_KEY[a])}
-            title={t(ACCENT_KEY[a])}
-            className={`swatch swatch-${a}${look.accent === a ? " on" : ""}`}
-            onClick={() => look.setAccent(a)}
-          />
-        ))}
+    <div className="set-rows">
+      <div id="set-accent" className="set-anchor set-row" tabIndex={-1}>
+        <div className="set-row-text">
+          <span className="set-row-title" id="accent-title">{t("accentColor")}</span>
+          <span className="set-row-desc">{t("lookThisDevice")}</span>
+        </div>
+        <div className="swatches" role="radiogroup" aria-labelledby="accent-title">
+          {ACCENTS.map((a) => (
+            <button
+              key={a}
+              role="radio"
+              aria-checked={look.accent === a}
+              aria-label={t(ACCENT_KEY[a])}
+              title={t(ACCENT_KEY[a])}
+              className={`swatch swatch-${a}${look.accent === a ? " on" : ""}`}
+              onClick={() => look.setAccent(a)}
+            />
+          ))}
+        </div>
       </div>
-      <label className="check-line">
+      <label id="set-pure-black" className="set-anchor set-row check-line" tabIndex={-1}>
         <input type="checkbox" checked={look.oled} onChange={(e) => look.setOled(e.target.checked)} />
-        <span>{t("pureBlack")}</span>
+        <span className="set-row-title">{t("pureBlack")}</span>
       </label>
-      <p className="muted" style={{ fontSize: 13, margin: 0 }}>{t("lookThisDevice")}</p>
+    </div>
+  );
+}
+
+/** The app's language on this device, and the script Serbian articles are shown in. */
+export function LanguageSettings({ t, lang, setLang }: { t: T; lang: Lang; setLang: (l: Lang) => void }) {
+  // Not chosen yet: Latin follows the app's language (see latinArticles).
+  const [latin, setLatin] = useState<boolean | null>(null);
+  const shown = latin ?? latinArticles(lang);
+  const toggleLatin = (on: boolean) => {
+    setLatin(on);
+    setLatinArticles(on);
+  };
+  return (
+    <div className="set-rows">
+      <div id="set-language" className="set-anchor set-row" tabIndex={-1}>
+        <div className="set-row-text">
+          <label className="set-row-title" htmlFor="app-language">{t("language")}</label>
+          <span className="set-row-desc" id="app-language-hint">{t("languageHint")}</span>
+        </div>
+        <select id="app-language" className="set-row-select" value={lang} onChange={(e) => setLang(e.target.value as Lang)} aria-describedby="app-language-hint">
+          <option value="en">{t("english")}</option>
+          <option value="sr">{t("serbian")}</option>
+        </select>
+      </div>
+      <label id="set-latin" className="set-anchor set-row check-line" tabIndex={-1}>
+        <input type="checkbox" checked={shown} onChange={(e) => toggleLatin(e.target.checked)} />
+        <span className="set-row-title">{t("latinArticles")}</span>
+      </label>
     </div>
   );
 }
@@ -99,6 +133,112 @@ export function ChangePassword({ t }: { t: T }) {
   );
 }
 
+/** What stays on the hub and the phones, and when Zaklon goes online. */
+export function Privacy({ t }: { t: T }) {
+  return (
+    <div className="panel stack left">
+      <h2>{t("privacy")}</h2>
+      <ul className="plain">
+        <li>{t("privacy1")}</li>
+        <li>{t("privacy2")}</li>
+        <li>{t("privacy3")}</li>
+        <li>{t("privacy4")}</li>
+      </ul>
+    </div>
+  );
+}
+
+/** Where phones on the same network find this laptop. */
+export function NetworkAddresses({ t, status }: { t: T; status: Status }) {
+  const list = status.addresses ?? [];
+  return (
+    <div className="panel stack left">
+      <h2>{t("networkAddresses")}</h2>
+      <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("addressesIntro")}</p>
+      {list.length === 0 ? (
+        <p style={{ margin: 0 }}>–</p>
+      ) : (
+        <div className="row wrap" style={{ gap: 8 }}>
+          {list.map((a) => (
+            <code className="url" key={a}>{a}</code>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type ModelChoice = { id: string; title_en: string; title_sr: string; size: number; installed: boolean; recommended: boolean };
+type AiOverview = { selected: string | null; recommended: string; ram_total: number; models: ModelChoice[] };
+
+/** Which of the hub's AI models the assistant uses (the whole household's choice). */
+export function AiModel({ t, lang, isHub }: { t: T; lang: Lang; isHub: boolean }) {
+  const [ov, setOv] = useState<AiOverview | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    try {
+      setOv(await api<AiOverview>("/api/assistant"));
+      setErr(null);
+    } catch (e) {
+      setErr(errText(t, e));
+    }
+  }, [t]);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const select = async (id: string) => {
+    setBusy(true);
+    try {
+      await api("/api/assistant/model", { json: { id } });
+      await load();
+    } catch (e) {
+      setErr(errText(t, e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const title = (m: ModelChoice) => (lang === "sr" ? m.title_sr : m.title_en);
+  const installed = ov?.models.filter((m) => m.installed) ?? [];
+  const rec = ov?.models.find((m) => m.id === ov.recommended);
+  return (
+    <div className="panel stack left">
+      <h2>{t("catModels")}</h2>
+      {err && <p className="error" role="alert">{err}</p>}
+      {ov &&
+        (installed.length === 0 ? (
+          <p style={{ margin: 0 }}>{t("aiNeedsModel")}.</p>
+        ) : (
+          <label className="field">
+            {t("aiModel")}
+            <select value={ov.selected ?? ""} onChange={(e) => select(e.target.value)} disabled={busy}>
+              {installed.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {title(m)}
+                  {m.recommended ? ` · ${t("recommended")}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+      {ov && rec && (
+        <p className="muted" style={{ margin: 0, fontSize: 14 }}>
+          {t("aiRecommendedFor")} {fmtBytes(ov.ram_total)} {t("aiRecommendedMemory")}: <strong>{title(rec)}</strong> ({fmtBytes(rec.size)})
+        </p>
+      )}
+      {isHub ? (
+        <div>
+          <a className="btn secondary" href="#addons">{t("goToAddons")}</a>
+        </div>
+      ) : (
+        <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("aiModelsOnLaptop")}</p>
+      )}
+    </div>
+  );
+}
+
 type Hardware = { cpu: string; cores: number; ram_total: number; ram_free: number; os: string };
 type System = { disk_free: number; disk_total: number; battery_percent: number | null; plugged_in: boolean };
 
@@ -137,6 +277,17 @@ export function ThisHub({ t, status, isHub }: { t: T; status: Status; isHub: boo
   );
 }
 
+/** Zaklon itself: the version, the license and where the source is. */
+export function AboutZaklon({ t, status }: { t: T; status: Status | null }) {
+  return (
+    <div className="panel stack left">
+      <Brand size={36} className="about-brand" />
+      <p style={{ margin: 0 }}>Zaklon {status?.version ?? ""} · {t("aboutFree")}</p>
+      <p className="muted" style={{ fontSize: 14, margin: 0 }}>{t("aboutSource")} github.com/stefan-cirovic/zaklon · zaklon.com</p>
+    </div>
+  );
+}
+
 const THIRD_PARTY: { name: string; role: Key; license: string }[] = [
   { name: "Kiwix (kiwix-serve)", role: "tpKiwix", license: "GPL-3.0-or-later" },
   { name: "llama.cpp", role: "tpLlama", license: "MIT" },
@@ -149,37 +300,19 @@ const THIRD_PARTY: { name: string; role: Key; license: string }[] = [
   { name: "Sora", role: "tpFont", license: "OFL-1.1" },
 ];
 
-/** Version, license, privacy and the other projects Zaklon builds on. */
-export function About({ t, status, isHub }: { t: T; status: Status; isHub: boolean }) {
+/** The other projects Zaklon builds on, each under its own license. */
+export function Licenses({ t }: { t: T }) {
   return (
     <div className="panel stack left">
-      <div className="row between wrap">
-        <h2>{t("about")}</h2>
-        <Brand size={24} className="about-brand" />
-      </div>
-      <p style={{ margin: 0 }}>Zaklon {status.version} · {t("aboutFree")}</p>
-      <p className="muted" style={{ fontSize: 14, margin: 0 }}>{t("aboutSource")} github.com/stefan-cirovic/zaklon · zaklon.com</p>
-      <UpdateSettings t={t} isHub={isHub} />
-      <details>
-        <summary>{t("privacy")}</summary>
-        <ul className="plain">
-          <li>{t("privacy1")}</li>
-          <li>{t("privacy2")}</li>
-          <li>{t("privacy3")}</li>
-          <li>{t("privacy4")}</li>
-        </ul>
-      </details>
-      <details>
-        <summary>{t("licenses")}</summary>
-        <p className="muted" style={{ fontSize: 14 }}>{t("licensesIntro")}</p>
-        <ul className="plain">
-          {THIRD_PARTY.map((x) => (
-            <li key={x.name}>
-              <strong>{x.name}</strong> · {t(x.role)} · <span className="muted">{x.license}</span>
-            </li>
-          ))}
-        </ul>
-      </details>
+      <h2>{t("licenses")}</h2>
+      <p className="muted" style={{ fontSize: 14, margin: 0 }}>{t("licensesIntro")}</p>
+      <ul className="plain">
+        {THIRD_PARTY.map((x) => (
+          <li key={x.name}>
+            <strong>{x.name}</strong> · {t(x.role)} · <span className="muted">{x.license}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
