@@ -481,7 +481,6 @@ export default function Addons({ t, lang, isHub }: Props) {
     const stats = FOLDERS.map((f) => folderStat(f.id, all)).filter((s) => s.count > 0);
     content = (
       <>
-        {isHub && <StarterSet t={t} lang={lang} packs={data.packs} freeBytes={data.system.disk_free} onStarted={load} />}
         <section className="stack explorer-section" aria-labelledby={drivesId}>
           <div className="row between">
             <h2 id={drivesId} className="section-title">{t("devicesAndDrives")}</h2>
@@ -512,6 +511,8 @@ export default function Addons({ t, lang, isHub }: Props) {
           <h2 id={foldersId} className="section-title">{t("addonsFolders")}</h2>
           <Folders t={t} stats={stats} view={view} open={(id) => go({ kind: "folder", id })} />
         </section>
+        {/* Like Explorer: drives and folders first, then the one-click starter set. */}
+        {isHub && <StarterSet t={t} lang={lang} packs={data.packs} freeBytes={data.system.disk_free} onStarted={load} />}
         {isHub && (
           <div className="transfer">
             <CopyToUsb t={t} lang={lang} items={copyItems} />
