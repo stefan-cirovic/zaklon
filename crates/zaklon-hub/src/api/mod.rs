@@ -15,6 +15,7 @@ mod maps;
 mod memory;
 mod packs;
 mod pairing;
+mod power;
 mod supplies;
 
 use std::sync::Arc;
@@ -48,6 +49,7 @@ use packs::{
     pack_pause, pack_remove, packs_import, system,
 };
 use pairing::{network_only, pair_complete, pair_start, pake_finish, pake_start};
+use power::{power_plan, power_plan_save};
 use supplies::{
     barcode_lookup, batch_add, batch_delete, batch_update, history, items_adjust, items_create, items_delete, items_get, items_list,
     items_update, places_add, places_delete, places_list, put_away, put_away_list, shopping_add, shopping_bought, shopping_dismiss,
@@ -106,6 +108,7 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/updates/check", post(updates_check))
         .route("/api/updates/settings", post(updates_settings))
         .route("/api/pinned-tool", get(pinned_tool).post(pin_tool))
+        .route("/api/power", get(power_plan).put(power_plan_save))
         .route("/api/backups", get(backups_list).post(backups_create))
         .route("/api/backups/restore", post(backups_restore))
         .route("/api/backups/encryption", post(backups_encryption))

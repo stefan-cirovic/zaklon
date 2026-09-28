@@ -271,6 +271,34 @@ async fn full_hub_flow() {
     assert_eq!(phone_pinned().await, Value::Null);
     let stranger = phone.get(format!("{}/api/pinned-tool", hub.tls)).send().await.unwrap();
     assert_eq!(stranger.status().as_u16(), 401, "only the household reads it");
+
+    // The power calculator's list is the household's too, but not only the
+    // laptop's: any paired phone may change it. Nothing is saved at first.
+    let (status, empty) = hub.get("/api/power").await;
+    assert_eq!((status, empty["plan"].clone()), (200, Value::Null));
+    let plan = json!({ "v": 1, "lines": [{ "k": "a", "id": "fridge", "qty": 1, "watts": 200, "hours": 24, "whDay": 1200 }], "days": 3 });
+    let r = as_phone(reqwest::Method::PUT, "/api/power").json(&json!({ "plan": plan })).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 200, "a phone saves the list");
+    let (_, on_laptop) = hub.get("/api/power").await;
+    assert_eq!(on_laptop["plan"], plan);
+    assert_eq!(on_laptop["updated_by"], "Ana's phone");
+    assert!(on_laptop["updated_at"].as_str().is_some_and(|t| t.len() >= 20), "{on_laptop}");
+    // The laptop changes it; the phone reads the laptop's list.
+    let plan2 = json!({ "v": 1, "lines": [], "days": 7 });
+    assert_eq!(hub.send(reqwest::Method::PUT, "/api/power", Some(json!({ "plan": plan2 }))).await.0, 200);
+    let on_phone: Value = as_phone(reqwest::Method::GET, "/api/power").send().await.unwrap().json().await.unwrap();
+    assert_eq!((on_phone["plan"].clone(), on_phone["updated_by"].clone()), (plan2.clone(), json!("laptop")));
+    // Not a JSON object, or far too large: refused, and the list stays.
+    for refused in [json!({ "plan": [1, 2, 3] }), json!({ "plan": { "lines": "x".repeat(40_000) } })] {
+        let r = as_phone(reqwest::Method::PUT, "/api/power").json(&refused).send().await.unwrap();
+        assert_eq!(r.status().as_u16(), 400);
+    }
+    assert_eq!(hub.get("/api/power").await.1["plan"], plan2);
+    // Cleared: no list again.
+    assert_eq!(hub.send(reqwest::Method::PUT, "/api/power", Some(json!({ "plan": null }))).await.0, 200);
+    assert_eq!(hub.get("/api/power").await.1["plan"], Value::Null);
+    let stranger = phone.get(format!("{}/api/power", hub.tls)).send().await.unwrap();
+    assert_eq!(stranger.status().as_u16(), 401, "only the household reads the list");
     // Other websites in the laptop's browser are refused on the local port too:
     // a foreign origin, the opaque "null" origin (sandboxed pages, file://) and
     // a request the browser marks as cross-site.
