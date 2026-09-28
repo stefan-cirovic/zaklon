@@ -932,6 +932,14 @@ a.tool-open:hover { text-decoration: none; }
   .shell.home-fill .content { display: flex; flex-direction: column; }
   .shell.home-fill .home, .shell.home-fill .home-grid { flex: 1 0 auto; }
 }
+.shell.home-fill .footer-note { margin: 16px 0 0; }
+@media (min-width: 900px) {
+  /* The firewall warning in a few lines, its button beside the text. */
+  .home-alerts .firewall { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 24px; align-items: center; }
+  .home-alerts .firewall > * { grid-column: 1; }
+  .home-alerts .firewall > div { grid-column: 2; grid-row: 1 / span 3; }
+  .home-alerts .firewall h2 { font-size: 15px; }
+}
 
 .home-card { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .home-card-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 16px; }
@@ -955,7 +963,8 @@ a.tool-open:hover { text-decoration: none; }
 .composer-box.home-ask-box { max-width: none; margin: 0; padding: 5px 5px 5px 14px; }
 .home-ask-box input[type="text"] { flex: 1; min-width: 0; min-height: 36px; padding: 6px 0; background: transparent; border: 0; border-radius: 0; font-size: 15px; }
 .home-ask-box input[type="text"]:focus-visible { outline: none; }
-.home-recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
+.home-recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .home-recent { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .home-recent-item {
   display: grid; gap: 2px; width: 100%; min-height: 44px; padding: 8px 12px; text-align: left; cursor: pointer;
   background: transparent; border: 1px solid var(--line-2); border-radius: var(--radius); color: inherit; font: inherit;
@@ -1005,7 +1014,6 @@ a.tool-open:hover { text-decoration: none; }
   .home-link { min-height: 44px; min-width: 44px; font-size: 14px; }
   .home-part > .home-link { margin-top: 0; }
   .home-ask-box input[type="text"] { min-height: 44px; font-size: 16px; }
-  .home-recent { grid-template-columns: minmax(0, 1fr); }
   .home-tool-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
   .home-tool { min-height: 56px; padding: 8px 12px; }
 }

@@ -512,7 +512,7 @@ function AddonsCard({
         total={cat.system.disk_total}
         note={
           <span className="muted">
-            {t("addonsUse")}: {fmtBytes(addonsBytes)}
+            {addonsBytes > 0 ? `${t("addonsUse")}: ${fmtBytes(addonsBytes)}` : t("nothingInstalled")}
           </span>
         }
         open={() => go("addons/library")}

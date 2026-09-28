@@ -274,10 +274,15 @@ test("home shots", async ({ page }, info) => {
       ],
     }),
   );
+  // The usual day: phones can connect (whatever this machine's firewall says).
+  let firewall = { checked: true, firewall_on: true, allowed: true, blocked: false, public_network: false, error: null, ok: true };
+  await page.route("**/api/firewall", (r) => r.fulfill({ json: firewall }));
   await page.goto("/#home");
   await page.reload();
   await page.waitForTimeout(1500);
   await page.screenshot({ path: file("home"), fullPage: true });
+  // What the window shows (a full-page picture draws the bar, which stays at the bottom, in the middle).
+  await page.screenshot({ path: file("home-screen"), fullPage: false });
 
   // Downloads under way, a new version and a paused download; a newer Zaklon; the firewall (laptop).
   await page.route("**/api/catalog", async (r) => {
@@ -302,12 +307,11 @@ test("home shots", async ({ page }, info) => {
   await page.route("**/api/updates", (route) =>
     route.fulfill({ json: { enabled: true, current: "0.1.0", latest: "0.2.0", newer: true, url: "https://github.com/stefan-cirovic/zaklon/releases/tag/v0.2.0", checked_at: ago(0), error: null } }),
   );
-  await page.route("**/api/firewall", (r) =>
-    r.fulfill({ json: { checked: true, firewall_on: true, allowed: false, blocked: true, public_network: false, error: null, ok: false } }),
-  );
+  firewall = { ...firewall, allowed: false, blocked: true, ok: false };
   await page.reload();
   await page.waitForTimeout(1500);
   await page.screenshot({ path: file("home-busy"), fullPage: true });
+  await page.screenshot({ path: file("home-busy-screen"), fullPage: false });
   // Home asks every few seconds while something downloads: stop the made-up answers before the page closes.
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
