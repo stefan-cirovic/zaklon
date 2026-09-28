@@ -2268,11 +2268,17 @@ mod error_code_tests {
 
     /// The source of the hub and its core, without the code table and these
     /// tests, so a message counts as sent only if the code really sends it.
+    /// Folders inside (such as src/api) are read too.
     fn hub_sources() -> String {
         let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let mut all = String::new();
-        for dir in ["zaklon-core/src", "zaklon-hub/src"] {
-            for e in std::fs::read_dir(crates.join(dir)).unwrap().flatten() {
+        let mut dirs: Vec<std::path::PathBuf> = ["zaklon-core/src", "zaklon-hub/src"].iter().map(|d| crates.join(d)).collect();
+        while let Some(dir) = dirs.pop() {
+            for e in std::fs::read_dir(dir).unwrap().flatten() {
+                if e.path().is_dir() {
+                    dirs.push(e.path());
+                    continue;
+                }
                 let text = std::fs::read_to_string(e.path()).unwrap();
                 match (text.find("const ERROR_CODES"), text.find("mod error_code_tests")) {
                     (Some(table), Some(tests)) => {
@@ -2412,7 +2418,7 @@ mod error_code_tests {
     /// a code missing there would show up as "Something went wrong".
     #[test]
     fn every_code_has_a_translation_in_the_app() {
-        let src = include_str!("../../../ui/src/errors.ts");
+        let src = include_str!("../../../../ui/src/errors.ts");
         let table = &src[src.find("const CODES").expect("CODES in errors.ts")..];
         let table = &table[table.find('{').expect("start of CODES") + 1..table.find("};").expect("end of CODES")];
         let mapped: std::collections::HashSet<&str> =
