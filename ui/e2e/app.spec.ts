@@ -762,10 +762,11 @@ test("household: a backup can be made and a restore is prepared for the next sta
   const password = row.getByLabel("Household password from when the backup was made");
   await password.fill("not the password");
   await yes.click();
-  await expect(row.getByText(/This password does not open the backup/)).toBeVisible();
+  await expect(row.getByText(/This password does not open the backup/)).toBeVisible({ timeout: 20_000 });
   await password.fill(PASSWORD);
   await yes.click();
-  await expect(page.getByText(/The backup is checked and ready/)).toBeVisible();
+  // The password is checked with Argon2, slow on purpose; a busy machine needs longer.
+  await expect(page.getByText(/The backup is checked and ready/)).toBeVisible({ timeout: 20_000 });
   // Wait until that restore has finished (the notice may already be there from an earlier run).
   // The password is checked with Argon2, slow on purpose; a busy machine needs longer.
   await expect(page.getByRole("button", { name: "Make a backup now" })).toBeEnabled({ timeout: 20_000 });

@@ -117,10 +117,21 @@ export default function Backups({ t }: { t: T }) {
     />
   );
 
+  // The buttons come with the list: appearing above them, it would move them
+  // under a finger or pointer on its way to "Make a backup now".
+  if (!data) {
+    return (
+      <div className="panel stack left">
+        <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("backupsIntro")}</p>
+        {err ? <p className="error" role="alert">{err}</p> : <p className="muted" style={{ margin: 0 }}>{t("loadingOrUnavailable")}</p>}
+      </div>
+    );
+  }
+
   return (
     <div className="panel stack left">
       <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("backupsIntro")}</p>
-      {(data?.encryption === "on" || data?.encryption === "off") && (
+      {(data.encryption === "on" || data.encryption === "off") && (
         <div id="set-backup-encryption" className="set-anchor stack" tabIndex={-1}>
           {data.encryption === "on" ? (
             <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("backupsEncrypted")}</p>
