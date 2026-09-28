@@ -5,7 +5,7 @@ import { onBackOnline, onOfflineChange } from "../offline";
 import type { Key } from "../i18n";
 import { canScan, scan } from "../scan";
 import { errCode, errText } from "../errors";
-import { fmtDateTime, fmtQty, parseNumber, unitLabel } from "../format";
+import { fmtDateTime, fmtQty, parseNumber, unitKey, unitName, UNITS } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
 import ExpiryBadge from "../components/ExpiryBadge";
 import HelpLink from "../components/HelpLink";
@@ -44,16 +44,9 @@ type View = "items" | "shopping" | "putaway" | "history";
 
 const VIEWS: View[] = ["items", "shopping", "putaway", "history"];
 const CATEGORIES = ["food", "drink", "medicine", "hygiene", "equipment", "fuel", "other"] as const;
-const UNITS = ["pcs", "kg", "g", "l", "ml", "pack"] as const;
 
 const catKey = (c: string) => ("cat_" + c) as Key;
-const unitKey = (u: string) => ("unit_" + u) as Key;
 const placeKey = (p: string) => ("place_" + p) as Key;
-
-/** A unit as the screen writes it after a quantity ("kg", "2 liters"). */
-export function unitName(t: T, unit: string, qty: number) {
-  return unitLabel(unit, qty, (u) => (UNITS.includes(u as (typeof UNITS)[number]) ? t(unitKey(u)) : u));
-}
 
 /** The view in the address ("#supplies/shopping"); the items without one. */
 function viewFromHash(): View {

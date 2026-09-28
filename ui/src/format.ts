@@ -1,4 +1,4 @@
-import type { Lang } from "./i18n";
+import type { Key, Lang } from "./i18n";
 
 // Numbers, sizes and dates follow the app's language (not the phone's), so a
 // Serbian interface shows "1,5 kg" and "31.01.2027." everywhere.
@@ -98,6 +98,16 @@ export function unitLabel(unit: string, qty: number, short: (u: string) => strin
     return "litara";
   }
   return qty === 1 ? "liter" : "liters";
+}
+
+/** The units a supply can be counted in. */
+export const UNITS = ["pcs", "kg", "g", "l", "ml", "pack"] as const;
+
+export const unitKey = (u: string) => ("unit_" + u) as Key;
+
+/** A unit as the screens write it after a quantity ("kg", "2 liters"); a unit of the household's own stays as typed. */
+export function unitName(t: (k: Key) => string, unit: string, qty: number) {
+  return unitLabel(unit, qty, (u) => (UNITS.includes(u as (typeof UNITS)[number]) ? t(unitKey(u)) : u));
 }
 
 /** A word after a number: "1 dan, 2 dana, 5 dana" / "1 region, 2 regions". */
