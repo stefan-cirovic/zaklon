@@ -767,7 +767,8 @@ test("household: a backup can be made and a restore is prepared for the next sta
   await yes.click();
   await expect(page.getByText(/The backup is checked and ready/)).toBeVisible();
   // Wait until that restore has finished (the notice may already be there from an earlier run).
-  await expect(page.getByRole("button", { name: "Make a backup now" })).toBeEnabled();
+  // The password is checked with Argon2, slow on purpose; a busy machine needs longer.
+  await expect(page.getByRole("button", { name: "Make a backup now" })).toBeEnabled({ timeout: 20_000 });
   // A file that is not a backup is refused.
   await page.getByRole("textbox", { name: "Restore from a backup file" }).fill("C:\\Windows\\win.ini");
   const fromFile = page.locator(".restore-file");
