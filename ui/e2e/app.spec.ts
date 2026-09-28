@@ -1071,11 +1071,22 @@ test("household: an address opens a category, or one setting on it, directly", a
   await expect(page.getByRole("heading", { name: "About", level: 1 })).toBeVisible();
   await expect(page.locator("#set-licenses")).toBeInViewport();
   await expect(page.locator("#set-licenses")).toBeFocused();
+  // A setting whose answer comes a moment later (Windows is slow to say): it says so, then shows it.
+  await page.route("**/api/firewall", async (r) => {
+    await new Promise((done) => setTimeout(done, 800));
+    return r.fulfill({ json: { checked: true, firewall_on: true, allowed: true, blocked: false, public_network: false, error: null, ok: true } });
+  });
+  await page.goto("/#household/network/firewall");
+  await page.reload();
+  await expect(page.locator("#set-firewall")).toContainText("Asking Windows…");
+  await expect(page.locator("#set-firewall")).toContainText("Phones on the Wi-Fi can reach Zaklon");
+  await expect(page.locator("#set-firewall")).toBeInViewport();
+  await expect(page.locator("#set-firewall")).toBeFocused();
   // An address that is no category shows the tiles.
   await page.goto("/#household/nowhere");
   await expect(page.locator(".set-tiles")).toBeVisible();
   await expect(page.locator("nav.nav").getByRole("button", { name: "Household" })).toHaveAttribute("aria-current", "page");
   // Back goes through them in turn.
   await page.goBack();
-  await expect(page.getByRole("heading", { name: "About", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Network", level: 1 })).toBeVisible();
 });

@@ -24,12 +24,12 @@ export default function Firewall({ t, showOk = false }: { t: T; showOk?: boolean
   useEffect(() => {
     api<State>("/api/firewall").then(setSt).catch(() => {});
   }, []);
-  if (!st) return null;
-  if (st.ok) {
+  // Windows takes a few seconds to answer.
+  if (!st || st.ok) {
     return showOk ? (
-      <div className="panel stack left firewall-ok">
+      <div className={"panel stack left " + (st ? "firewall-ok" : "firewall-wait")}>
         <h2>{t("firewallName")}</h2>
-        <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("firewallOk")}</p>
+        <p className="muted" style={{ margin: 0, fontSize: 14 }}>{st ? t("firewallOk") : t("firewallChecking")}</p>
       </div>
     ) : null;
   }
