@@ -29,7 +29,14 @@ type Props = {
 
 export default function Household({ status, t, lang, setLang, refresh, isHub, ownDeviceId, look, top }: Props) {
   if (status?.set_up === false) {
-    return isHub ? <Setup t={t} lang={lang} setLang={setLang} onDone={refresh} defaultName={status.hub_name} /> : <p className="muted">{t("hubNotSetUp")}</p>;
+    return isHub ? (
+      <Setup t={t} lang={lang} setLang={setLang} onDone={refresh} defaultName={status.hub_name} />
+    ) : (
+      <div className="stack">
+        {top}
+        <p className="muted">{t("hubNotSetUp")}</p>
+      </div>
+    );
   }
   return (
     <div className="stack">
