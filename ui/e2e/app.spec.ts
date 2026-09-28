@@ -255,13 +255,14 @@ test("tools: every tool is listed, and one can be pinned to the bar for the whol
   await page.request.post("/api/pinned-tool", { data: { tool: null } });
   await page.goto("/#tools");
   await expect(page.getByRole("heading", { name: "Tools", exact: true })).toBeVisible();
-  for (const name of ["Supplies", "Library", "Maps", "Add-ons"]) {
+  for (const name of ["Supplies", "Library", "Maps", "Power calculator", "Add-ons"]) {
     await expect(page.locator(".tool-card", { hasText: name }).first()).toBeVisible();
   }
   await expect(page.getByText(/expiry dates and a shopping list/).first()).toBeVisible();
   // Supplies (food and medicines) is listed under Food and under Health and first aid.
   await expect(page.locator(".tool-card", { hasText: "Supplies" })).toHaveCount(2);
   // Only the tools: Help is in Settings now.
+  await expect(page.locator(".tool-card")).toHaveCount(6);
   await expect(page.locator(".topic-grid").getByRole("link", { name: /^Help/ })).toHaveCount(0);
   expect(await barItems(page)).toEqual(["Home", "Assistant", "Tools", "Settings"]);
 
@@ -1119,7 +1120,7 @@ test("home: the hub at the top, what in the supplies needs attention, and the to
 
   // The tools not in the bar, and Help.
   const tools = page.getByRole("region", { name: "Quick access" });
-  await expect(tools.getByRole("link")).toHaveText(["Supplies", "Library", "Maps", "Add-ons", "Help"]);
+  await expect(tools.getByRole("link")).toHaveText(["Supplies", "Library", "Maps", "Power calculator", "Add-ons", "Help"]);
   await noHorizontalScroll(page);
 
   const box = async (name: string) => (await page.getByRole("region", { name, exact: true }).boundingBox())!;
@@ -1163,7 +1164,7 @@ test("home: the hub at the top, what in the supplies needs attention, and the to
   await page.request.post("/api/pinned-tool", { data: { tool: "maps" } });
   await page.goto("/#home");
   await page.reload();
-  await expect(tools.getByRole("link")).toHaveText(["Supplies", "Library", "Add-ons", "Help"]);
+  await expect(tools.getByRole("link")).toHaveText(["Supplies", "Library", "Power calculator", "Add-ons", "Help"]);
   await page.request.post("/api/pinned-tool", { data: { tool: null } });
 });
 

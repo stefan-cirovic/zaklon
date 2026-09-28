@@ -57,7 +57,7 @@ test("help: opens from Settings, lists every topic, and a topic opens with its s
   await expect(page.locator("nav.nav").getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "true");
   await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "Settings", exact: true })).toHaveAttribute("href", "#settings");
   const tiles = page.locator(".help-home .set-tiles").getByRole("link");
-  await expect(tiles).toHaveCount(11);
+  await expect(tiles).toHaveCount(12);
   await expect(tiles.first()).toContainText("Getting started");
   await expect(page.getByRole("heading", { name: "Offline and troubleshooting", level: 2 })).toBeVisible();
   await noHorizontalScroll(page);
@@ -84,7 +84,7 @@ test("help: opens from Settings, lists every topic, and a topic opens with its s
   await expect(page.getByRole("heading", { name: "Home", level: 1 })).toBeVisible();
   await page.getByRole("link", { name: "Back to Help" }).click();
   await expect(page).toHaveURL(/#help$/);
-  await expect(tiles).toHaveCount(11);
+  await expect(tiles).toHaveCount(12);
 });
 
 test("help: How it works on a screen opens that screen's topic", async ({ page }, info) => {
@@ -115,7 +115,7 @@ test("help: How it works on a screen opens that screen's topic", async ({ page }
   await expect(page.getByRole("heading", { name: "Backups", level: 2 })).toBeInViewport();
 
   // Every screen has one.
-  for (const tab of ["home", "assistant", "library", "maps", "addons", "settings"]) {
+  for (const tab of ["home", "assistant", "library", "maps", "power", "addons", "settings"]) {
     await page.goto(`/#${tab}`);
     await expect(page.getByRole("link", { name: "How it works" })).toBeVisible();
     await noHorizontalScroll(page);

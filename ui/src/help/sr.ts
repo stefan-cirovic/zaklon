@@ -584,6 +584,81 @@ const sr: HelpContent = {
     ],
   },
 
+  power: {
+    title: "Kalkulator struje",
+    summary: "Koliko baterija, solarnih panela i koliki invertor treba malom rezervnom sistemu za ono što treba da radi kad nestane struje.",
+    open: { href: "#power", label: "Otvori kalkulator struje" },
+    sections: [
+      {
+        id: "how",
+        title: "Kako radi",
+        body: [
+          { p: "Napravi spisak onoga što treba da radi kad nestane struje: frižider, nekoliko svetala, telefoni, ruter. Kalkulator sabere energiju koju oni troše za dan i izračuna bateriju, solarne panele i invertor za to. Namenjen je malim sistemima koji napajaju deo kuće i radi bez interneta." },
+          { p: "Spisak se čuva na hubu, pa svi u domaćinstvu vide isti, na laptopu i na svakom telefonu. Svako iz domaćinstva može da ga menja; izmena se sačuva trenutak pošto je napravljena." },
+        ],
+      },
+      {
+        id: "list",
+        title: "Napravi spisak",
+        body: [
+          {
+            steps: [
+              "Otvori [Kalkulator struje](#power) u Alatima. Dok je spisak prazan, **Počni od tipičnog spiska** upiše frižider, četiri LED sijalice, tri telefona, ruter i laptop.",
+              "Izaberi uređaj pod **Uređaj za dodavanje** i pritisni **Dodaj**. Svaki dolazi sa tipičnom, opreznom vrednošću; natpisna pločica tvog uređaja je tačnija, pa promeni **Snaga (po komadu)** kad je znaš.",
+              "Podesi **Komada** i **Rad dnevno** u satima. Frižideri i zamrzivači se sami uključuju i isključuju, pa se umesto toga računaju po energiji dnevno.",
+              "Za nešto čega nema na spisku izaberi **Sopstveni uređaj** i upiši mu ime, snagu i sate.",
+            ],
+          },
+          { note: "**Napajanje** kaže da li uređaj radi preko invertora (AC: većina uređaja sa utikačem) ili direktno sa baterije (DC: lampa od 12 V ili USB punjač). DC štedi gubitke invertora." },
+        ],
+      },
+      {
+        id: "system",
+        title: "Dani, baterija i sunce",
+        body: [
+          {
+            list: [
+              "**Dana bez struje**: koliko dugo baterija sama mora da drži, i bez sunca. Jedan dan pokriva većinu nestanaka struje; tri dana je uobičajen savet za pripremljenost.",
+              "**Vrsta baterije**: LiFePO4 (litijum-gvožđe-fosfat) sme da se isprazni do oko 80–90%, olovne i AGM samo do oko 50%, pa im treba dvostruko veći kapacitet.",
+              "**Napon sistema**: 12 V odgovara malim sistemima. Većima je bolje na 24 ili 48 V, gde ista snaga teče kao manja struja, kroz tanje kablove.",
+              "**Sunce**: mesto i mesec daju sate punog sunca dnevno, po podacima PVGIS Evropske komisije. Decembar ima najmanje sunca, pa je izabran prvi; kalkulator pokazuje panele potrebne u svakom mesecu.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "results",
+        title: "Pročitaj odgovor",
+        body: [
+          { p: "Odgovor počinje jednom rečenicom, na primer „2 × 100 Ah 12 V LiFePO4 baterije, oko 1.400 W solarnih panela i invertor od 600 W sa čistim sinusom“. Ispod nje su baterija u Ah i Wh, paneli za svakodnevnu potrošnju i za punjenje prazne baterije za jedan sunčan dan, trajna i vršna snaga invertora i energija dnevno." },
+          { p: "**Kako se ovo računa** pokazuje svaku formulu sa tvojim brojevima, a **Izvori** navode odakle su tipične vrednosti." },
+          { note: "Frižideri, zamrzivači i pumpe za trenutak povuku nekoliko puta više snage kad se motor pokreće. Vršna snaga invertora mora to da pokrije, a kalkulator kaže koliko." },
+        ],
+      },
+      {
+        id: "safety",
+        title: "Bezbednost",
+        body: [
+          { warn: "Sve što se povezuje na kućnu instalaciju, pa i invertore za „balkonske“ solarne panele koji se uključuju u utičnicu, mora da poveže ovlašćeni električar: struja vraćena u mrežu može da ubije ljude koji je popravljaju. Mali sistem od 12 V sa sopstvenim utičnicama možeš da napraviš i sam." },
+          {
+            list: [
+              "Litijumskim baterijama treba ispravan BMS (sistem za upravljanje baterijom), osigurač odmah pored baterije i kablovi dovoljno debeli za tu struju. Puni ih samo na temperaturi između 0 °C i 40 °C.",
+              "Olovne akumulatore nikad ne puni u zatvorenoj prostoriji: ispuštaju vodonik, koji može da eksplodira.",
+              "Agregat radi samo napolju, najmanje 6 m od prozora i vrata, i nikad se ne uključuje u kućnu utičnicu.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "link",
+        title: "Otvoreno preko linka",
+        body: [
+          { p: "Link može da otvori kalkulator sa sopstvenim spiskom, na primer onim iz asistenta. Taj spisak nije sačuvan: izaberi **Sačuvaj kao spisak domaćinstva** da ga zadržiš, ili **Prikaži sačuvani spisak** da se vratiš na spisak domaćinstva." },
+        ],
+      },
+    ],
+  },
+
   addons: {
     title: "Dodaci",
     summary: "Preuzimanje paketa znanja, AI modela i mapa, i njihovo kopiranje na USB ili sa njega.",

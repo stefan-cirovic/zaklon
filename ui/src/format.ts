@@ -17,6 +17,11 @@ export function fmtQty(n: number): string {
   return new Intl.NumberFormat(locale(), { maximumFractionDigits: 3 }).format(n);
 }
 
+/** A number with the language's separators and at most `digits` decimals: "1,234.5" / "1.234,5". */
+export function fmtNum(n: number, digits = 0): string {
+  return new Intl.NumberFormat(locale(), { maximumFractionDigits: digits }).format(n);
+}
+
 /**
  * Sizes the way Windows Explorer, Android and CoMaps show them (1 MB = 1024 × 1024 bytes).
  * A no-break space keeps the number and the unit on one line.

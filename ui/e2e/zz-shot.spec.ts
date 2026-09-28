@@ -327,3 +327,56 @@ test("home shots", async ({ page }, info) => {
   // Home asks every few seconds while something downloads: stop the made-up answers before the page closes.
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+// Only the power calculator (run alone with -g "power shots"): empty, with a household's list,
+// its formulas open, a list opened from a link, and a system too big for 12 V.
+test("power shots", async ({ page }, info) => {
+  test.setTimeout(60000);
+  if (SIZE && info.project.name === "laptop") await page.setViewportSize({ width: Number(SIZE[1]), height: Number(SIZE[2]) });
+  const file = (name: string) => join(DIR ?? "", `${LANG}-${info.project.name}-${name}.png`);
+  await page.addInitScript((l) => localStorage.setItem("zaklon.lang", l), LANG);
+  await page.goto("/#settings");
+  const setup = page.getByText(/Set up your household|Podesi domaćinstvo/);
+  if (await setup.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await page.locator('input[type="password"]').nth(0).fill("correct horse");
+    await page.locator('input[type="password"]').nth(1).fill("correct horse");
+    await page.locator("form button.btn").click();
+    await page.waitForTimeout(800);
+  }
+  const line = (k: string, id: string, qty: number, watts: number, hours: number, whDay?: number) => ({ k, id, qty, watts, hours, ...(whDay ? { whDay } : {}) });
+  await page.request.put("/api/power", { data: { plan: null } });
+  await page.goto("/#power");
+  await page.waitForTimeout(1000);
+  await page.screenshot({ path: file("power-empty"), fullPage: true });
+  const plan = {
+    v: 1,
+    lines: [
+      line("a", "fridge", 1, 200, 24, 1200),
+      line("b", "lights-led", 6, 10, 5),
+      line("c", "phone", 3, 10, 2),
+      line("d", "router", 1, 12, 24),
+      line("e", "laptop", 1, 50, 4),
+      line("f", "cpap", 1, 25, 8),
+      { ...line("g", "custom", 1, 8, 24), name: LANG === "sr" ? "Pumpa za akvarijum" : "Aquarium pump" },
+    ],
+    days: 3,
+    battery: "lifepo4",
+    volts: 12,
+    region: "belgrade",
+    month: 12,
+  };
+  await page.request.put("/api/power", { data: { plan } });
+  await page.goto("/#home");
+  await page.goto("/#power");
+  await page.waitForTimeout(1200);
+  await page.screenshot({ path: file("power"), fullPage: true });
+  await page.screenshot({ path: file("power-screen"), fullPage: false });
+  await page.locator(".pw-how summary").click();
+  await page.waitForTimeout(300);
+  await page.locator(".pw-results").screenshot({ path: file("power-results-how") });
+  // From a link, with loads too big for 12 V.
+  await page.goto("/#power?items=fridge:1,pump:1,microwave:1,tv:1&days=1");
+  await page.waitForTimeout(1000);
+  await page.screenshot({ path: file("power-link"), fullPage: true });
+  await page.request.put("/api/power", { data: { plan: null } });
+});

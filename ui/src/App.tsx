@@ -13,6 +13,7 @@ import Addons from "./screens/Addons";
 import Library from "./screens/Library";
 import Supplies from "./screens/Supplies";
 import Maps from "./screens/Maps";
+import Power from "./screens/Power";
 import Assistant from "./screens/Assistant";
 import Tools from "./screens/Tools";
 import Help from "./screens/Help";
@@ -56,9 +57,16 @@ function writePref(key: string, value: string) {
   }
 }
 
-/** The screen in the address; a screen may add a place of its own after a slash ("#addons/maps", "#settings/backups"). */
+/**
+ * The screen in the address; a screen may add a place of its own after a
+ * slash ("#addons/maps", "#settings/backups") and what to open it with after
+ * a "?" ("#power?items=fridge:1", see power.ts). A tool with such a query may
+ * also be named under Tools ("#tools/power?items=...").
+ */
 function tabFromHash(): string {
-  const id = typeof location !== "undefined" ? location.hash.replace("#", "").split("/")[0] : "";
+  const hash = typeof location !== "undefined" ? location.hash.replace("#", "") : "";
+  const [id, sub] = hash.split(/[/?]/);
+  if (id === "tools" && isToolId(sub) && hash.startsWith(`tools/${sub}?`)) return sub;
   return TAB_IDS.includes(id) ? id : "home";
 }
 
@@ -410,6 +418,7 @@ export default function App() {
         {tab === "library" && <Library t={t} lang={lang} go={setTab} />}
         {tab === "maps" && <Maps t={t} lang={lang} isHub={isHub} />}
         {tab === "supplies" && <Supplies t={t} />}
+        {tab === "power" && <Power t={t} lang={lang} />}
         {tab === "assistant" && <Assistant t={t} lang={lang} isHub={isHub} go={setTab} />}
         {tab === "addons" && <Addons t={t} lang={lang} isHub={isHub} />}
         {tab === "help" && <Help t={t} lang={lang} />}

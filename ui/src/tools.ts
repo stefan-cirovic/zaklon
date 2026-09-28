@@ -26,6 +26,7 @@ export const TOOLS = [
   { id: "supplies", title: "supplies", desc: "toolSuppliesDesc", category: ["food", "health"] },
   { id: "library", title: "library", desc: "toolLibraryDesc", category: "knowledge" },
   { id: "maps", title: "maps", desc: "toolMapsDesc", category: "maps" },
+  { id: "power", title: "powerCalc", desc: "toolPowerDesc", category: "power" },
   { id: "addons", title: "addons", desc: "toolAddonsDesc", category: "downloads" },
 ] as const satisfies readonly { id: string; title: Key; desc: Key; category: ToolCategory | readonly ToolCategory[] }[];
 

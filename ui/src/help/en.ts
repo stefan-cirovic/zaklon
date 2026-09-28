@@ -584,6 +584,81 @@ const en: HelpContent = {
     ],
   },
 
+  power: {
+    title: "Power calculator",
+    summary: "How much battery, solar and inverter a small backup system needs for what you want to keep running in a power cut.",
+    open: { href: "#power", label: "Open the power calculator" },
+    sections: [
+      {
+        id: "how",
+        title: "How it works",
+        body: [
+          { p: "Make a list of what should keep running when the power goes out: the refrigerator, a few lights, phones, the router. The calculator adds up the energy they use in a day and works out the battery, the solar panels and the inverter for it. It is meant for small systems that power part of the home, and it works without internet." },
+          { p: "The list is kept on the hub, so everyone in the household sees the same one, on the laptop and on every phone. Anyone in the household can change it; a change is saved a moment after it is made." },
+        ],
+      },
+      {
+        id: "list",
+        title: "Make the list",
+        body: [
+          {
+            steps: [
+              "Open [Power calculator](#power) under Tools. While the list is empty, **Start with a typical list** fills in a refrigerator, four LED bulbs, three phones, the router and a laptop.",
+              "Pick an appliance under **Appliance to add** and choose **Add**. Each comes with a typical, careful figure; the label on your own appliance is better, so change **Power (each)** when you know it.",
+              "Set **How many** and the **Use a day** in hours. Refrigerators and freezers switch on and off by themselves, so they count by their energy a day instead.",
+              "For something that is not on the list, choose **Your own appliance** and give it a name, its power and its hours.",
+            ],
+          },
+          { note: "**Power from** says whether an appliance runs through the inverter (AC: most things with a plug) or straight from the battery (DC: a 12 V lamp or a USB charger). DC saves the inverter's losses." },
+        ],
+      },
+      {
+        id: "system",
+        title: "Days, battery and sun",
+        body: [
+          {
+            list: [
+              "**Days without grid**: how long the battery alone must last, even with no sun. One day covers most power cuts; three days is the usual advice for being prepared.",
+              "**Battery type**: LiFePO4 (lithium iron phosphate) may be emptied to about 80–90%, lead-acid and AGM only to about 50%, so they need twice the capacity.",
+              "**System voltage**: 12 V suits small systems. Bigger ones are better at 24 or 48 V, where the same power flows as less current, through thinner cables.",
+              "**Sun**: the place and the month give the hours of full sun a day, from the European Commission's PVGIS data. December has the least sun, so it is chosen first; the calculator shows the panels needed in every month.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "results",
+        title: "Read the answer",
+        body: [
+          { p: "The answer starts with one sentence, such as \"2 × 100 Ah 12 V LiFePO4 batteries, about 1,400 W of solar panels and a 600 W pure sine wave inverter\". Below it: the battery in Ah and Wh, the panels to keep up every day and to refill an empty battery in one sunny day, the inverter's continuous and peak power, and the energy a day." },
+          { p: "**How this is calculated** shows each formula with your own numbers, and **Sources** lists where the typical figures come from." },
+          { note: "Refrigerators, freezers and pumps take several times their power for a moment when their motor starts. The inverter's peak (surge) rating must cover that, and the calculator says how much." },
+        ],
+      },
+      {
+        id: "safety",
+        title: "Safety",
+        body: [
+          { warn: "Anything connected to the house wiring, plug-in \"balcony\" solar inverters too, must be connected by a licensed electrician: power fed back into the grid can kill the people repairing it. A small 12 V system with its own sockets can be a do-it-yourself project." },
+          {
+            list: [
+              "Lithium batteries need a proper BMS (battery management system), a fuse right next to the battery and cables thick enough for the current. Charge them only between 0 °C and 40 °C.",
+              "Never charge lead-acid batteries in a closed room: they give off hydrogen, which can explode.",
+              "A generator runs only outdoors, at least 6 m from windows and doors, and never plugs into a socket of the house.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "link",
+        title: "Opened from a link",
+        body: [
+          { p: "A link can open the calculator with a list of its own, for example one from the assistant. That list is not saved: choose **Save as the household's list** to keep it, or **Show the saved list** to go back to the household's." },
+        ],
+      },
+    ],
+  },
+
   addons: {
     title: "Add-ons",
     summary: "Download knowledge packs, AI models and maps, and copy them to or from a USB drive.",
