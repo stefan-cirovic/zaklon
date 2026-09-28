@@ -330,11 +330,7 @@ impl Assistant {
             if answers.values().filter(|a| waited_for(a, now)).count() >= MAX_PENDING {
                 return Err("the assistant is busy with other questions; try again in a moment".into());
             }
-            if answers.len() >= KEEP_ANSWERS {
-                if let Some(oldest) = answers.values().min_by_key(|a| a.created).map(|a| a.id.clone()) {
-                    answers.remove(&oldest);
-                }
-            }
+            make_room(&mut answers);
             answers.insert(id.clone(), Answer::new(id.clone(), question.clone(), language, ctx.online, now));
         }
         self.last_used.store(self.epoch.elapsed().as_secs(), Ordering::Relaxed);
@@ -620,6 +616,17 @@ fn finished(a: &Answer) -> bool {
     matches!(a.status, AnswerStatus::Done | AnswerStatus::Failed)
 }
 
+/// Make room for one more answer within `KEEP_ANSWERS` by forgetting the
+/// oldest finished ones. An answer still waiting or being written is never
+/// forgotten, even if that leaves more than `KEEP_ANSWERS` (`MAX_PENDING`
+/// keeps their number small): its asker still reads it.
+fn make_room(answers: &mut HashMap<String, Answer>) {
+    while answers.len() >= KEEP_ANSWERS {
+        let Some(oldest) = answers.values().filter(|a| finished(a)).min_by_key(|a| a.created).map(|a| a.id.clone()) else { break };
+        answers.remove(&oldest);
+    }
+}
+
 fn abandoned(a: &Answer, now: Instant) -> bool {
     now.saturating_duration_since(a.seen) >= ABANDONED
 }
@@ -664,6 +671,35 @@ mod tests {
         answers.get_mut("b").unwrap().cancel = true;
         assert_eq!(stop_reason(&answers, "b", at(71)), Some(CANCELLED));
         assert_eq!(stop_reason(&answers, "a", at(200)), None, "a question being stopped is not waited for");
+    }
+
+    #[test]
+    fn only_finished_answers_are_forgotten_to_make_room() {
+        let t0 = Instant::now();
+        let answer = |id: &str, secs: u64, status: AnswerStatus| {
+            let mut a = Answer::new(id.into(), "q".into(), "en", false, t0 + Duration::from_secs(secs));
+            a.status = status;
+            (a.id.clone(), a)
+        };
+        // The oldest answer is still being written; the others are finished.
+        let mut answers: HashMap<String, Answer> = (0..KEEP_ANSWERS as u64)
+            .map(|i| answer(&format!("a{i}"), i, if i == 0 { AnswerStatus::Thinking } else { AnswerStatus::Done }))
+            .collect();
+        make_room(&mut answers);
+        assert_eq!(answers.len(), KEEP_ANSWERS - 1, "room for one more");
+        assert!(answers.contains_key("a0"), "the unfinished answer is kept, oldest or not");
+        assert!(!answers.contains_key("a1"), "the oldest finished answer goes");
+
+        // Nothing finished: everything is kept, over the limit or not.
+        let mut waiting: HashMap<String, Answer> = (0..KEEP_ANSWERS as u64 + 1).map(|i| answer(&format!("w{i}"), i, AnswerStatus::Searching)).collect();
+        make_room(&mut waiting);
+        assert_eq!(waiting.len(), KEEP_ANSWERS + 1);
+        // Once one is finished, it goes, even though it is the newest.
+        let (id, failed) = answer("failed", 1000, AnswerStatus::Failed);
+        waiting.insert(id, failed);
+        make_room(&mut waiting);
+        assert_eq!(waiting.len(), KEEP_ANSWERS + 1);
+        assert!(!waiting.contains_key("failed"));
     }
 
     /// The answer once it is finished (a few seconds at most here).
