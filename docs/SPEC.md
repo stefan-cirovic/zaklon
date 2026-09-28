@@ -27,7 +27,7 @@ Zaklon (Serbian for "shelter") is a free, open-source, offline-first home base. 
 - Profiles: shared household space plus a private space per person (optional personal password).
 - Assistant: local AI on the hub and a smaller model on the phone; library search with sources; inventory questions and edits (with confirmation); simple memory; opt-in online research.
 - Add-ons: catalog of packs (knowledge, maps, models), resumable downloads, USB export/import.
-- Household: devices, profiles, backup/restore, settings, hub status.
+- Settings: devices, network, profiles, backup/restore and the other settings, and the built-in help.
 - Languages: English (default) and Serbian (Latin script).
 
 ### Later (not in 1.0)
@@ -86,10 +86,10 @@ A restore takes the household's data from the backup and, on a hub that was set 
 ### 4.1 Networking and pairing
 - The hub listens on TCP 8484 with TLS (self-signed certificate generated on first run) for phones, on 127.0.0.1:8481 without TLS for the desktop window, and on TCP 8480 without TLS for the "install the app" page and APK files only.
 - Discovery: DNS-SD `_zaklon._tcp` plus a UDP beacon on 8485 for networks that block mDNS; the pairing QR (version 2) carries the hub's addresses, port, certificate fingerprint, a 128-bit pairing secret, the hub name and the install-page port, so discovery is never required.
-- **Pairing flow**: Household → Devices → Add a phone → QR appears on the laptop. On the phone: install the app from `http://<hub>:8480/get` (the address is shown next to the QR), scan the QR, enter the household password. The phone pins the certificate fingerprint, sends the QR's secret with the password (`POST /api/pair/complete`, which never takes the 6-digit code) and receives a long-lived device token. All later traffic is TLS with the pinned certificate; the household password is never stored on the phone.
+- **Pairing flow**: Settings → Devices → Add a phone (or "Add a phone" beside the device count on Home) → QR appears on the laptop. On the phone: install the app from `http://<hub>:8480/get` (the address is shown next to the QR), scan the QR, enter the household password. The phone pins the certificate fingerprint, sends the QR's secret with the password (`POST /api/pair/complete`, which never takes the 6-digit code) and receives a long-lived device token. All later traffic is TLS with the pinned certificate; the household password is never stored on the phone.
 - **Pairing from "Find hubs"** (no QR): a discovery answer is not authenticated, so the phone does not take the certificate from it. The person types the 6-digit code from the laptop and the password. The phone connects accepting any certificate, notes the one it got, and runs SPAKE2 with the hub on the code (`POST /api/pair/pake/start`, with the name the phone pairs under; crate `zaklon-pake`). With the shared key the hub proves (HMAC) the fingerprint of its own certificate; the phone checks that proof against the certificate it actually saw, so a device that answers in its place and passes the messages on is caught. Only then does the phone prove the key and send the password, over a connection pinned to that certificate (`POST /api/pair/pake/finish`). One run is one guess at the code: it takes one of the code's three attempts and counts as a failure of its address until it pairs.
 - **Pairing limits**: a code is open for 5 minutes with three attempts. Every failed pairing request (QR or "Find hubs") takes one, and one address may take at most two, so a single other device on the Wi-Fi cannot use them all up. A wrong QR secret gets the same answer as no open code. An address with 10 failures waits 10 minutes (checked before it takes an attempt). The pairing requests exist only on the TLS listener, not on the laptop's loopback port.
-- **Laptop as access point**: Household → Network → "Wi-Fi network from this laptop" switches on the Mobile hotspot built into Windows (SSID `Zaklon`, password and a QR code to join shown on screen). Phones join it like any Wi-Fi network.
+- **Laptop as access point**: Settings → Network → "Wi-Fi network from this laptop" switches on the Mobile hotspot built into Windows (SSID `Zaklon`, password and a QR code to join shown on screen). Phones join it like any Wi-Fi network.
 - Devices are listed with name, platform and last seen. The laptop can rename or remove any phone; a phone can rename or remove only itself.
 
 ### 4.2 Security model
@@ -123,7 +123,7 @@ Medicines in 1.0 are ordinary items with an expiry date; no leaflet text, no dos
 ## 6. Modules
 
 ### Home
-Hub status (reachable, battery level and charging state, disk free), device count, "Expiring soon" (next 30 days), "Running low" (below minimum), two quick actions: Add item, Ask the assistant.
+The hub in one line (name, reachable, battery level and charging state, paired devices with "Add a phone" on the laptop, which opens pairing straight away, and its address), then the warnings (hub not reachable, Windows Firewall, a newer version), then cards: "Ask anything" with the last three conversations; the supplies; the library's drive with downloads and add-ons that wait; and the tools not in the bar. The supplies card is one "Needs attention" list, the most urgent first: expired (red, the longest ago first), expiring within 30 days (amber, the soonest first), running low (below minimum, "2 of 3 kg"); one line each, with "Add to shopping list" for what expired or runs low and is not on the list yet. At most six lines, and a link to the rest. When nothing needs attention it says "All good" in one line. Below it one line: how many things are to buy (opening the shopping list), what waits to be put away and how many items there are. A phone away from the hub shows its copy, with the time it is from.
 
 ### Library
 Installed packs, unified full-text search across packs (via kiwix-serve), reader view, "Open in assistant" from any article. Packs are served from the hub; a phone can optionally download a pack for use away from the hub.
@@ -152,13 +152,13 @@ Catalog screen with a starter set by UI language, downloaded with one button tog
 
 The screen looks and works like Windows File Explorer's "This PC": "Devices and drives" shows the drive the library is on with a usage bar (red when nearly full) and how much the add-ons take (opening it lists what is on it, largest first), the laptop's other drives (a USB drive opens with "Copy to USB" and "Import" set to it) and the battery; below, the add-ons sit in folders with their count and size: Wikipedia and books, Health and first aid, Garden and food, Repair and skills (knowledge packs, by their catalog topic), AI models, Maps (every country) and Programs. A folder opens as tiles or as a details table (name, size, status, license, actions), with a breadcrumb ("Add-ons › Maps") and Back; the place is part of the address (`#addons/maps`), so the browser's and the phone's Back button work too. The search box finds packs and countries across all folders. Tiles or details is remembered per device. Removing packs and maps is laptop only.
 
-### Household
-Laid out like Windows Settings: the hub at the top (its name, whether it runs, paired phones, address, version and the last backup), a "Find a setting" search, and a tile for each category, each with an icon and a line on what it holds. A category opens as its own page ("Household › Backups", with a way back); on a laptop the categories are listed beside it. Every category and setting has an address (`#household/backups`, `#household/network/hotspot`), so the browser's back button, links and the search all lead to the right place. The search finds settings by name and by other words, in English and Serbian whatever the app's language (without Serbian accents too).
+### Settings
+Laid out like Windows Settings. On a laptop it opens straight on the first category (Devices) in two panes: the list of categories on the left, with a "Find a setting" search at its top and Help at its end, and the category open on the right. A phone has no room for both: it shows the list first (each category with an icon and a line on what it holds), and a category opens as a page of its own ("Settings › Backups", with a way back). Every category and setting has an address (`#settings/backups`, `#settings/network/hotspot`), so the browser's back button, links and the search all lead to the right place; the addresses from when it was called Household (`#household/...`) lead to the same places. The search finds settings by name and by other words, in English and Serbian whatever the app's language (without Serbian accents too).
 
 | Category | What is in it | Phone |
 |---|---|---|
 | Devices | Add a phone (pairing code and QR codes), paired phones | the hub this phone uses ("Forget this hub"), paired phones |
-| Network | Wi-Fi network from this laptop, Windows Firewall, the laptop's addresses | not shown |
+| Network | Wi-Fi network from this laptop, Windows Firewall (let phones in; make a home network Windows treats as public private, with Windows' consent), the laptop's addresses | not shown |
 | Backups | encryption, backups on this computer, backup to USB, restore | not shown |
 | Privacy & security | household password, privacy statement | privacy statement |
 | Appearance | accent color, pure black (this device) | same |
@@ -196,7 +196,7 @@ The list ships in the catalog and can change without an app release.
 - Each entry: id, title and description (i18n), category (knowledge | maps | model | app), for knowledge packs a topic (reference | health | garden | skills: the Add-ons folder it shows in), version, size, files (URL list with mirrors, SHA-256, or the SHA-1 CoMaps publishes for map files), license, attribution text, source link, languages and the UI languages it is recommended for.
 - Large third-party files are not mirrored: knowledge packs point to Kiwix, maps to CoMaps, models to Hugging Face. Zaklon's own packs will live on Cloudflare R2 (planned).
 - Downloads use HTTP range requests with per-file verification; the hub can serve any installed pack to phones.
-- App updates: releases on GitHub (signed releases are planned; see `SECURITY.md`). The hub checks once a day (on by default; switch under Household → Updates) and on demand, and only tells: "Open the download page" opens the release page in the browser. The app never downloads or applies an update itself.
+- App updates: releases on GitHub (signed releases are planned; see `SECURITY.md`). The hub checks once a day (on by default; switch under Settings → Updates) and on demand, and only tells: "Open the download page" opens the release page in the browser. The app never downloads or applies an update itself.
 
 ## 9. Localization
 
@@ -204,14 +204,14 @@ English is the default UI language; Serbian (Latin script) is selectable per pro
 
 ## 10. Design: "instrument panel"
 
-- Dark theme only in 1.0, in the colors of VS Code's "Dark Modern" (background #1F1F1F, bars #181818, panels #252526, borders #2B2B2B, text #CCCCCC; pure black optional for OLED), with one user-selected accent color (amber, the logo's light, by default; green, white, purple, blue) used sparingly for the active item, primary button and status. Red is reserved for warnings (expiry, running low, low battery). All text meets WCAG AA contrast.
-- Help: a built-in user guide in English and Serbian (following the app's language), reached from the Tools screen and from a "How it works" link at the top of every screen, which opens that screen's page (`#help/<topic>`, and a Household category its own section). A page per topic (getting started, pairing a phone, each screen and tool, Household settings, working without internet, troubleshooting) with numbered steps and links to the screens it names; a search on the Help home finds topics and sections by any word, with or without accents. The text lives in `ui/src/help/en.ts` and `sr.ts` and is loaded only when Help opens.
+- Dark theme only in 1.0, in the colors of VS Code's "Dark Modern" (background #1F1F1F, bars #181818, panels #252526, borders #2B2B2B, text #CCCCCC; pure black optional for OLED), with one user-selected accent color (amber, the logo's light, by default; green, white, purple, blue) used sparingly for the active item, primary button and status. Red is reserved for warnings (expired supplies, low battery); what expires soon is amber. All text meets WCAG AA contrast.
+- Help: a built-in user guide in English and Serbian (following the app's language), reached from the end of Settings' list of categories and from a "How it works" link at the top of every screen, which opens that screen's page (`#help/<topic>`, and a Settings category its own section). A page per topic (getting started, pairing a phone, each screen and tool, Settings, working without internet, troubleshooting) with numbered steps and links to the screens it names; a search on the Help home finds topics and sections by any word, with or without accents. The text lives in `ui/src/help/en.ts` and `sr.ts` and is loaded only when Help opens.
 - The system UI typeface as VS Code uses it (Segoe UI on Windows, the system font elsewhere), and Sora Light for the "ZAKLON" wordmark only; no monospace.
 - Thin dividers, no shadows, no gradients. The only animation: the logo in the bar brings in the wordmark when pointed at (none when the system asks for reduced motion).
 - Screens use the whole width of the window (grids and columns on a laptop), not a narrow centered column.
-- One bar along the bottom, on the phone and the laptop: Home, Assistant, Tools, Household, and at most one tool the household pinned (five items at most). The pinned tool is chosen on the laptop and kept on the hub, the same on every device; nothing is pinned by default. The Tools screen lists every tool (Supplies, Library, Maps, Add-ons) with a one-line description. The logo sits at the left end of the bar and opens zaklon.com.
+- One bar along the bottom, on the phone and the laptop: Home, Assistant, Tools, Settings, and at most one tool the household pinned (five items at most). The pinned tool is chosen on the laptop and kept on the hub, the same on every device; nothing is pinned by default. The Tools screen lists every tool (Supplies, Library, Maps, Add-ons) with a one-line description. The logo sits at the left end of the bar and opens zaklon.com.
 - Large tap targets and readable default text size; no separate "large text" mode.
-- Section names in Serbian are plain: Početna, Asistent, Alati, Domaćinstvo, Biblioteka, Mape, Zalihe, Dodaci.
+- Section names in Serbian are plain: Početna, Asistent, Alati, Podešavanja, Biblioteka, Mape, Zalihe, Dodaci.
 - Logo: done (see `logo/README.md`); it works as a 16 px icon.
 
 ## 11. Trust, licensing and distribution
@@ -236,7 +236,7 @@ Exit criteria: all four work on the reference laptop and at least two family pho
 
 ## 13. Delivery order after the spike
 
-1. Hub core + pairing + Household screen + installer.
+1. Hub core + pairing + Settings screen + installer.
 2. Library (kiwix-serve, catalog, downloads, USB).
 3. Supplies (with barcode, history, backup/restore).
 4. Maps (CoMaps serving).

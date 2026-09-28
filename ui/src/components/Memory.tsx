@@ -11,7 +11,7 @@ type Note = { id: string; text: string; created_at: string; created_by: string |
 /**
  * What the household asked the assistant to remember: seen, added and deleted by anyone.
  * With `onClose` it is a panel along the right edge (Assistant); without, it is
- * shown open in the page with its title (Household > AI assistant).
+ * shown open in the page with its title (Settings › AI assistant).
  */
 export default function Memory({ t, version, onClose }: { t: T; version: number; onClose?: () => void }) {
   const [notes, setNotes] = useState<Note[] | null>(null);

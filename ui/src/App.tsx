@@ -7,7 +7,7 @@ import { setFormatLang } from "./format";
 import { errText } from "./errors";
 import ConfirmButton from "./components/ConfirmButton";
 import Home from "./screens/Home";
-import Household from "./screens/Household";
+import Settings from "./screens/Settings";
 import Connect from "./screens/Connect";
 import Addons from "./screens/Addons";
 import Library from "./screens/Library";
@@ -20,16 +20,16 @@ import OfflineBanner from "./components/OfflineBanner";
 import { BrandLink } from "./components/Brand";
 import { Icon, type IconName } from "./components/Icon";
 import { isToolId, toolOf, TOOLS, type ToolId } from "./tools";
-import { ACCENTS, type Accent, type Look } from "./screens/HouseholdMore";
+import { ACCENTS, type Accent, type Look } from "./screens/SettingsMore";
 
 /** The bar: these four, and the tool the household pinned (after Assistant). Every tool is on the Tools screen. */
 const NAV: { id: string; key: Key; icon: IconName }[] = [
   { id: "home", key: "home", icon: "home" },
   { id: "assistant", key: "assistant", icon: "assistant" },
   { id: "tools", key: "tools", icon: "tools" },
-  { id: "household", key: "household", icon: "household" },
+  { id: "settings", key: "settings", icon: "settings" },
 ];
-/** Help is opened from Tools and from the "How it works" link on each screen. */
+/** Help is opened from Settings and from the "How it works" link on each screen. */
 const TAB_IDS = [...NAV.map((x) => x.id), ...TOOLS.map((x) => x.id), "help"];
 
 /** Poll every 2 s until the hub answers, then every 10 s. Never overlapping. */
@@ -56,7 +56,7 @@ function writePref(key: string, value: string) {
   }
 }
 
-/** The screen in the address; a screen may add a place of its own after a slash ("#addons/maps", "#household/backups"). */
+/** The screen in the address; a screen may add a place of its own after a slash ("#addons/maps", "#settings/backups"). */
 function tabFromHash(): string {
   const id = typeof location !== "undefined" ? location.hash.replace("#", "").split("/")[0] : "";
   return TAB_IDS.includes(id) ? id : "home";
@@ -289,7 +289,7 @@ export default function App() {
 
   const needsSetup = status !== null && !status.set_up;
   useEffect(() => {
-    if (needsSetup) setTabState("household");
+    if (needsSetup) setTabState("settings");
   }, [needsSetup]);
 
   const forget = async () => {
@@ -312,8 +312,8 @@ export default function App() {
     pinnedAt.current = Date.now();
   };
   const bar: typeof NAV = pinned ? [NAV[0], NAV[1], { id: pinned, key: toolOf(pinned).title, icon: pinned }, NAV[2], NAV[3]] : NAV;
-  // A tool that is not in the bar belongs under Tools there, and so does Help.
-  const barTab = (isToolId(tab) && tab !== pinned) || tab === "help" ? "tools" : tab;
+  // A tool that is not in the bar belongs under Tools there; Help is in Settings.
+  const barTab = isToolId(tab) && tab !== pinned ? "tools" : tab === "help" ? "settings" : tab;
   // Setup comes first: until then there is nothing to go to.
   const setupOnly = isHub && needsSetup;
   let homeError = error ? errText(t, new Error(error)) : null;
@@ -381,10 +381,9 @@ export default function App() {
             </div>
           ))}
         {tab === "home" && <Home status={status} statusAt={statusAt} error={homeError} t={t} lang={lang} go={setTab} phone={!isHub} pinned={pinned} />}
-        {tab === "household" && (
-          <Household
+        {tab === "settings" && (
+          <Settings
             status={status}
-            online={!!status && !error}
             t={t}
             lang={lang}
             setLang={setLang}

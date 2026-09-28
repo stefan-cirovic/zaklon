@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 
 /** Line icons for the bar, the Tools screen and the assistant, drawn on a 24 px grid in the text color. */
 export type IconName =
-  | "home" | "assistant" | "tools" | "household" | "supplies" | "library" | "maps" | "addons" | "pin"
+  | "home" | "assistant" | "tools" | "settings" | "supplies" | "library" | "maps" | "addons" | "pin"
   | "plus" | "list" | "more" | "close" | "send" | "stop" | "memory" | "shared"
-  | "help" | "phone" | "offline" | "wrench";
+  | "help" | "phone" | "offline" | "wrench" | "check" | "cart";
 
 const SHAPES: Record<IconName, ReactNode> = {
   home: (
@@ -29,7 +29,7 @@ const SHAPES: Record<IconName, ReactNode> = {
       <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5" />
     </>
   ),
-  household: (
+  settings: (
     <>
       <path d="M4 7h8.5M17.5 7H20M4 17h2.5M11.5 17H20" />
       <circle cx="15" cy="7" r="2.5" />
@@ -113,6 +113,14 @@ const SHAPES: Record<IconName, ReactNode> = {
   ),
   wrench: (
     <path d="M14.5 4.2a4.5 4.5 0 0 0-4.8 5.9L4.4 15.4a1.9 1.9 0 0 0 2.7 2.7l5.3-5.3a4.5 4.5 0 0 0 5.9-4.8l-2.6 2.6-2.4-.6-.6-2.4z" />
+  ),
+  check: <path d="m5 12.5 4.5 4.5L19 7.5" />,
+  cart: (
+    <>
+      <path d="M3.5 4.5h2.2l2.1 10h10l1.9-7.2H6.4" />
+      <circle cx="9.5" cy="18.8" r="1.3" />
+      <circle cx="16.3" cy="18.8" r="1.3" />
+    </>
   ),
 };
 

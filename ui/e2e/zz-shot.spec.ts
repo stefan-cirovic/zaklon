@@ -15,7 +15,7 @@ test("shots", async ({ page }, info) => {
   if (SIZE && info.project.name === "laptop") await page.setViewportSize({ width: Number(SIZE[1]), height: Number(SIZE[2]) });
   const file = (name: string) => join(DIR ?? "", `${LANG}-${info.project.name}-${name}.png`);
   await page.addInitScript((l) => localStorage.setItem("zaklon.lang", l), LANG);
-  await page.goto("/#household");
+  await page.goto("/#settings");
   const setup = page.getByText(/Set up your household|Podesi domaćinstvo/);
   if (await setup.isVisible({ timeout: 3000 }).catch(() => false)) {
     await page.locator('input[type="password"]').nth(0).fill("correct horse");
@@ -32,9 +32,9 @@ test("shots", async ({ page }, info) => {
   }
   const shots: [string, string][] = [
     ["home", "/#home"], ["tools", "/#tools"], ["library", "/#library"], ["maps", "/#maps"], ["supplies", "/#supplies"],
-    ["assistant", "/#assistant"], ["addons", "/#addons"], ["household", "/#household"],
+    ["assistant", "/#assistant"], ["addons", "/#addons"], ["settings", "/#settings"], ["settings-help", "/#help"],
     ...["devices", "network", "backups", "privacy", "appearance", "language", "assistant", "updates", "about"].map(
-      (c) => [`household-${c}`, `/#household/${c}`] as [string, string],
+      (c) => [`settings-${c}`, `/#settings/${c}`] as [string, string],
     ),
   ];
   for (const [name, url] of shots) {
@@ -42,14 +42,14 @@ test("shots", async ({ page }, info) => {
     await page.waitForTimeout(1200);
     await page.screenshot({ path: file(name), fullPage: true });
   }
-  // Household's search, and a setting it opened.
-  await page.goto("/#household");
+  // Settings' search, and a setting it opened.
+  await page.goto("/#settings");
   await page.locator(".set-search input").fill(LANG === "sr" ? "lozinka" : "password");
   await page.waitForTimeout(400);
-  await page.screenshot({ path: file("household-search"), fullPage: false });
+  await page.screenshot({ path: file("settings-search"), fullPage: false });
   await page.keyboard.press("Enter");
   await page.waitForTimeout(600);
-  await page.screenshot({ path: file("household-search-opened"), fullPage: false });
+  await page.screenshot({ path: file("settings-search-opened"), fullPage: false });
   // Add-ons as a file explorer, with some packs on the hub, one on its way and one
   // that failed (states made up for the picture; nothing is downloaded).
   await page.route("**/api/catalog", async (r) => {
@@ -199,7 +199,7 @@ test("help shots", async ({ page }, info) => {
   if (SIZE && info.project.name === "laptop") await page.setViewportSize({ width: Number(SIZE[1]), height: Number(SIZE[2]) });
   const file = (name: string) => join(DIR ?? "", `${LANG}-${info.project.name}-${name}.png`);
   await page.addInitScript((l) => localStorage.setItem("zaklon.lang", l), LANG);
-  await page.goto("/#household");
+  await page.goto("/#settings");
   const setup = page.getByText(/Set up your household|Podesi domaćinstvo/);
   if (await setup.isVisible({ timeout: 3000 }).catch(() => false)) {
     await page.locator('input[type="password"]').nth(0).fill("correct horse");
@@ -209,15 +209,16 @@ test("help shots", async ({ page }, info) => {
   }
   for (const [name, url, full] of [
     ["help-tools", "/#tools", true],
+    ["help-settings", "/#settings", false],
     ["help-home", "/#help", true],
     ["help-start", "/#help/start", true],
     ["help-pairing", "/#help/pairing", true],
     ["help-assistant", "/#help/assistant", true],
     ["help-supplies", "/#help/supplies", true],
-    ["help-household-backups", "/#help/household/backups", false],
+    ["help-settings-backups", "/#help/settings/backups", false],
     ["help-troubleshooting", "/#help/troubleshooting", false],
     ["help-link-supplies", "/#supplies", false],
-    ["help-link-household", "/#household/network", false],
+    ["help-link-settings", "/#settings/network", false],
     ["help-link-assistant", "/#assistant", false],
   ] as const) {
     await page.goto(url);
@@ -240,7 +241,7 @@ test("home shots", async ({ page }, info) => {
   const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
   const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
   await page.addInitScript((l) => localStorage.setItem("zaklon.lang", l), LANG);
-  await page.goto("/#household");
+  await page.goto("/#settings");
   const setup = page.getByText(/Set up your household|Podesi domaćinstvo/);
   if (await setup.isVisible({ timeout: 3000 }).catch(() => false)) {
     await page.locator('input[type="password"]').nth(0).fill("correct horse");
@@ -312,6 +313,15 @@ test("home shots", async ({ page }, info) => {
   await page.waitForTimeout(1500);
   await page.screenshot({ path: file("home-busy"), fullPage: true });
   await page.screenshot({ path: file("home-busy-screen"), fullPage: false });
+  // A home Wi-Fi that Windows treats as public (the button is never pressed here), and supplies with nothing to do.
+  firewall = { ...firewall, allowed: true, blocked: false, public_network: true, ok: false };
+  await page.route("**/api/supplies/summary", (r) => r.fulfill({ json: { total_items: 8, expired: [], expiring_soon: [], running_low: [], to_put_away: 0 } }));
+  await page.reload();
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: file("home-public-allgood"), fullPage: false });
+  await page.goto("/#settings/network");
+  await page.waitForTimeout(1200);
+  await page.screenshot({ path: file("settings-network-public"), fullPage: false });
   // Home asks every few seconds while something downloads: stop the made-up answers before the page closes.
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });

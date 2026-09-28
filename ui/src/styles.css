@@ -15,6 +15,8 @@
   --warn: #ee7b6e;
   --ok: #7fcb93;
   --accent: #f2b366;
+  /* Something that expires soon: the Zaklon amber, whatever the accent (9:1 or more). */
+  --soon: #f2b366;
   /* Text on an accent or danger background. */
   --on-accent: #1f1f1f;
   /* The edge of a field you type in (3.3:1 against the field, 3.9:1 against a panel) and
@@ -291,33 +293,16 @@ code.url { background: var(--panel-2); border: 1px solid var(--line); border-rad
 .panel h2 { margin: 0; }
 a.btn:hover { text-decoration: none; }
 
-/* Household, like Windows Settings: the hub at the top, a search and a tile for each category.
-   A category is a page of its own, with the categories listed beside it on a laptop. */
-.settings-home { gap: 16px; }
-.settings-home > h1 { margin: 0; }
-.hub-card {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 16px 40px;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 20px 24px;
-}
-.hub-id { display: flex; align-items: center; gap: 16px; min-width: 0; flex: 1 1 260px; }
-.hub-avatar { flex: 0 0 auto; width: 64px; height: 64px; border-radius: 50%; background: var(--panel-2); border: 1px solid var(--line-2); display: grid; place-items: center; }
-.hub-id-text { min-width: 0; }
-.hub-name { font-size: 20px; font-weight: 600; color: #e7e7e7; line-height: 1.3; overflow-wrap: anywhere; }
-.hub-state { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; margin-top: 2px; }
-.hub-state .status-dot { width: 8px; height: 8px; flex-shrink: 0; }
-.hub-facts { margin: 0; display: flex; flex-wrap: wrap; gap: 12px 36px; }
-.hub-facts > div { min-width: 0; }
-.hub-facts dt { color: var(--muted); font-size: 12px; }
-.hub-facts dd { margin: 2px 0 0; font-size: 14px; color: var(--text); overflow-wrap: anywhere; }
-
+/* Settings, like Windows Settings: on a laptop the categories in a list on the left ("Find a setting"
+   above them, Help below) and the category open beside them; on a phone the list first, then a
+   category as a page of its own. */
+.settings-list { gap: 16px; }
 .set-search-area { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
 .set-search { position: relative; }
 .set-search .icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 .set-search input[type="search"] { padding-left: 36px; min-height: 38px; }
-.settings-home .set-search, .settings-home .set-results { width: 100%; max-width: 560px; justify-self: center; }
-.settings-home .set-search { margin: 8px 0 4px; }
 .set-none { margin: 0; }
-.settings-home .set-none { text-align: center; }
+.set-list { display: grid; gap: 16px; }
 
 .set-tiles { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
 .set-tile {
@@ -348,8 +333,10 @@ a.btn:hover { text-decoration: none; }
   .set-side { display: grid; gap: 14px; position: sticky; top: 24px; }
 }
 @media (min-width: 1400px) { .set-page { grid-template-columns: 280px minmax(0, 1fr); gap: 40px; } }
-.hub-mini { display: flex; align-items: center; gap: 12px; padding: 2px 4px 4px; }
-.hub-mini-name { font-weight: 600; color: #e7e7e7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* "Settings" above the list, as VS Code names its side bar. */
+.set-side-title { margin: 0 0 -4px; padding: 6px 12px 0; color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+/* On a laptop the list beside the page is the way around: no way back, no breadcrumb. */
+@media (min-width: 900px) { .settings-page .set-back, .settings-page .set-crumbs { display: none; } }
 .set-nav { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .set-nav a { position: relative; display: flex; align-items: center; gap: 12px; min-height: 36px; padding: 6px 12px; border-radius: 4px; color: var(--text); }
 .set-nav a:hover { background: var(--hover); text-decoration: none; }
@@ -359,6 +346,8 @@ a.btn:hover { text-decoration: none; }
 .set-nav a[aria-current="page"] { background: var(--panel-2); color: #e7e7e7; }
 .set-nav a[aria-current="page"] .icon { color: var(--accent); }
 .set-nav a[aria-current="page"]::before { content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; background: var(--accent); }
+/* Help, at the end of the list, set apart from the categories. */
+.set-nav-help { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 
 .set-main { min-width: 0; }
 .set-main h2 { margin: 0; }
@@ -377,7 +366,7 @@ a.btn:hover { text-decoration: none; }
 .set-panels > .wide { grid-column: 1 / -1; }
 .set-panels > .set-anchor { display: grid; }
 /* A part still loading (or with nothing to say) leaves no empty cell. */
-.set-panels > .set-anchor:empty { display: none; }
+.set-panels > .set-anchor:empty, .set-panels > .wide:empty { display: none; }
 /* Panels in a row are as tall as the tallest; their content stays at the top. */
 .set-panels .stack { align-content: start; }
 .set-panels > p { margin: 0; }
@@ -408,8 +397,6 @@ label.set-row:hover { background: var(--hover); }
 .set-action { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 24px; }
 
 @media (max-width: 899px) {
-  .hub-card { padding: 16px; gap: 14px; }
-  .hub-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; width: 100%; }
   .set-tiles { gap: 8px; }
   .set-tile { align-items: center; min-height: 64px; padding: 12px; }
   .set-tile-go { display: flex; flex: 0 0 auto; color: var(--muted); }
@@ -829,12 +816,10 @@ select.lang-pick { width: auto; margin-top: 4px; }
   .set-head .help-link { margin-right: -10px; }
 }
 
-/* Help on the Tools screen: a card like the tools', without a pin. */
-a.tool-open { border-radius: var(--radius); }
-a.tool-open:hover { text-decoration: none; }
-
-/* Help: the topics in groups and a search, then a page per topic with its sections beside it. */
+/* Help (at the end of Settings): the topics in groups and a search, then a page per topic with its sections beside it. */
 .help-home { gap: 16px; }
+.help-home > .page-head { text-align: left; }
+.help-home .set-head { margin-bottom: 6px; }
 .help-home .help-search, .help-home .help-results { width: 100%; }
 .help-home .help-search { max-width: 560px; justify-self: center; margin: 4px 0; }
 .help-none { margin: 0; text-align: center; }
@@ -904,6 +889,8 @@ a.tool-open:hover { text-decoration: none; }
 .home-facts dt { color: var(--muted); font-size: 12px; }
 .home-facts dd { margin: 0; font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
 .home-facts dd.warn { color: var(--warn); }
+.home-facts dd.home-devices { display: flex; align-items: center; gap: 8px; }
+.btn.home-add-phone { gap: 4px; min-height: 24px; padding: 1px 8px; font-size: 12px; font-weight: 400; }
 /* Old values: dimmed, still readable (4.6:1). */
 .home-facts.stale { opacity: 0.88; }
 .home-head .help-link { margin-left: auto; }
@@ -956,7 +943,29 @@ a.tool-open:hover { text-decoration: none; }
 .home-part { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
 .home-part > .mini-list, .home-part > ul { align-self: stretch; }
 .home-part > .home-link { margin-top: 4px; }
-.home-cols { display: grid; gap: 18px 28px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+/* What needs attention: a line each, the columns lined up (the mark, the name, what is wrong, the action). */
+.attn-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; column-gap: 12px; }
+.attn-row {
+  grid-column: 1 / -1; display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; column-gap: 12px; align-items: center;
+  min-height: 36px; padding: 2px 0; border-top: 1px solid var(--line); font-size: 14px;
+}
+@supports (grid-template-columns: subgrid) { .attn-row { grid-template-columns: subgrid; } }
+.attn-row:first-child { border-top: 0; }
+.attn-row::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.attn-row.expired::before { background: var(--warn); }
+.attn-row.soon::before { background: var(--soon); }
+.attn-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #e7e7e7; }
+.attn-what { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.attn-row.expired .attn-what { color: var(--warn); }
+.attn-row.soon .attn-what { color: var(--soon); }
+.attn-act { display: flex; justify-content: flex-end; }
+.btn.attn-add { gap: 6px; white-space: nowrap; font-weight: 400; }
+.attn-listed { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+.attn-listed .icon { color: var(--ok); }
+/* Nothing needs attention: one calm line. */
+.home-allgood { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 14px; }
+.home-allgood strong { color: #e7e7e7; font-weight: 600; }
+.home-allgood-icon { flex: 0 0 auto; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--panel-2); color: var(--ok); }
 .home-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; }
 
 /* The question box, like the Assistant's, and the conversations used last. */
@@ -1013,6 +1022,13 @@ a.tool-open:hover { text-decoration: none; }
   .home-card { gap: 12px; }
   .home-link { min-height: 44px; min-width: 44px; font-size: 14px; }
   .home-part > .home-link { margin-top: 0; }
+  /* On a phone the actions are a fingertip wide, with their words left for screen readers. */
+  .btn.home-add-phone { width: 44px; min-height: 44px; padding: 0; }
+  .home-add-phone-text, .attn-add-text, .attn-listed-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .btn.attn-add { width: 44px; padding: 0; }
+  .attn-listed { width: 44px; justify-content: center; }
+  .attn-list, .attn-row { column-gap: 10px; }
+  .attn-row { min-height: 48px; }
   .home-ask-box input[type="text"] { min-height: 44px; font-size: 16px; }
   .home-tool-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
   .home-tool { min-height: 56px; padding: 8px 12px; }

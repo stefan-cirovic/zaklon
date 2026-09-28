@@ -37,7 +37,7 @@ const sr: HelpContent = {
             list: [
               "Kod kuće telefon koristi sve što hub ima: zalihe, biblioteku, asistenta i mape.",
               "Van kuće telefon i dalje prikazuje poslednje stanje zaliha, a lista za kupovinu i dalje radi. Vidi [Rad bez interneta](#help/offline).",
-              "Kad nema rutera (nestanak struje, vikendica), laptop može da napravi [sopstvenu WiFi mrežu](#help/household/network).",
+              "Kad nema rutera (nestanak struje, vikendica), laptop može da napravi [sopstvenu WiFi mrežu](#help/settings/network).",
             ],
           },
         ],
@@ -49,13 +49,13 @@ const sr: HelpContent = {
           {
             steps: [
               "**Podesi domaćinstvo.** Kad se Zaklon prvi put otvori, izaberi jezik, ime huba i lozinku domaćinstva (najmanje 8 znakova).",
-              "**Upari telefone.** Na laptopu otvori [Domaćinstvo › Uređaji](#household/devices) i izaberi **Dodaj telefon**. Vidi [Uparivanje telefona](#help/pairing).",
+              "**Upari telefone.** Na laptopu izaberi **Dodaj telefon** na [Početnoj](#home), ili otvori [Podešavanja › Uređaji](#settings/devices) i izaberi ga tamo. Vidi [Uparivanje telefona](#help/pairing).",
               "**Preuzmi sadržaj.** U [Dodacima](#addons) osnovni paket jednim dugmetom preuzima znanje, uputstva za prvu pomoć i popravke i AI model koji odgovara ovom računaru. Za to jednom treba internet; posle sve radi i bez njega.",
               "**Unesi zalihe** u [Zalihama](#supplies) i pitaj [Asistenta](#assistant) šta god te zanima.",
             ],
           },
           { note: "Svako ko zna lozinku domaćinstva ima ista prava: može da upari telefon i da menja sve. Izaberi lozinku koju će domaćinstvo zapamtiti i čuvaj je; treba i za šifrovane rezervne kopije." },
-          { p: "Prelaziš sa drugog računara? Na ekranu za podešavanje umesto toga vrati kopiju prethodnog huba i telefoni nastavljaju da rade. Vidi [Rezervne kopije](#help/household/backups)." },
+          { p: "Prelaziš sa drugog računara? Na ekranu za podešavanje umesto toga vrati kopiju prethodnog huba i telefoni nastavljaju da rade. Vidi [Rezervne kopije](#help/settings/backups)." },
         ],
       },
       {
@@ -65,10 +65,10 @@ const sr: HelpContent = {
           { p: "Traka na dnu je ista na laptopu i na telefonima:" },
           {
             list: [
-              "**Početna**: stanje huba, šta uskoro ističe i čega ponestaje.",
+              "**Početna**: stanje huba i ono što traži pažnju, na primer zalihe kojima uskoro ističe rok ili kojih ponestaje.",
               "**Asistent**: pitaj šta te zanima, običnim rečima.",
-              "**Alati**: svi alati ([Zalihe](#supplies), [Biblioteka](#library), [Mape](#maps) i [Dodaci](#addons)) i ova pomoć.",
-              "**Domaćinstvo**: telefoni, mreža, rezervne kopije i ostala podešavanja.",
+              "**Alati**: svi alati: [Zalihe](#supplies), [Biblioteka](#library), [Mape](#maps) i [Dodaci](#addons).",
+              "**Podešavanja**: telefoni, mreža, rezervne kopije i ostala podešavanja, a na kraju spiska i ova pomoć.",
             ],
           },
           { p: "Na laptopu se na ekranu [Alati](#tools) jedan alat može prikačiti na traku. Tada se pojavljuje u traci na svim uređajima u domaćinstvu." },
@@ -81,7 +81,7 @@ const sr: HelpContent = {
   pairing: {
     title: "Uparivanje telefona",
     summary: "Instaliraj aplikaciju na Android telefon i poveži ga sa hubom, QR kodom ili kodom od 6 cifara.",
-    open: { href: "#household/devices", label: "Otvori Domaćinstvo › Uređaji" },
+    open: { href: "#settings/devices", label: "Otvori Podešavanja › Uređaji" },
     sections: [
       {
         id: "before",
@@ -102,7 +102,7 @@ const sr: HelpContent = {
         body: [
           {
             steps: [
-              "Otvori [Domaćinstvo › Uređaji](#household/devices) i izaberi **Dodaj telefon**.",
+              "Izaberi **Dodaj telefon** pored **Uređaji** na [Početnoj](#home), ili otvori [Podešavanja › Uređaji](#settings/devices) i tamo izaberi **Dodaj telefon**.",
               "Laptop prikazuje dva QR koda, jedan za preuzimanje aplikacije i jedan za uparivanje, i kod od 6 cifara.",
               "Kodovi važe 5 minuta. Kad isteknu, izaberi **Novi kod**.",
             ],
@@ -170,9 +170,9 @@ const sr: HelpContent = {
         body: [
           {
             list: [
-              "[Domaćinstvo › Uređaji](#household/devices) prikazuje sve uparene telefone i kad je koji poslednji put viđen.",
+              "[Podešavanja › Uređaji](#settings/devices) prikazuju sve uparene telefone i kad je koji poslednji put viđen.",
               "Na laptopu **Ukloni** trajno isključuje telefon. Sa njim se brišu i njegovi sačuvani razgovori sa asistentom.",
-              "Na samom telefonu **Zaboravi ovaj hub** (u Domaćinstvo › Uređaji) prekida vezu; da bi ponovo koristio hub, upari ga ponovo.",
+              "Na samom telefonu **Zaboravi ovaj hub** (u Podešavanjima › Uređaji) prekida vezu; da bi ponovo koristio hub, upari ga ponovo.",
               "Ako je laptop ponovo instaliran ili zamenjen, telefon to kaže i nudi **Upari ponovo**. Do tada sve na telefonu ostaje sačuvano.",
             ],
           },
@@ -194,7 +194,7 @@ const sr: HelpContent = {
           {
             list: [
               "**Napajanje**: baterija laptopa i da li se puni. Računar bez baterije prikazuje **Na struji**.",
-              "**Uređaji**: koliko je telefona upareno.",
+              "**Uređaji**: koliko je telefona upareno. Na laptopu **Dodaj telefon** pored toga odmah prikazuje kodove za uparivanje (vidi [Uparivanje telefona](#help/pairing)).",
               "**Adrese**: gde telefoni na WiFi mreži nalaze hub.",
             ],
           },
@@ -208,7 +208,7 @@ const sr: HelpContent = {
           {
             list: [
               "Hub ne radi, ili ga telefon ne vidi.",
-              "Windows zaštitni zid ne pušta telefone; dugme to popravlja. Vidi [Mrežu](#household/network).",
+              "Windows zaštitni zid ne pušta telefone; dugme to popravlja. Vidi [Mrežu](#settings/network).",
               "Izašla je novija verzija Zaklona.",
             ],
           },
@@ -225,14 +225,16 @@ const sr: HelpContent = {
         id: "lists",
         title: "Zalihe",
         body: [
+          { p: "**Zahteva pažnju** je jedan spisak, najhitnije prvo:" },
           {
             list: [
-              "**Isteklo ili ističe uskoro** prikazuje zalihe kojima je rok prošao ili ističe u narednih 30 dana.",
-              "**Ponestaje** prikazuje zalihe kojih ima manje nego što piše u **Upozori kad padne ispod**.",
-              "**Za kupovinu** prikazuje šta još treba kupiti.",
+              "ono čemu je **istekao** rok (crveno), i pre koliko;",
+              "ono čemu rok **ističe** u narednih 30 dana (narandžasto), prvo ono što ističe najpre;",
+              "ono čega **ponestaje**: ima ga manje nego što piše u **Upozori kad padne ispod**, na primer „2 od 3 kg“.",
             ],
           },
-          { p: "Svaki spisak prikazuje do pet stavki. Sve ih vidiš u [Zalihama](#supplies)." },
+          { p: "Prikazuje se do šest redova; ostalo je u [Zalihama](#supplies). Kad ništa ne traži pažnju, kartica samo kaže **Sve je u redu**." },
+          { p: "Pored onoga čemu je istekao rok ili čega ponestaje je **Dodaj na listu za kupovinu**; ono što je već na listi ima oznaku **Na listi je**. Ispod spiska, **Za kupovinu** kaže koliko stvari ima na listi za kupovinu i otvara je." },
         ],
       },
       {
@@ -306,7 +308,7 @@ const sr: HelpContent = {
           { p: "Reci „zapamti da je Ana alergična na penicilin“ i asistent će ponuditi da to zapamti; izaberi **Da, uradi** da se beleška sačuva. Beleške koristi kad su važne za pitanje." },
           {
             list: [
-              "Beleške su pod **Šta asistent pamti**, na dnu spiska razgovora, i u [Domaćinstvo › AI asistent](#household/assistant/memory). Tu možeš da ih dodaješ i brišeš.",
+              "Beleške su pod **Šta asistent pamti**, na dnu spiska razgovora, i u [Podešavanjima › AI asistent](#settings/assistant/memory). Tu možeš da ih dodaješ i brišeš.",
               "Svi u domaćinstvu vide iste beleške. Asistent pamti do 500 beleški, svaku do 300 znakova.",
             ],
           },
@@ -363,7 +365,7 @@ const sr: HelpContent = {
         id: "model",
         title: "AI model",
         body: [
-          { p: "Asistentu treba AI model, koji se jednom preuzme na laptopu. Kad ga nema, asistent nudi model preporučen za ovaj računar. Veći modeli bolje odgovaraju, ali su sporiji i traže više memorije. Model menjaš u samom Asistentu (polje **Model**) ili u [Domaćinstvo › AI asistent](#household/assistant)." },
+          { p: "Asistentu treba AI model, koji se jednom preuzme na laptopu. Kad ga nema, asistent nudi model preporučen za ovaj računar. Veći modeli bolje odgovaraju, ali su sporiji i traže više memorije. Model menjaš u samom Asistentu (polje **Model**) ili u [Podešavanjima › AI asistent](#settings/assistant)." },
           { p: "Model kome treba više memorije nego što ovaj računar ima označen je sa **traži više memorije** i ne može da se izabere: usporio bi ceo računar. Kad nijedan model ne staje, asistent nije dostupan na ovom računaru, a biblioteka, mape, zalihe i telefoni i dalje rade. Kad AI kaže da trenutno nema dovoljno slobodne memorije, zatvori neke programe i pitaj ponovo." },
           { p: "AI se pokreće uz prvo pitanje i sam se gasi posle 20 minuta bez pitanja. Na laptopu možeš da ga ugasiš odmah, vezom **oslobodi memoriju sada**." },
         ],
@@ -505,7 +507,7 @@ const sr: HelpContent = {
         id: "latin",
         title: "Srpski članci latinicom",
         body: [
-          { p: "Srpska Vikipedija je pisana ćirilicom. Da je čitaš latinicom, uključi **Latinica za srpske članke** u [Domaćinstvo › Jezik](#household/language/latin). Važi samo za ovaj uređaj." },
+          { p: "Srpska Vikipedija je pisana ćirilicom. Da je čitaš latinicom, uključi **Latinica za srpske članke** u [Podešavanjima › Jezik](#settings/language/latin). Važi samo za ovaj uređaj." },
         ],
       },
       {
@@ -649,23 +651,24 @@ const sr: HelpContent = {
     ],
   },
 
-  household: {
-    title: "Podešavanja domaćinstva",
+  settings: {
+    title: "Podešavanja",
     summary: "Telefoni, mreža, rezervne kopije, lozinka i ostala podešavanja, kategoriju po kategoriju.",
-    open: { href: "#household", label: "Otvori Domaćinstvo" },
+    open: { href: "#settings", label: "Otvori Podešavanja" },
     sections: [
       {
         id: "find",
         title: "Kako da nađeš podešavanje",
         body: [
-          { p: "[Domaćinstvo](#household) na vrhu prikazuje hub, ispod je pretraga **Pronađi podešavanje** i po jedna pločica za svaku kategoriju. Pretraga razume srpske i engleske reči, sa kvačicama i bez njih. Mreža i Rezervne kopije postoje samo na laptopu." },
+          { p: "Na laptopu se [Podešavanja](#settings) otvaraju na kategoriji **Uređaji**: kategorije su nabrojane levo, a izabrana se prikazuje pored njih. Na telefonu je prvo spisak; izaberi kategoriju da je otvoriš, a strelica na vrhu vraća na spisak." },
+          { p: "**Pronađi podešavanje**, na vrhu spiska, razume srpske i engleske reči, sa kvačicama i bez njih. **Pomoć**, na kraju spiska, otvara ovo uputstvo. Mreža i Rezervne kopije postoje samo na laptopu." },
         ],
       },
       {
         id: "devices",
         title: "Uređaji",
         body: [
-          { p: "Dodaj telefon i vidi uparene telefone, i kad je koji poslednji put viđen. Na telefonu je ovde i **Zaboravi ovaj hub**. Vidi [Uparivanje telefona](#help/pairing)." },
+          { p: "Dodaj telefon i vidi uparene telefone, i kad je koji poslednji put viđen; **Dodaj telefon** na [Početnoj](#home) takođe vodi ovde. Kad bi Windows zaštitni zid blokirao telefone, upozorenje se vidi i ovde. Na telefonu je ovde i **Zaboravi ovaj hub**. Vidi [Uparivanje telefona](#help/pairing)." },
         ],
       },
       {
@@ -676,6 +679,7 @@ const sr: HelpContent = {
             list: [
               "**WiFi mreža sa ovog laptopa**: kad nema rutera (nestanak struje, vikendica), laptop može da bude WiFi mreža za telefone u domaćinstvu, pomoću Windowsove mobilne pristupne tačke. Izaberi **Napravi WiFi mrežu**; telefoni se priključuju skeniranjem QR koda ili upisivanjem prikazane lozinke, pa otvaraju Zaklon.",
               "**Windows zaštitni zid**: kad bi Windows blokirao telefone, pojavi se upozorenje sa dugmetom **Dozvoli telefonima pristup**. Windows zatim traži potvrdu administratora računara.",
+              "**Označi ovu mrežu kao privatnu**: kad Windows mrežu laptopa smatra javnom (uobičajeno za novu WiFi mrežu na Windowsu 11), telefoni na njoj ne mogu da dođu do huba. Ako je to tvoja kućna mreža, ovo dugme u upozorenju kaže Windowsu da je smatra privatnom; Windows traži potvrdu administratora. Ne radi to na mreži u kafiću ili hotelu.",
               "**Mrežne adrese**: gde telefoni na istoj mreži nalaze laptop.",
             ],
           },
@@ -765,7 +769,7 @@ const sr: HelpContent = {
         id: "no-router",
         title: "Nema rutera",
         body: [
-          { p: "Bez rutera (nestanak struje, vikendica) laptop može da napravi svoju WiFi mrežu: otvori [Domaćinstvo › Mreža](#household/network/hotspot) i izaberi **Napravi WiFi mrežu**. Telefoni se priključe na nju, pa otvore Zaklon." },
+          { p: "Bez rutera (nestanak struje, vikendica) laptop može da napravi svoju WiFi mrežu: otvori [Podešavanja › Mreža](#settings/network/hotspot) i izaberi **Napravi WiFi mrežu**. Telefoni se priključe na nju, pa otvore Zaklon." },
         ],
       },
       {
@@ -816,12 +820,12 @@ const sr: HelpContent = {
             steps: [
               "Proveri da je laptop uključen i da Zaklon radi: ikonica mu je pored sata, a [Početna](#home) na laptopu piše **Radi**.",
               "Proveri da je telefon na **istoj WiFi mreži** kao laptop, a ne na mobilnom internetu. Mreža za goste često razdvaja uređaje; koristi glavnu mrežu.",
-              "Na laptopu otvori [Domaćinstvo](#household). Ako upozorava da **telefoni možda ne mogu da se povežu**, izaberi **Dozvoli telefonima pristup** i potvrdi u Windowsu.",
-              "Ako Windows mrežu smatra javnom, ne pušta telefone. Ako je to tvoja kućna mreža: u Windows podešavanjima otvori **Mreža i internet**, izaberi mrežu i za tip mrežnog profila izaberi **Privatno**.",
+              "Na laptopu otvori [Početnu](#home) ili [Podešavanja › Uređaji](#settings/devices). Ako upozorava da **telefoni možda ne mogu da se povežu**, izaberi **Dozvoli telefonima pristup** i potvrdi u Windowsu.",
+              "Ako Windows mrežu smatra javnom, ne pušta telefone. Ako je to tvoja kućna mreža, u upozorenju izaberi **Označi ovu mrežu kao privatnu** i potvrdi u Windowsu (ili u Windows podešavanjima otvori **Mreža i internet**, izaberi mrežu i za tip mrežnog profila izaberi **Privatno**).",
               "Ako „Pronađi hubove“ ne nađe ništa, upari telefon QR kodom.",
             ],
           },
-          { p: "[Domaćinstvo › Mreža](#household/network/firewall) na laptopu pokazuje da li Windows zaštitni zid pušta telefone." },
+          { p: "[Podešavanja › Mreža](#settings/network/firewall) na laptopu pokazuju da li Windows zaštitni zid pušta telefone." },
         ],
       },
       {
@@ -831,7 +835,7 @@ const sr: HelpContent = {
           {
             list: [
               "**Kod je istekao**: izaberi **Novi kod** na laptopu. Kod važi 5 minuta i tri pokušaja.",
-              "**Pogrešna lozinka domaćinstva**: proveri je sa onim ko ju je postavio. Menja se na laptopu, u [Domaćinstvo › Privatnost i bezbednost](#household/privacy/password).",
+              "**Pogrešna lozinka domaćinstva**: proveri je sa onim ko ju je postavio. Menja se na laptopu, u [Podešavanjima › Privatnost i bezbednost](#settings/privacy/password).",
               "**Umesto huba se javio drugi uređaj**: upari telefon skeniranjem QR koda.",
               "**Hub je ponovo instaliran ili zamenjen**: telefon nudi **Upari ponovo**; do tada sve na njemu ostaje sačuvano.",
             ],
@@ -845,7 +849,7 @@ const sr: HelpContent = {
           {
             list: [
               "Prvo pitanje posle pauze pokreće AI, što traje do jednog minuta.",
-              "Manji AI model odgovara brže. Izaberi ga u [Domaćinstvo › AI asistent](#household/assistant) ili ga preuzmi u [Dodacima](#addons/models).",
+              "Manji AI model odgovara brže. Izaberi ga u [Podešavanjima › AI asistent](#settings/assistant) ili ga preuzmi u [Dodacima](#addons/models).",
               "Brzina piše ispod svakog odgovora. Ako laptop ima malo slobodne memorije, zatvori druge programe.",
               "Odgovor koji traje predugo se zaustavlja. Pitaj ponovo, ili koristi manji model.",
               "Ako AI stane dok se učitava, računar možda nema dovoljno slobodne memorije: probaj manji model.",

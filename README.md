@@ -12,7 +12,7 @@
 - **Maps.** The whole world in pieces (countries and regions), downloaded once by the hub and served to phones running [CoMaps](https://comaps.app), without internet.
 - **Supplies.** What you have, where it is, when it expires and what is running low, with batches that each keep their own expiry date, a shopping list and a "put away" step. Barcode scanning with the phone camera, done on the phone itself (no Google Play services, no internet). A phone away from home keeps its last copy, and its shopping list keeps working.
 - **Assistant.** A local AI model on the hub that answers from your library and names its sources, answers about your supplies and proposes changes to them (nothing changes until you confirm), remembers what you ask it to remember, and, only when you switch it on for a conversation, researches online. Phones use it at home and fall back to a smaller model of their own.
-- **Household.** Pairing phones with a code, daily backups and backups to USB, copying packs to USB for another household, and a laptop that becomes the Wi-Fi network when there is no router. Profiles for each person are planned.
+- **Settings.** Pairing phones with a code, daily backups and backups to USB, copying packs to USB for another household, and a laptop that becomes the Wi-Fi network when there is no router. Profiles for each person are planned.
 
 ## Principles
 
@@ -36,7 +36,7 @@ Inspired by projects such as [Internet-in-a-Box](https://internet-in-a-box.org),
 
 Run `Zaklon_<version>_x64-setup.exe`. It installs for the current user, needs no internet (everything it needs is inside), and asks where to put Zaklon: the program and all household data (`data` folder) live in that one folder. Zaklon starts with Windows and keeps running in the tray when its window is closed, so phones stay connected; use the tray icon to quit or to turn off starting with Windows. Uninstalling removes the program but keeps the `data` folder. The library engine, the AI engine, knowledge packs, maps and AI models are added later, by download or from a USB stick.
 
-On a phone on the same Wi-Fi, open `http://<laptop address>:8480/get` (the address and a QR code are shown under Household → Devices → Add a phone) to install the Android app.
+On a phone on the same Wi-Fi, open `http://<laptop address>:8480/get` (the address and a QR code are shown under Settings → Devices → Add a phone, or "Add a phone" on Home) to install the Android app.
 
 Releases are not signed yet: the Windows installer has no code signature and the Android app is a debug-signed test build. Check each download against the `SHA256SUMS.txt` published with the release.
 

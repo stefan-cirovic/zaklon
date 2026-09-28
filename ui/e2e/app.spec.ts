@@ -8,11 +8,12 @@ const PASSWORD = "correct horse";
 /** The hub's "install the app" port (see start-hub.mjs). */
 const INSTALL_PORT = Number(process.env.ZAKLON_E2E_PORT_BASE || 28480);
 
-/** Ends on Household's tiles, with the hub answering. */
+/** Ends on Settings › Devices, with the hub answering. */
 async function ensureSetUp(page: Page) {
-  await page.goto("/#household");
+  await page.goto("/#settings/devices");
   const setup = page.getByRole("heading", { name: /Set up your household|Podesi domaćinstvo/ });
-  const ready = page.locator(".hub-card .hub-state", { hasText: /Running|Radi/ });
+  // The paired phones show once the hub has answered.
+  const ready = page.getByRole("heading", { name: /^(Paired devices|Upareni uređaji)$/ });
   await expect(setup.or(ready)).toBeVisible({ timeout: 10_000 });
   if (await setup.isVisible()) {
     await page.getByLabel(/Hub name|Ime huba/).fill("E2E hub");
@@ -24,9 +25,9 @@ async function ensureSetUp(page: Page) {
   await expect(ready).toBeVisible({ timeout: 20_000 });
 }
 
-/** The app's language, chosen under Household > Language (the page stays loaded, so it holds). */
+/** The app's language, chosen under Settings › Language (the page stays loaded, so it holds). */
 async function setLanguage(page: Page, lang: "en" | "sr") {
-  await page.goto("/#household/language");
+  await page.goto("/#settings/language");
   await page.getByRole("combobox", { name: /^(Language|Jezik)$/ }).selectOption(lang);
 }
 
@@ -62,7 +63,7 @@ test("first run: setup rejects mismatched passwords, then succeeds", async ({ pa
 
 test("pairing shows the download QR, the pairing QR and a 6-digit code", async ({ page }) => {
   await ensureSetUp(page);
-  await page.goto("/#household/devices");
+  await page.goto("/#settings/devices");
   await page.getByRole("button", { name: "Add a phone" }).click();
   await expect(page.getByRole("heading", { name: "Pair a phone" })).toBeVisible();
   await expect(page.getByRole("img", { name: /QR code/ })).toHaveCount(2);
@@ -109,8 +110,11 @@ test("supplies: add, adjust, running low, shopping list, history, home", async (
   await expect(page.getByText(name).first()).toBeVisible();
   await expect(page.getByText("used").first()).toBeVisible();
 
+  // Home lists it as needing attention, already on the shopping list (as running low).
   await page.goto("/#home");
-  await expect(page.locator(".home-supplies .home-part", { hasText: "Running low" }).getByText(name)).toBeVisible();
+  const attention = page.getByRole("region", { name: /^Needs attention/ }).locator(".attn-row", { hasText: name });
+  await expect(attention).toContainText("2 of 3 kg");
+  await expect(attention.locator(".attn-listed")).toHaveAttribute("title", "On the list");
 });
 
 test("supplies: an expired item is flagged and a bad date is refused", async ({ page }, info) => {
@@ -152,7 +156,7 @@ test("language switch to Serbian and back, with Serbian number format", async ({
   await ensureSetUp(page);
   await setLanguage(page, "sr");
   await expect(page.getByRole("heading", { name: "Jezik", level: 1 })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Putanja" }).getByRole("link", { name: "Domaćinstvo" })).toBeVisible();
+  await expect(page.locator("nav.nav").getByRole("button", { name: "Podešavanja" })).toHaveAttribute("aria-current", "page");
   await page.goto("/#supplies");
   await expect(page.getByRole("heading", { name: "Zalihe" })).toBeVisible();
   const name = `Šećer ${info.project.name}`;
@@ -164,8 +168,7 @@ test("language switch to Serbian and back, with Serbian number format", async ({
   await expect(page.locator(".item.supply", { hasText: name }).locator(".qty-val")).toContainText("1,5");
   await setLanguage(page, "en");
   await expect(page.getByRole("heading", { name: "Language", level: 1 })).toBeVisible();
-  await page.goto("/#household");
-  await expect(page.getByRole("heading", { name: "Household", exact: true })).toBeVisible();
+  await expect(page.locator("nav.nav").getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
 });
 
 test("library without packs points to add-ons, which lists the catalog", async ({ page }) => {
@@ -189,8 +192,8 @@ test("every screen fits the width of the device", async ({ page }, info) => {
   const name = `Extra virgin olive oil from the cooperative in Istria, 750 ml (${info.project.name})`;
   const res = await page.request.post("/api/items", { data: { name, quantity: 2, unit: "pcs", category: "food", expiry: soon, min_quantity: 3 } });
   expect(res.ok()).toBe(true);
-  const household = ["devices", "network", "backups", "privacy", "appearance", "language", "assistant", "updates", "about"].map((c) => `household/${c}`);
-  for (const tab of ["home", "tools", "library", "maps", "supplies", "assistant", "addons", "household", ...household]) {
+  const settings = ["devices", "network", "backups", "privacy", "appearance", "language", "assistant", "updates", "about"].map((c) => `settings/${c}`);
+  for (const tab of ["home", "tools", "library", "maps", "supplies", "assistant", "addons", "settings", "help", ...settings]) {
     await page.goto(`/#${tab}`);
     await page.waitForTimeout(300);
     await noHorizontalScroll(page);
@@ -202,11 +205,11 @@ test("every screen fits the width of the device", async ({ page }, info) => {
   const width = page.viewportSize()!.width;
   const plus = await row.getByRole("button", { name: /^Add one/ }).boundingBox();
   expect(plus!.x + plus!.width).toBeLessThanOrEqual(width);
-  // Home: every date badge stays inside its panel.
+  // Home: every line of what needs attention stays inside its panel.
   await page.goto("/#home");
-  await expect(page.locator(".mini-row", { hasText: name }).first()).toBeVisible();
+  await expect(page.locator(".attn-row", { hasText: name }).first()).toBeVisible();
   const outside = await page.evaluate(() =>
-    [...document.querySelectorAll(".mini-row")].filter((row) => {
+    [...document.querySelectorAll(".attn-row")].filter((row) => {
       const panel = row.closest(".panel")!.getBoundingClientRect();
       return [...row.children].some((c) => c.getBoundingClientRect().right > panel.right + 1);
     }).length,
@@ -231,10 +234,14 @@ test("the tab is remembered in the address", async ({ page }) => {
   // A tool that is not pinned is found under Tools, and the bar says so.
   await expect(page.locator("nav").getByRole("button", { name: "Tools" })).toHaveAttribute("aria-current", "true");
   // Every screen keeps its own address.
-  for (const [tab, heading] of [["library", "Library"], ["maps", "Maps"], ["addons", "Add-ons"], ["assistant", "Assistant"], ["tools", "Tools"], ["household", "Household"]]) {
+  for (const [tab, heading] of [["library", "Library"], ["maps", "Maps"], ["addons", "Add-ons"], ["assistant", "Assistant"], ["tools", "Tools"], ["help", "Help"]]) {
     await page.goto(`/#${tab}`);
     await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
   }
+  await page.goto("/#settings/about");
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "About", level: 1 })).toBeVisible();
+  await expect(page.locator("nav").getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
 });
 
 /** The buttons in the bar, by name. */
@@ -252,7 +259,10 @@ test("tools: every tool is listed, and one can be pinned to the bar for the whol
     await expect(page.locator(".tool-card", { hasText: name }).first()).toBeVisible();
   }
   await expect(page.getByText(/expiry dates and a shopping list/)).toBeVisible();
-  expect(await barItems(page)).toEqual(["Home", "Assistant", "Tools", "Household"]);
+  // Only the tools: Help is in Settings now.
+  await expect(page.locator(".tool-card")).toHaveCount(4);
+  await expect(page.locator(".tool-grid").getByRole("link", { name: /^Help/ })).toHaveCount(0);
+  expect(await barItems(page)).toEqual(["Home", "Assistant", "Tools", "Settings"]);
 
   // The bar is along the bottom of the window, on the laptop too.
   const nav = await page.locator("nav").boundingBox();
@@ -262,7 +272,7 @@ test("tools: every tool is listed, and one can be pinned to the bar for the whol
 
   await page.getByRole("button", { name: "Pin to the bar: Maps" }).click();
   await expect(page.locator("nav").getByRole("button", { name: "Maps" })).toBeVisible();
-  expect(await barItems(page)).toEqual(["Home", "Assistant", "Maps", "Tools", "Household"]);
+  expect(await barItems(page)).toEqual(["Home", "Assistant", "Maps", "Tools", "Settings"]);
   await expect(page.locator(".tool-card.pinned")).toHaveCount(1);
   await expect(page.locator(".tool-card.pinned")).toContainText("Pinned");
   await noHorizontalScroll(page);
@@ -286,10 +296,10 @@ test("tools: every tool is listed, and one can be pinned to the bar for the whol
   await expect(page.locator("nav").getByRole("button", { name: "Maps" })).toHaveCount(0);
   expect((await (await page.request.get("/api/pinned-tool")).json()).tool).toBe("library");
   await page.reload();
-  expect(await barItems(page)).toEqual(["Home", "Assistant", "Library", "Tools", "Household"]);
-  // Five items: none is cut short, in Serbian either (the longest is "Domaćinstvo").
+  expect(await barItems(page)).toEqual(["Home", "Assistant", "Library", "Tools", "Settings"]);
+  // Five items: none is cut short, in Serbian either (the longest is "Podešavanja").
   await setLanguage(page, "sr");
-  await expect(page.locator("nav").getByRole("button", { name: "Domaćinstvo" })).toBeVisible();
+  await expect(page.locator("nav").getByRole("button", { name: "Podešavanja" })).toBeVisible();
   const cut = await page.evaluate(() =>
     [...document.querySelectorAll(".nav-label")].filter((l) => l.scrollWidth > l.clientWidth + 1).map((l) => l.textContent),
   );
@@ -299,7 +309,7 @@ test("tools: every tool is listed, and one can be pinned to the bar for the whol
 
   await page.getByRole("button", { name: "Unpin: Library" }).click();
   await expect(page.locator("nav").getByRole("button", { name: "Library" })).toHaveCount(0);
-  expect(await barItems(page)).toEqual(["Home", "Assistant", "Tools", "Household"]);
+  expect(await barItems(page)).toEqual(["Home", "Assistant", "Tools", "Settings"]);
   expect((await (await page.request.get("/api/pinned-tool")).json()).tool).toBe(null);
 });
 
@@ -339,7 +349,7 @@ test("the logo in the bar opens the Zaklon website", async ({ page, context }, i
 test("an idle screen does not flood the hub with requests", async ({ page }) => {
   test.setTimeout(90_000);
   await ensureSetUp(page);
-  for (const tab of ["home", "supplies", "household", "library", "addons", "tools"]) {
+  for (const tab of ["home", "supplies", "settings", "library", "addons", "tools"]) {
     await page.goto(`/#${tab}`);
     await page.waitForTimeout(1500);
     const counts: Record<string, number> = {};
@@ -374,7 +384,7 @@ test("liters are written out with the right form", async ({ page }, info) => {
 
 test("the Latin-script switch is remembered on this device", async ({ page }) => {
   await ensureSetUp(page);
-  await page.goto("/#household/language");
+  await page.goto("/#settings/language");
   const box = page.getByRole("checkbox", { name: /Serbian articles in Latin script/ });
   await expect(box).not.toBeChecked();
   await box.check();
@@ -468,9 +478,9 @@ test("maps: the phone steps show the hub address, and the world is searchable", 
   await expect(page).toHaveURL(/#maps$/);
 });
 
-test("household: accent color is remembered, password can be changed, hub facts and privacy are shown", async ({ page }) => {
+test("settings: accent color is remembered, password can be changed, hub facts and privacy are shown", async ({ page }) => {
   await ensureSetUp(page);
-  await page.goto("/#household/appearance");
+  await page.goto("/#settings/appearance");
   await page.getByRole("radio", { name: "Blue" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-accent", "blue");
   await page.getByLabel(/Pure black background/).check();
@@ -481,7 +491,7 @@ test("household: accent color is remembered, password can be changed, hub facts 
   await page.getByRole("radio", { name: "Amber" }).click();
   await page.getByLabel(/Pure black background/).uncheck();
 
-  await page.goto("/#household/privacy");
+  await page.goto("/#settings/privacy");
   const form = page.locator("form").filter({ has: page.getByRole("heading", { name: "Household password" }) });
   await form.getByLabel("New password").fill("something else");
   await form.getByLabel("Repeat password").fill("something elsE");
@@ -495,7 +505,7 @@ test("household: accent color is remembered, password can be changed, hub facts 
   await expect(page.getByText(/No tracking, no analytics/)).toBeVisible();
   await noHorizontalScroll(page);
 
-  await page.goto("/#household/about");
+  await page.goto("/#settings/about");
   await expect(page.getByRole("heading", { name: "This hub" })).toBeVisible();
   await expect(page.getByText("Memory", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Licenses and credits" })).toBeVisible();
@@ -704,8 +714,8 @@ test("assistant: a model that needs more memory than the computer has is marked 
   await expect(model.locator('option[value="qwen35-2b"]')).toHaveText(/2B · recommended$/);
   await expect(model.locator('option[value="qwen35-2b"]')).toHaveJSProperty("disabled", false);
 
-  // The same on Household > AI assistant.
-  await page.goto("/#household/assistant");
+  // The same on Settings › AI assistant.
+  await page.goto("/#settings/assistant");
   const pick = page.getByRole("combobox", { name: "Model" });
   await expect(pick).toHaveValue("qwen35-2b");
   await expect(pick.locator('option[value="qwen35-9b"]')).toHaveText(/needs more memory$/);
@@ -733,7 +743,7 @@ test("assistant: a computer without the memory for any model says so; the rest s
   await expect(page.getByRole("button", { name: "Download" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "The assistant needs an AI model" })).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "Ask something" })).toHaveCount(0);
-  await page.goto("/#household/assistant");
+  await page.goto("/#settings/assistant");
   await expect(page.getByText(/The assistant is not available on this computer\. This computer does not have enough memory/)).toBeVisible();
   // The library still opens.
   await page.goto("/#library");
@@ -829,9 +839,9 @@ test("assistant: a proposed supplies change happens only after confirming", asyn
   expect(item.unit).toBe("l");
 });
 
-test("household: a backup can be made and a restore is prepared for the next start", async ({ page }) => {
+test("settings: a backup can be made and a restore is prepared for the next start", async ({ page }) => {
   await ensureSetUp(page);
-  await page.goto("/#household/backups");
+  await page.goto("/#settings/backups");
   await expect(page.getByRole("heading", { name: "Backups", level: 1 })).toBeVisible();
   await page.getByRole("button", { name: "Make a backup now" }).click();
   await expect(page.getByText(/^Saved: .*zaklon-backup-.*\.zip$/)).toBeVisible();
@@ -863,7 +873,7 @@ test("household: a backup can be made and a restore is prepared for the next sta
   await noHorizontalScroll(page);
 });
 
-test("updates: Home tells about a newer version; Household has the switch", async ({ page }) => {
+test("updates: Home tells about a newer version; Settings has the switch", async ({ page }) => {
   await ensureSetUp(page);
   await page.route("**/api/updates", (route) =>
     route.fulfill({
@@ -874,10 +884,8 @@ test("updates: Home tells about a newer version; Household has the switch", asyn
   await expect(page.getByText("A newer Zaklon is available:")).toBeVisible();
   // With the warnings, above the cards.
   await expect(page.locator(".home-alerts .update-banner strong")).toHaveText("0.2.0");
-  // The top of Household says so too, and leads to the switch.
-  await page.goto("/#household");
-  await page.locator(".hub-card").getByRole("link", { name: "New version 0.2.0" }).click();
-  await expect(page).toHaveURL(/#household\/updates\/updates$/);
+  // Settings › Updates has the switch.
+  await page.goto("/#settings/updates/updates");
   await expect(page.getByRole("heading", { name: "Updates", level: 1 })).toBeVisible();
   await expect(page.getByText(/Check once a day whether a newer Zaklon is out/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Check now" })).toBeVisible();
@@ -892,31 +900,43 @@ function fakeItem(id: string, name: string, more: Record<string, unknown> = {}) 
   };
 }
 
-test("home: the hub at the top, the supplies at a glance, and the tools not in the bar", async ({ page }, info) => {
+/** A day from today as the app writes dates ("2026-09-30"), in this computer's time zone. */
+function dayFromToday(n: number) {
+  const d = new Date(Date.now() + n * 86_400_000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+test("home: the hub at the top, what in the supplies needs attention, and the tools not in the bar", async ({ page }, info) => {
   await ensureSetUp(page);
   await page.request.post("/api/pinned-tool", { data: { tool: null } });
-  const soon = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
-  // The supplies and the shopping list, simulated so the lists are known.
+  // The supplies and the shopping list, simulated so the lists are known. Milk expires soon and runs low too.
+  const milk = fakeItem("s1", "Milk", { unit: "l", expiry: dayFromToday(1), min_quantity: 2 });
   await page.route("**/api/supplies/summary", (r) =>
     r.fulfill({
       json: {
         total_items: 42,
-        expired: [fakeItem("e1", "Beans", { expiry: "2020-01-31" })],
-        expiring_soon: [1, 2, 3, 4, 5, 6].map((n) => fakeItem(`s${n}`, `Yogurt ${n}`, { expiry: soon })),
-        running_low: [fakeItem("l1", "Rice", { unit: "kg", min_quantity: 4 })],
+        expired: [fakeItem("e1", "Bread", { expiry: dayFromToday(-2) }), fakeItem("e2", "Beans", { quantity: 4, expiry: "2020-01-31" })],
+        expiring_soon: [fakeItem("s2", "Yogurt", { expiry: dayFromToday(3) }), milk],
+        running_low: [milk, fakeItem("l1", "Rice", { unit: "kg", min_quantity: 4 })],
         to_put_away: 2,
       },
     }),
   );
-  await page.route("**/api/shopping", (r) =>
-    r.fulfill({
-      json: [
-        { id: "b1", item_id: null, text: "Matches", quantity: 2, unit: "pack", status: "open", source: "manual" },
-        { id: "b2", item_id: null, text: "Candles", quantity: null, unit: null, status: "open", source: "manual" },
-        { id: "b3", item_id: null, text: "Salt", quantity: 1, unit: "kg", status: "bought", source: "manual" },
-      ],
-    }),
-  );
+  // Rice is on the list already (suggested because it runs low); what is added from Home joins it.
+  const shop: Record<string, unknown>[] = [
+    { id: "low:l1", item_id: "l1", text: "Rice", quantity: 3, unit: "kg", status: "open", source: "running_low" },
+    { id: "b1", item_id: null, text: "Matches", quantity: 2, unit: "pack", status: "open", source: "manual" },
+    { id: "b3", item_id: null, text: "Salt", quantity: 1, unit: "kg", status: "bought", source: "manual" },
+  ];
+  const added: Record<string, unknown>[] = [];
+  await page.route("**/api/shopping", (r) => {
+    if (r.request().method() !== "POST") return r.fulfill({ json: shop });
+    const body = r.request().postDataJSON();
+    added.push(body);
+    const entry = { id: `n${added.length}`, item_id: body.item_id, text: body.text, quantity: body.quantity, unit: body.unit, status: "open", source: "manual" };
+    shop.push(entry);
+    return r.fulfill({ status: 201, json: entry });
+  });
   const hub = await (await page.request.get("/api/status")).json();
   await page.goto("/#home");
 
@@ -928,24 +948,49 @@ test("home: the hub at the top, the supplies at a glance, and the tools not in t
   await expect(facts.locator("dt")).toHaveText(["Power", "Devices", "Addresses"]);
   // The power comes with the add-ons' answer: a battery, or "On power".
   await expect(facts.locator("dd").first()).toHaveText(/^(On power|\d+% · (charging|on battery))$/);
-  await expect(facts.locator("dd").nth(1)).toHaveText(/^\d+$/);
+  await expect(facts.locator("dd").nth(1)).toHaveText(/^\d+/);
+  await expect(facts.getByRole("button", { name: "Add a phone" })).toBeVisible();
   await expect(head.getByRole("link", { name: "How it works" })).toBeVisible();
 
-  // The supplies: what expires (expired first), what runs low, and what is to buy.
+  // The supplies: one list of what needs attention, the most urgent first:
+  // what expired (the longest ago first), what expires soon (the soonest first), what runs low.
   const supplies = page.getByRole("region", { name: "Supplies" });
-  const expiring = supplies.getByRole("region", { name: /^Expired or expiring soon/ });
-  await expect(expiring.getByRole("heading")).toHaveText("Expired or expiring soon 7");
-  await expect(expiring.locator(".mini-row")).toHaveCount(5);
-  await expect(expiring.locator(".mini-row").first()).toContainText("Beans");
-  await expect(expiring.locator(".mini-row").first()).toContainText("expired · 31 Jan 2020");
-  await expect(expiring.getByRole("link", { name: "2 more" })).toHaveAttribute("href", "#supplies");
-  const low = supplies.getByRole("region", { name: /^Running low/ });
-  await expect(low.locator(".mini-row")).toHaveText([/Rice\s*1 \/ 4 kg/]);
-  const shopping = supplies.getByRole("region", { name: /^Shopping list/ });
-  await expect(shopping.getByRole("heading")).toHaveText("Shopping list 2");
-  await expect(shopping.locator(".mini-row")).toHaveText([/Matches\s*2 packs/, "Candles"]);
-  await expect(supplies.locator(".home-foot")).toContainText("Items in the supplies: 42");
-  await expect(supplies.getByRole("link", { name: "To put away: 2" })).toHaveAttribute("href", "#supplies/putaway");
+  const attention = supplies.getByRole("region", { name: /^Needs attention/ });
+  await expect(attention.getByRole("heading")).toHaveText("Needs attention 5");
+  const rows = attention.locator(".attn-row");
+  await expect(rows.locator(".attn-name")).toHaveText(["Beans", "Bread", "Milk", "Yogurt", "Rice"]);
+  await expect(rows.locator(".attn-what")).toHaveText(["expired 31 Jan 2020", "expired 2 days ago", "expires tomorrow", "expires in 3 days", "1 of 4 kg"]);
+  // Expired in red, expiring soon in amber.
+  const color = (i: number) => rows.nth(i).locator(".attn-what").evaluate((el) => getComputedStyle(el).color);
+  expect(await color(0)).toBe("rgb(238, 123, 110)");
+  expect(await color(2)).toBe("rgb(242, 179, 102)");
+  // One quick action where it helps: to the shopping list for what expired or runs low, unless it is on it.
+  await expect(rows.nth(0).getByRole("button", { name: "Add to shopping list: Beans" })).toBeVisible();
+  await expect(rows.nth(1).getByRole("button", { name: "Add to shopping list: Bread" })).toBeVisible();
+  await expect(rows.nth(2).getByRole("button", { name: "Add to shopping list: Milk" })).toBeVisible();
+  await expect(rows.nth(3).getByRole("button")).toHaveCount(0);
+  await expect(rows.nth(4).getByRole("button")).toHaveCount(0);
+  await expect(rows.nth(4).locator(".attn-listed")).toHaveAttribute("title", "On the list");
+  // Each on one line.
+  for (const row of await rows.all()) expect((await row.boundingBox())!.height).toBeLessThan(56);
+  // Below it the shopping list in one line, and the rest.
+  const foot = supplies.locator(".home-foot");
+  await expect(foot.getByRole("link", { name: "To buy: 2 items" })).toHaveAttribute("href", "#supplies/shopping");
+  await expect(foot).toContainText("Items in the supplies: 42");
+  await expect(foot.getByRole("link", { name: "To put away: 2" })).toHaveAttribute("href", "#supplies/putaway");
+
+  // Added to the shopping list from here: as much as there was of something expired, what is missing of something low.
+  await rows.nth(0).getByRole("button", { name: "Add to shopping list: Beans" }).click();
+  await expect(rows.nth(0).locator(".attn-listed")).toHaveAttribute("title", "On the list");
+  await expect(foot.getByRole("link", { name: "To buy: 3 items" })).toBeVisible();
+  await rows.nth(2).getByRole("button", { name: "Add to shopping list: Milk" }).click();
+  await expect(rows.nth(2).locator(".attn-listed")).toBeVisible();
+  expect(added).toEqual([
+    { text: "Beans", quantity: 4, unit: "pcs", item_id: "e2" },
+    { text: "Milk", quantity: 1, unit: "l", item_id: "s1" },
+  ]);
+  await expect(foot.getByRole("link", { name: "To buy: 4 items" })).toBeVisible();
+  await expect(rows.nth(1).getByRole("button", { name: "Add to shopping list: Bread" })).toBeEnabled();
 
   // The tools not in the bar, and Help.
   const tools = page.getByRole("region", { name: "Quick access" });
@@ -981,7 +1026,7 @@ test("home: the hub at the top, the supplies at a glance, and the tools not in t
   }
 
   // A link opens its view of Supplies, which stays in the address.
-  await shopping.getByRole("link", { name: "Open the shopping list" }).click();
+  await foot.getByRole("link", { name: /^To buy/ }).click();
   await expect(page).toHaveURL(/#supplies\/shopping$/);
   await expect(page.getByRole("button", { name: "Shopping list" })).toHaveAttribute("aria-pressed", "true");
   await page.reload();
@@ -995,6 +1040,64 @@ test("home: the hub at the top, the supplies at a glance, and the tools not in t
   await page.reload();
   await expect(tools.getByRole("link")).toHaveText(["Supplies", "Library", "Add-ons", "Help"]);
   await page.request.post("/api/pinned-tool", { data: { tool: null } });
+});
+
+test("home: when nothing needs attention, the supplies say so in one calm line", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.route("**/api/supplies/summary", (r) => r.fulfill({ json: { total_items: 3, expired: [], expiring_soon: [], running_low: [], to_put_away: 0 } }));
+  await page.route("**/api/shopping", (r) => r.fulfill({ json: [] }));
+  await page.goto("/#home");
+  const supplies = page.getByRole("region", { name: "Supplies" });
+  await expect(supplies.locator(".home-allgood")).toHaveText("All good: nothing has expired, expires soon or is running low.");
+  // No empty lists with their headings.
+  await expect(supplies.getByRole("heading", { level: 3 })).toHaveCount(0);
+  await expect(supplies.locator(".attn-row")).toHaveCount(0);
+  await expect(supplies.getByRole("link", { name: "The shopping list is empty." })).toHaveAttribute("href", "#supplies/shopping");
+  await noHorizontalScroll(page);
+});
+
+test("home: a long list of what needs attention shows the six most urgent and leads to the rest", async ({ page }) => {
+  await ensureSetUp(page);
+  const soon = [1, 2, 3, 4, 5, 6, 7].map((n) => fakeItem(`s${n}`, `Yogurt ${n}`, { expiry: dayFromToday(n) }));
+  await page.route("**/api/supplies/summary", (r) =>
+    r.fulfill({ json: { total_items: 9, expired: [], expiring_soon: soon, running_low: [fakeItem("l1", "Rice", { unit: "kg", min_quantity: 4 })], to_put_away: 0 } }),
+  );
+  await page.route("**/api/shopping", (r) => r.fulfill({ json: [] }));
+  await page.goto("/#home");
+  const attention = page.getByRole("region", { name: /^Needs attention/ });
+  await expect(attention.getByRole("heading")).toHaveText("Needs attention 8");
+  await expect(attention.locator(".attn-name")).toHaveText(["Yogurt 1", "Yogurt 2", "Yogurt 3", "Yogurt 4", "Yogurt 5", "Yogurt 6"]);
+  await expect(attention.getByRole("link", { name: "2 more" })).toHaveAttribute("href", "#supplies");
+});
+
+test("home: Add a phone beside Devices opens the pairing straight away (laptop)", async ({ page }, info) => {
+  await ensureSetUp(page);
+  await page.goto("/#home");
+  const add = page.locator(".home-facts").getByRole("button", { name: "Add a phone" });
+  await expect(add).toBeVisible();
+  if (info.project.name === "phone") {
+    // A narrow window: the "+" alone, a fingertip wide.
+    const box = (await add.boundingBox())!;
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  } else {
+    await expect(add).toContainText("Add a phone");
+  }
+  await add.click();
+  await expect(page).toHaveURL(/#settings\/devices\/add-phone$/);
+  // The same codes as Settings › Devices › Add a phone.
+  await expect(page.getByRole("heading", { name: "Pair a phone" })).toBeVisible();
+  await expect(page.getByRole("img", { name: /QR code/ })).toHaveCount(2);
+  await expect(page.locator(".code")).toHaveText(/^\d{6}$/);
+  await expect(page.locator("#set-add-phone")).toBeInViewport();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("button", { name: "Add a phone" })).toBeVisible();
+  // Only when asked: Devices opened another way shows no code.
+  await page.goto("/#home");
+  await page.goto("/#settings/devices");
+  await expect(page.getByRole("heading", { name: "Paired devices" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pair a phone" })).toHaveCount(0);
+  await noHorizontalScroll(page);
 });
 
 test("home: a question asked there starts a new conversation; the last three open from there", async ({ page }, info) => {
@@ -1185,7 +1288,7 @@ test("assistant: online research is off until switched on, and only for this con
   await expect(page.getByLabel(/Also search the internet/)).not.toBeChecked();
 });
 
-test("household: the laptop can offer its own Wi-Fi network (simulated, never really started)", async ({ page }) => {
+test("settings: the laptop can offer its own Wi-Fi network (simulated, never really started)", async ({ page }) => {
   await ensureSetUp(page);
   const off = { supported: true, on: false, ssid: "PC 1234", passphrase: "", clients: 0, error: null, qr: null };
   const on = { supported: true, on: true, ssid: "Zaklon", passphrase: "abcd2345ef", clients: 1, error: null, qr: "WIFI:T:WPA;S:Zaklon;P:abcd2345ef;;" };
@@ -1193,7 +1296,7 @@ test("household: the laptop can offer its own Wi-Fi network (simulated, never re
   await page.route("**/api/hotspot/start", (r) => r.fulfill({ json: on }));
   await page.route("**/api/hotspot/stop", (r) => r.fulfill({ json: off }));
   // Reload so the panel asks again (and gets the simulated answer).
-  await page.goto("/#household/network");
+  await page.goto("/#settings/network");
   await page.reload();
   await expect(page.getByRole("heading", { name: "Network", level: 1 })).toBeVisible();
   await page.getByRole("button", { name: "Make the Wi-Fi network" }).click();
@@ -1231,7 +1334,7 @@ test("add-ons: the starter set downloads the recommended packs in one go (reques
   expect(asked.some((p) => /\/api\/packs\/qwen35-/.test(p))).toBe(true);
 });
 
-test("household: warns when Windows Firewall would keep phones out, and fixes it (simulated)", async ({ page }) => {
+test("settings: warns when Windows Firewall would keep phones out, and fixes it (simulated)", async ({ page }) => {
   await ensureSetUp(page);
   const bad = { checked: true, firewall_on: true, allowed: false, blocked: true, error: null, ok: false };
   const good = { ...bad, allowed: true, blocked: false, ok: true };
@@ -1241,158 +1344,249 @@ test("household: warns when Windows Firewall would keep phones out, and fixes it
     fixed = true;
     return r.fulfill({ json: good });
   });
-  // On the tiles, where it cannot be missed, and under Network.
-  await page.goto("/#household");
+  // On Devices, where phones are added and it cannot be missed, and under Network.
+  await page.goto("/#settings/devices");
   await page.reload();
   await expect(page.locator(".firewall").getByText(/Windows Firewall is blocking Zaklon/)).toBeVisible();
-  await page.goto("/#household/network");
+  await page.goto("/#settings/network");
   const panel = page.locator(".firewall");
   await expect(panel.getByText(/Windows Firewall is blocking Zaklon/)).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Make this network private" })).toHaveCount(0);
   await panel.getByRole("button", { name: "Let phones connect" }).click();
   await expect(panel).toHaveCount(0);
   await expect(page.locator(".firewall-ok")).toContainText("Phones on the Wi-Fi can reach Zaklon");
-  await page.goto("/#household");
-  await expect(page.getByRole("heading", { name: "Household", exact: true })).toBeVisible();
+  await page.goto("/#settings/devices");
+  await expect(page.getByRole("heading", { name: "Devices", level: 1 })).toBeVisible();
   await expect(page.locator(".firewall")).toHaveCount(0);
 });
 
-test("household: says how to open a network Windows treats as public (simulated)", async ({ page }) => {
+test("settings: a home network Windows treats as public is made private (simulated, Windows is never asked)", async ({ page }) => {
   await ensureSetUp(page);
-  const state = { checked: true, firewall_on: true, allowed: true, blocked: false, public_network: true, error: null, ok: false };
-  await page.route("**/api/firewall", (r) => r.fulfill({ json: state }));
-  await page.goto("/#household");
+  const pub = { checked: true, firewall_on: true, allowed: true, blocked: false, public_network: true, error: null, ok: false };
+  const priv = { ...pub, public_network: false, ok: true };
+  // The first time the person says no to Windows' question; then yes.
+  const answers = [pub, priv];
+  let asked = 0;
+  await page.route("**/api/firewall", (r) => r.fulfill({ json: asked >= 2 ? priv : pub }));
+  await page.route("**/api/firewall/private", (r) => r.fulfill({ json: answers[Math.min(asked++, 1)] }));
+  await page.route("**/api/firewall/allow", (r) => r.abort());
+  // On Home, with the warnings.
+  await page.goto("/#home");
   await page.reload();
   const panel = page.locator(".firewall");
   await expect(panel.getByText(/treats the network this laptop is on as a public network/)).toBeVisible();
-  // The rules are there already; asking Windows again would not help.
+  // Before the button: that this is only for a home network.
+  const why = panel.getByText("Do this only for your home network: other devices on a private network can find this laptop.");
+  await expect(why).toBeVisible();
+  // The rules are there already; asking Windows for them again would not help.
   await expect(panel.getByRole("button", { name: "Let phones connect" })).toHaveCount(0);
+  const button = panel.getByRole("button", { name: "Make this network private" });
+  const order = await panel.evaluate((el) => [...el.querySelectorAll("p, button")].map((x) => x.textContent));
+  expect(order.findIndex((x) => x?.startsWith("Do this only"))).toBeLessThan(order.indexOf("Make this network private"));
+  // Windows' question answered with no: the network is still public, and the way in Windows' own settings is shown.
+  await button.click();
+  await expect(panel.getByText(/Windows still treats this network as public/)).toBeVisible();
+  await expect(panel).toContainText("Network & internet › this network › Network profile type › Private");
+  // Answered with yes: the warning goes away.
+  await button.click();
+  await expect(panel).toHaveCount(0);
+  expect(asked).toBe(2);
+  // Settings › Network then says all is well.
+  await page.goto("/#settings/network");
+  await expect(page.locator(".firewall-ok")).toContainText("Phones on the Wi-Fi can reach Zaklon");
+  await noHorizontalScroll(page);
 });
 
-test("household: the hub on top, a tile per category; a tile opens its page, and back returns to the tiles", async ({ page }, info) => {
+test("settings: a laptop opens on Devices with the categories beside it; a phone lists them first", async ({ page }, info) => {
   await ensureSetUp(page);
-  const hub = await (await page.request.get("/api/status")).json();
-  await expect(page.getByRole("heading", { name: "Household", exact: true })).toBeVisible();
-  // The hub's name, that it runs, and a few facts.
-  const card = page.locator(".hub-card");
-  await expect(card.locator(".hub-name")).toHaveText(hub.hub_name);
-  await expect(card).toContainText("Running");
-  await expect(card).toContainText(hub.version);
-  await expect(card).toContainText("Last backup");
-  // Every category, with what it holds.
-  const tiles = page.locator(".set-tiles").getByRole("link");
-  await expect(tiles).toHaveText([/^Devices/, /^Network/, /^Backups/, /^Privacy & security/, /^Appearance/, /^Language/, /^AI assistant/, /^Updates/, /^About/]);
-  const backups = page.getByRole("link", { name: /^Backups/ });
-  await expect(backups).toContainText("Daily copies, saving to USB, restoring");
-  if (info.project.name === "phone") {
-    for (const tile of await tiles.all()) expect((await tile.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-    expect((await page.getByRole("searchbox", { name: "Find a setting" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
-  }
-  await noHorizontalScroll(page);
-
-  // A tile opens the category as a page: "Household › Backups".
-  await backups.click();
-  await expect(page).toHaveURL(/#household\/backups$/);
-  await expect(page.getByRole("heading", { name: "Backups", level: 1 })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Backups", level: 1 })).toBeFocused();
-  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "Household", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Make a backup now" })).toBeVisible();
+  await page.goto("/#home");
+  await page.locator("nav.nav").getByRole("button", { name: "Settings" }).click();
+  await expect(page).toHaveURL(/#settings$/);
   const categories = page.getByRole("navigation", { name: "Categories" });
+  const links = categories.getByRole("link");
+  // Every category, and Help at the end.
+  await expect(links).toHaveText([/^Devices/, /^Network/, /^Backups/, /^Privacy & security/, /^Appearance/, /^Language/, /^AI assistant/, /^Updates/, /^About/, /^Help/]);
+  await expect(links.last()).toHaveAttribute("href", "#help");
+  const search = page.getByRole("searchbox", { name: "Find a setting" });
+  await expect(search).toBeVisible();
+  // No tiles and no card about the hub: Home has that.
+  await expect(page.locator(".set-tiles .set-tile-desc").first()).toBeVisible({ visible: info.project.name === "phone" });
   if (info.project.name === "laptop") {
-    // The other categories are listed beside it, this one marked, as in Windows Settings.
+    // Straight into the first category, the list on the left with the search at its top.
+    const title = page.getByRole("heading", { name: "Devices", level: 1 });
+    await expect(title).toBeVisible();
+    await expect(title).toBeFocused();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+    await expect(categories.getByRole("link", { name: "Devices" })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("button", { name: "Add a phone" })).toBeVisible();
+    const [box, list, main] = [(await search.boundingBox())!, (await categories.boundingBox())!, (await page.locator(".set-main").boundingBox())!];
+    expect(box.y + box.height).toBeLessThanOrEqual(list.y);
+    expect(list.x + list.width).toBeLessThan(main.x);
+    // The list is the way around: no way back and no breadcrumb.
+    await expect(page.getByRole("link", { name: "Back to Settings" })).toBeHidden();
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toBeHidden();
+    // A category opens beside the list, marked in it.
+    await categories.getByRole("link", { name: "Backups" }).click();
+    await expect(page).toHaveURL(/#settings\/backups$/);
+    await expect(page.getByRole("heading", { name: "Backups", level: 1 })).toBeFocused();
     await expect(categories.getByRole("link", { name: "Backups" })).toHaveAttribute("aria-current", "page");
-    await categories.getByRole("link", { name: "Appearance" }).click();
-    await expect(page).toHaveURL(/#household\/appearance$/);
-    await expect(page.getByRole("heading", { name: "Appearance", level: 1 })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Make a backup now" })).toBeVisible();
     await page.goBack();
-    await expect(page.getByRole("heading", { name: "Backups", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Devices", level: 1 })).toBeVisible();
   } else {
-    // A phone has the room for the page only; the way back is a fingertip wide.
-    await expect(categories).toBeHidden();
-    const back = await page.getByRole("link", { name: "Back to Household" }).boundingBox();
-    expect(back!.height).toBeGreaterThanOrEqual(44);
-    expect(back!.width).toBeGreaterThanOrEqual(44);
+    // A phone has no room for both: the list first, each category with what it holds, a fingertip tall.
+    await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Devices", level: 1 })).toHaveCount(0);
+    const backups = categories.getByRole("link", { name: /^Backups/ });
+    await expect(backups).toContainText("Daily copies, saving to USB, restoring");
+    for (const link of await links.all()) expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    expect((await search.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await noHorizontalScroll(page);
+    // A category opens as a page of its own: "Settings › Backups", with the way back.
+    await backups.click();
+    await expect(page).toHaveURL(/#settings\/backups$/);
+    await expect(page.getByRole("heading", { name: "Backups", level: 1 })).toBeFocused();
+    await expect(page.getByRole("navigation", { name: "Categories" })).toHaveCount(0);
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "Settings", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Make a backup now" })).toBeVisible();
+    const back = page.getByRole("link", { name: "Back to Settings" });
+    const size = (await back.boundingBox())!;
+    expect(size.height).toBeGreaterThanOrEqual(44);
+    expect(size.width).toBeGreaterThanOrEqual(44);
+    await noHorizontalScroll(page);
+    // The way back returns to the list, with the focus on the category just left.
+    await back.click();
+    await expect(page).toHaveURL(/#settings$/);
+    await expect(backups).toBeFocused();
+    // The browser's back button returns to the list too.
+    await categories.getByRole("link", { name: /^Privacy & security/ }).click();
+    await expect(page.getByRole("heading", { name: "Privacy & security", level: 1 })).toBeVisible();
+    await page.goBack();
+    await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+    // And so does Settings in the bar.
+    await categories.getByRole("link", { name: /^About/ }).click();
+    await expect(page.getByRole("heading", { name: "About", level: 1 })).toBeVisible();
+    await page.locator("nav.nav").getByRole("button", { name: "Settings" }).click();
+    await expect(page).toHaveURL(/#settings$/);
+    await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
   }
   await noHorizontalScroll(page);
-
-  // The back arrow returns to the tiles, with the focus on the tile just left.
-  await page.getByRole("link", { name: "Back to Household" }).click();
-  await expect(page).toHaveURL(/#household$/);
-  await expect(backups).toBeFocused();
-  // The browser's back button returns to the tiles too.
-  await page.getByRole("link", { name: /^Privacy & security/ }).click();
-  await expect(page.getByRole("heading", { name: "Privacy & security", level: 1 })).toBeVisible();
-  await page.goBack();
-  await expect(page).toHaveURL(/#household$/);
-  await expect(page.locator(".set-tiles")).toBeVisible();
-  // And so does Household in the bar.
-  await page.getByRole("link", { name: /^About/ }).click();
-  await expect(page.getByRole("heading", { name: "About", level: 1 })).toBeVisible();
-  await page.locator("nav.nav").getByRole("button", { name: "Household" }).click();
-  await expect(page).toHaveURL(/#household$/);
-  await expect(page.locator(".set-tiles")).toBeVisible();
 });
 
-test("household: the search finds a setting by its name or other words, in English or Serbian, and opens it", async ({ page }) => {
+test("settings: Help is at the end of the list, and belongs to Settings in the bar", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.goto("/#settings");
+  await page.getByRole("navigation", { name: "Categories" }).getByRole("link", { name: /^Help/ }).click();
+  await expect(page).toHaveURL(/#help$/);
+  await expect(page.getByRole("heading", { name: "Help", level: 1 })).toBeVisible();
+  await expect(page.locator("nav.nav").getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "true");
+  // "Settings › Help": the way back to Settings.
+  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "Settings", exact: true }).click();
+  await expect(page).toHaveURL(/#settings$/);
+  await expect(page.locator("nav.nav").getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+  // A help page opened from a screen's "How it works" belongs to Settings too.
+  await page.goto("/#help/supplies");
+  await expect(page.locator("nav.nav").getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "true");
+  await noHorizontalScroll(page);
+});
+
+test("settings: the old Household addresses lead to the same place", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.goto("/#household/backups");
+  await expect(page).toHaveURL(/#settings\/backups$/);
+  await expect(page.getByRole("heading", { name: "Backups", level: 1 })).toBeVisible();
+  // One setting on a page.
+  await page.goto("/#household/privacy/password");
+  await expect(page).toHaveURL(/#settings\/privacy\/password$/);
+  await expect(page.locator("#set-password")).toBeInViewport();
+  // Settings itself.
+  await page.goto("/#household");
+  await expect(page).toHaveURL(/#settings$/);
+  await expect(page.locator("nav.nav").getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+  // A link to an old address inside the app.
+  await page.evaluate(() => {
+    location.hash = "household/language";
+  });
+  await expect(page).toHaveURL(/#settings\/language$/);
+  await expect(page.getByRole("heading", { name: "Language", level: 1 })).toBeVisible();
+  // The app opened fresh at an old address.
+  await page.goto("about:blank");
+  await page.goto("/#household/appearance");
+  await expect(page).toHaveURL(/#settings\/appearance$/);
+  await expect(page.getByRole("heading", { name: "Appearance", level: 1 })).toBeVisible();
+  // The old address of a help page.
+  await page.goto("/#help/household/backups");
+  await expect(page).toHaveURL(/#help\/settings\/backups$/);
+  await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Backups", level: 2 })).toBeInViewport();
+  // Back goes through the new addresses.
+  await page.goBack();
+  await expect(page).toHaveURL(/#settings\/appearance$/);
+});
+
+test("settings: the search finds a setting by its name or other words, in English or Serbian, and opens it", async ({ page }) => {
   await ensureSetUp(page);
   // Whatever Wi-Fi this computer has, the panel shows (simulated).
   await page.route("**/api/hotspot", (r) => r.fulfill({ json: { supported: true, on: false, ssid: "PC 1234", passphrase: "", clients: 0, error: null, qr: null } }));
+  // At the top of the list of categories (beside the page on a laptop, the list itself on a phone).
+  await page.goto("/#settings");
   const search = page.getByRole("searchbox", { name: "Find a setting" });
   const results = page.locator(".set-results");
   await search.fill("wifi");
   const hotspot = results.getByRole("link", { name: /Wi-Fi network from this laptop/ });
   await expect(hotspot).toContainText("Network");
-  // The results take the place of the tiles.
-  await expect(page.locator(".set-tiles")).toHaveCount(0);
+  // The results take the place of the list.
+  await expect(page.getByRole("navigation", { name: "Categories" })).toHaveCount(0);
   await hotspot.click();
-  await expect(page).toHaveURL(/#household\/network\/hotspot$/);
+  await expect(page).toHaveURL(/#settings\/network\/hotspot$/);
   await expect(page.getByRole("heading", { name: "Network", level: 1 })).toBeVisible();
   await expect(page.locator("#set-hotspot")).toBeFocused();
   await expect(page.locator("#set-hotspot")).toBeInViewport();
 
   // Serbian words find English settings (without the accents too); Enter opens the first.
-  await page.goto("/#household");
+  await page.goto("/#settings");
   await search.fill("sifrovanje");
   await expect(results.getByRole("link").first()).toContainText("Backup encryption");
   await search.press("Enter");
-  await expect(page).toHaveURL(/#household\/backups\/backup-encryption$/);
+  await expect(page).toHaveURL(/#settings\/backups\/backup-encryption$/);
   await expect(page.locator("#set-backup-encryption")).toBeFocused();
   await expect(page.locator("#set-backup-encryption")).toBeInViewport();
 
   // The arrow keys go through the results.
-  await page.goto("/#household");
+  await page.goto("/#settings");
   await search.fill("lozinka");
   await expect(results.getByRole("link").first()).toContainText("Household password");
   await search.press("ArrowDown");
   await expect(results.getByRole("link").first()).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/#household\/privacy\/password$/);
+  await expect(page).toHaveURL(/#settings\/privacy\/password$/);
   await expect(page.getByRole("heading", { name: "Household password" })).toBeInViewport();
 
-  // Words that match nothing are answered; Escape brings the tiles back.
-  await page.goto("/#household");
+  // Words that match nothing are answered; Escape brings the list back.
+  await page.goto("/#settings");
   await search.fill("zzqx");
   await expect(page.getByText("No setting matches that. Try another word.")).toBeVisible();
   await search.press("Escape");
   await expect(search).toHaveValue("");
-  await expect(page.locator(".set-tiles")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Categories" })).toBeVisible();
 
   // In Serbian the results are in Serbian, and English words still find them.
   await setLanguage(page, "sr");
-  await page.goto("/#household");
+  await page.goto("/#settings");
   await page.getByRole("searchbox", { name: "Pronađi podešavanje" }).fill("accent");
   await expect(results.getByRole("link").first()).toContainText("Boja akcenta");
   await setLanguage(page, "en");
 });
 
-test("household: an address opens a category, or one setting on it, directly", async ({ page }) => {
+test("settings: an address opens a category, or one setting on it, directly", async ({ page }, info) => {
   await ensureSetUp(page);
   // A fresh start at the address of a category.
-  await page.goto("/#household/appearance");
+  await page.goto("/#settings/appearance");
   await page.reload();
   await expect(page.getByRole("heading", { name: "Appearance", level: 1 })).toBeVisible();
   await expect(page.getByRole("radio", { name: "Amber" })).toBeVisible();
   // ...and of one setting, which the page opens at.
-  await page.goto("/#household/about/licenses");
+  await page.goto("/#settings/about/licenses");
   await page.reload();
   await expect(page.getByRole("heading", { name: "About", level: 1 })).toBeVisible();
   await expect(page.locator("#set-licenses")).toBeInViewport();
@@ -1402,16 +1596,16 @@ test("household: an address opens a category, or one setting on it, directly", a
     await new Promise((done) => setTimeout(done, 800));
     return r.fulfill({ json: { checked: true, firewall_on: true, allowed: true, blocked: false, public_network: false, error: null, ok: true } });
   });
-  await page.goto("/#household/network/firewall");
+  await page.goto("/#settings/network/firewall");
   await page.reload();
   await expect(page.locator("#set-firewall")).toContainText("Asking Windows…");
   await expect(page.locator("#set-firewall")).toContainText("Phones on the Wi-Fi can reach Zaklon");
   await expect(page.locator("#set-firewall")).toBeInViewport();
   await expect(page.locator("#set-firewall")).toBeFocused();
-  // An address that is no category shows the tiles.
-  await page.goto("/#household/nowhere");
-  await expect(page.locator(".set-tiles")).toBeVisible();
-  await expect(page.locator("nav.nav").getByRole("button", { name: "Household" })).toHaveAttribute("aria-current", "page");
+  // An address that is no category shows the first one on a laptop, the list on a phone.
+  await page.goto("/#settings/nowhere");
+  await expect(page.getByRole("heading", { name: info.project.name === "laptop" ? "Devices" : "Settings", level: 1 })).toBeVisible();
+  await expect(page.locator("nav.nav").getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
   // Back goes through them in turn.
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Network", level: 1 })).toBeVisible();

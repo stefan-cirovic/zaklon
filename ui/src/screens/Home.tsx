@@ -1,15 +1,16 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState } from "react";
 import { api, ApiError, type Status } from "../api";
 import type { Key, Lang } from "../i18n";
 import { offlineState, onBackOnline, onOfflineChange } from "../offline";
 import { useVisiblePoll } from "../poll";
-import { fmtBytes, fmtDateTime, fmtQty, unitName } from "../format";
+import { countWord, daysUntil, fmtBytes, fmtDate, fmtDateTime, fmtQty, unitName } from "../format";
 import { askInAssistant, fromText, openInAssistant, type Summary as Chat } from "../conversations";
 import { BUSY, rootName, type CatalogReply, type Localized } from "../addons";
 import { countryState, type MapsReply } from "../maps";
 import { TOOLS, type ToolId } from "../tools";
+import { askForPairing, fold } from "../settings";
+import { errText } from "../errors";
 import type { Item } from "./Supplies";
-import ExpiryBadge from "../components/ExpiryBadge";
 import HelpLink from "../components/HelpLink";
 import Firewall from "../components/Firewall";
 import { UpdateBanner } from "../components/Updates";
@@ -31,7 +32,7 @@ type Props = {
   pinned: ToolId | null;
 };
 type SuppliesSummary = { total_items: number; expired: Item[]; expiring_soon: Item[]; running_low: Item[]; to_put_away?: number };
-type ShoppingEntry = { id: string; text: string; quantity: number | null; unit: string | null; status: string };
+type ShoppingEntry = { id: string; item_id?: string | null; text: string; quantity: number | null; unit: string | null; status: string };
 
 /** Supplies, the shopping list, the conversations and the add-ons are asked for again this often (never while the app is in the background). */
 const EVERY = 30_000;
@@ -39,8 +40,11 @@ const EVERY = 30_000;
 const BUSY_EVERY = 2_000;
 /** The world's maps are a long answer: asked for rarely, unless a map is downloading. */
 const MAPS_EVERY = 120_000;
-/** How many entries of each list Home shows, and how many conversations. */
+/** How many things that need attention Home lists, how many downloads, and how many conversations. */
+const ATTENTION = 6;
 const SHOW = 5;
+/** Something added to the shopping list from Home counts as on it this long, until the list itself shows it. */
+const ADDED_KEEP = 60_000;
 const RECENT = 3;
 
 /**
@@ -133,7 +137,23 @@ export default function Home({ status, statusAt, error, t, lang, go, phone, pinn
 
   return (
     <div className="home">
-      <HubHead t={t} status={status} statusAt={statusAt} up={up} stale={stale} system={cat?.system ?? null} />
+      <HubHead
+        t={t}
+        status={status}
+        statusAt={statusAt}
+        up={up}
+        stale={stale}
+        system={cat?.system ?? null}
+        addPhone={
+          // Laptop only: straight to pairing, as Settings › Devices › Add a phone.
+          !phone && status?.set_up
+            ? () => {
+                askForPairing();
+                go("settings/devices/add-phone");
+              }
+            : null
+        }
+      />
       <div className="home-alerts">
         {error && !away && (
           <div className="panel notice home-alert" role="alert">
@@ -146,7 +166,7 @@ export default function Home({ status, statusAt, error, t, lang, go, phone, pinn
       </div>
       <div className="home-grid">
         <AssistantCard t={t} go={go} chats={chats} failed={chatsFailed} saved={chatsSaved} />
-        <SuppliesCard t={t} sum={sum} shop={shop} unavailable={unavailable} note={suppliesNote} />
+        <SuppliesCard t={t} sum={sum} shop={shop} unavailable={unavailable} note={suppliesNote} reload={reload} />
         <AddonsCard t={t} lang={lang} cat={cat} maps={maps} failed={catFailed} away={away} go={go} />
         <QuickAccess t={t} pinned={pinned} />
       </div>
@@ -154,7 +174,7 @@ export default function Home({ status, statusAt, error, t, lang, go, phone, pinn
   );
 }
 
-/** The hub in one line: its name, whether it runs, its power, the paired devices and its address. */
+/** The hub in one line: its name, whether it runs, its power, the paired devices (with "Add a phone" on the laptop) and its address. */
 function HubHead({
   t,
   status,
@@ -162,6 +182,7 @@ function HubHead({
   up,
   stale,
   system,
+  addPhone,
 }: {
   t: T;
   status: Status | null;
@@ -169,6 +190,7 @@ function HubHead({
   up: boolean;
   stale: boolean;
   system: CatalogReply["system"] | null;
+  addPhone: (() => void) | null;
 }) {
   const asOfId = useId();
   const power =
@@ -189,7 +211,15 @@ function HubHead({
         </div>
         <div>
           <dt>{t("devices")}</dt>
-          <dd>{status?.devices ?? "–"}</dd>
+          <dd className="home-devices">
+            {status?.devices ?? "–"}
+            {addPhone && (
+              <button type="button" className="btn secondary small home-add-phone" onClick={addPhone} title={t("addDevice")}>
+                <Icon name="plus" size={14} />
+                <span className="home-add-phone-text">{t("addDevice")}</span>
+              </button>
+            )}
+          </dd>
         </div>
         <div>
           <dt>{t("addresses")}</dt>
@@ -221,53 +251,79 @@ function CardHead({ id, icon, title, href, link }: { id: string; icon: IconName;
   );
 }
 
-/** One list of a card: its name and how many, the first few entries, and a link to the rest. */
-function Part({
-  t,
-  title,
-  count,
-  tone,
-  empty,
-  more,
-  href,
-  link,
-  children,
-}: {
-  t: T;
-  title: string;
-  count: number;
-  tone?: "warn" | "soon";
-  empty: string;
-  /** How many are not shown. */
-  more: number;
-  href: string;
-  /** A link that is always there (otherwise only when some are not shown). */
-  link?: string;
-  children: ReactNode;
-}) {
-  const id = useId();
-  const moreText = more > 0 ? t("homeMoreN").replace("{n}", String(more)) : "";
-  return (
-    <section className="home-part" aria-labelledby={id}>
-      <h3 id={id} className="home-sub">
-        {title} <span className={"home-count" + (tone && count > 0 ? ` ${tone}` : "")}>{count}</span>
-      </h3>
-      {count === 0 ? <p className="muted home-empty">{empty}</p> : <div className="mini-list">{children}</div>}
-      {(link || more > 0) && (
-        <a className="home-link" href={href}>
-          {link ? `${link}${moreText ? ` (${moreText})` : ""}` : moreText}
-        </a>
-      )}
-    </section>
-  );
+/** Something in the supplies that needs attention. */
+type Attention = {
+  item: Item;
+  kind: "expired" | "soon" | "low";
+  /** Days until it expires (below 0: since it did). */
+  days: number;
+  /** Below its "Warn below" amount (also when it is listed for its date). */
+  low: boolean;
+};
+
+/**
+ * One list of what needs attention, the most urgent first: what has expired
+ * (the longest ago first), what expires within 30 days (the soonest first),
+ * then what is running low. Something that is more than one of these is
+ * listed once, where it comes first.
+ */
+function needsAttention(sum: SuppliesSummary): Attention[] {
+  const lowIds = new Set(sum.running_low.map((i) => i.id));
+  const seen = new Set<string>();
+  const out: Attention[] = [];
+  const add = (item: Item, kind: Attention["kind"]) => {
+    if (seen.has(item.id)) return;
+    seen.add(item.id);
+    out.push({ item, kind, days: item.expiry ? daysUntil(item.expiry) : 0, low: lowIds.has(item.id) });
+  };
+  const byDate = (a: Item, b: Item) => (a.expiry ?? "").localeCompare(b.expiry ?? "");
+  for (const i of [...sum.expired].sort(byDate)) add(i, "expired");
+  for (const i of [...sum.expiring_soon].sort(byDate)) add(i, "soon");
+  for (const i of sum.running_low) add(i, "low");
+  return out;
 }
 
+/** "2 days" / "2 dana". */
+function dayCount(n: number): string {
+  return `${n} ${countWord(n, ["day", "days"], ["dan", "dana", "dana"])}`;
+}
+
+/** What is wrong, in a few words: "expired 2 days ago", "expires tomorrow", "2 of 3 kg". */
+function whatIsWrong(t: T, a: Attention): string {
+  const { item, days } = a;
+  if (a.kind === "low") {
+    const min = item.min_quantity ?? 0;
+    return `${fmtQty(item.quantity)} ${t("of")} ${fmtQty(min)} ${unitName(t, item.unit, min)}`;
+  }
+  if (a.kind === "expired") {
+    if (days >= 0) return t("expired");
+    if (days === -1) return t("attnExpiredYesterday");
+    if (days >= -30) return t("attnExpiredAgo").replace("{n}", dayCount(-days));
+    return t("attnExpiredOn").replace("{date}", fmtDate(item.expiry ?? ""));
+  }
+  if (days <= 0) return t("attnExpiresToday");
+  if (days === 1) return t("attnExpiresTomorrow");
+  return t("attnExpiresIn").replace("{n}", dayCount(days));
+}
+
+/** On the shopping list already: added (by hand or from here), or suggested there because it runs low. */
+function onShoppingList(shop: ShoppingEntry[], item: Item): boolean {
+  const name = fold(item.name);
+  return shop.some((e) => e.status === "open" && (e.item_id === item.id || e.id === `low:${item.id}` || fold(e.text) === name));
+}
+
+/**
+ * The supplies at a glance: one list of what needs attention (a line each:
+ * the name, what is wrong and, where it helps, "Add to shopping list"), or a
+ * calm "All good"; below it one line with the shopping list and the rest.
+ */
 function SuppliesCard({
   t,
   sum,
   shop,
   unavailable,
   note,
+  reload,
 }: {
   t: T;
   sum: SuppliesSummary | null;
@@ -275,13 +331,42 @@ function SuppliesCard({
   unavailable: boolean;
   /** When the lists are old: from when, or that the hub does not answer. */
   note: string | null;
+  /** Ask for the supplies and the shopping list again. */
+  reload: () => void;
 }) {
   const id = useId();
-  const expired = sum?.expired ?? [];
-  const expiring = [...expired, ...(sum?.expiring_soon ?? [])];
-  const low = sum?.running_low ?? [];
-  const toBuy = (shop ?? []).filter((e) => e.status === "open");
+  const listId = useId();
+  const [adding, setAdding] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  // Added from here: on the list at once, before the list from the hub (or the phone's copy) shows it.
+  const [added, setAdded] = useState<{ id: string; at: number }[]>([]);
+  const waiting = added.filter((a) => Date.now() - a.at < ADDED_KEEP && !shop?.some((e) => e.status === "open" && e.item_id === a.id)).map((a) => a.id);
+  const listed = (item: Item) => waiting.includes(item.id) || (shop !== null && onShoppingList(shop, item));
+
+  const all = sum ? needsAttention(sum) : [];
+  const toBuy = (shop ?? []).filter((e) => e.status === "open").length + waiting.length;
   const toPutAway = sum?.to_put_away ?? 0;
+
+  const addToList = async (a: Attention) => {
+    const { item } = a;
+    setAdding(item.id);
+    setErr(null);
+    // Enough to be back at the "Warn below" amount; for something expired, as much as there was.
+    const missing = (item.min_quantity ?? 0) - item.quantity;
+    const quantity = a.kind === "expired" ? Math.max(item.quantity, missing) : missing;
+    try {
+      await api("/api/shopping", {
+        json: { text: item.name, quantity: quantity > 0 ? Math.round(quantity * 1000) / 1000 : null, unit: item.unit, item_id: item.id },
+      });
+      setAdded((list) => [...list.filter((a) => a.id !== item.id), { id: item.id, at: Date.now() }]);
+      reload();
+    } catch (e) {
+      setErr(errText(t, e));
+    } finally {
+      setAdding(null);
+    }
+  };
+
   return (
     <section className="panel left home-card home-supplies" aria-labelledby={id}>
       <CardHead id={id} icon="supplies" title={t("supplies")} href="#supplies" link={t("homeOpenSupplies")} />
@@ -289,50 +374,72 @@ function SuppliesCard({
         <p className="warn home-empty">{t("unavailable")}</p>
       ) : sum === null ? (
         <p className="muted home-empty">{t("aiLoading")}</p>
+      ) : all.length === 0 ? (
+        <p className="home-allgood">
+          <span className="home-allgood-icon">
+            <Icon name="check" size={16} />
+          </span>
+          <span>
+            <strong>{t("homeAllGood")}</strong>
+            <span className="muted">: {t("homeAllGoodMore")}</span>
+          </span>
+        </p>
       ) : (
-        <div className="home-cols">
-          <Part t={t} title={t("expiringSoon")} count={expiring.length} tone={expired.length > 0 ? "warn" : "soon"} empty={t("homeNothingExpires")} more={expiring.length - SHOW} href="#supplies">
-            {expiring.slice(0, SHOW).map((i) => (
-              <div key={i.id} className="mini-row">
-                <span title={i.name}>{i.name}</span>
-                <ExpiryBadge date={i.expiry} t={t} />
-              </div>
-            ))}
-          </Part>
-          <Part t={t} title={t("runningLow")} count={low.length} tone="warn" empty={t("homeNothingLow")} more={low.length - SHOW} href="#supplies">
-            {low.slice(0, SHOW).map((i) => (
-              <div key={i.id} className="mini-row">
-                <span title={i.name}>{i.name}</span>
-                <span className="muted">
-                  {fmtQty(i.quantity)} / {fmtQty(i.min_quantity ?? 0)} {unitName(t, i.unit, i.min_quantity ?? 0)}
-                </span>
-              </div>
-            ))}
-          </Part>
-          <Part
-            t={t}
-            title={t("shoppingList")}
-            count={toBuy.length}
-            empty={shop === null ? t("unavailable") : t("homeShoppingEmpty")}
-            more={toBuy.length - SHOW}
-            href="#supplies/shopping"
-            link={t("homeOpenShopping")}
-          >
-            {toBuy.slice(0, SHOW).map((e) => (
-              <div key={e.id} className="mini-row">
-                <span title={e.text}>{e.text}</span>
-                {e.quantity !== null && (
-                  <span className="muted">
-                    {fmtQty(e.quantity)} {e.unit ? unitName(t, e.unit, e.quantity) : ""}
+        <section className="home-part" aria-labelledby={listId}>
+          <h3 id={listId} className="home-sub">
+            {t("homeNeedsAttention")} <span className={"home-count " + (all[0].kind === "expired" ? "warn" : "soon")}>{all.length}</span>
+          </h3>
+          <ul className="attn-list">
+            {all.slice(0, ATTENTION).map((a) => {
+              const shopping = a.kind === "expired" || a.low;
+              const on = shopping && listed(a.item);
+              return (
+                <li key={a.item.id} className={`attn-row ${a.kind}`}>
+                  <span className="attn-name" title={a.item.name}>{a.item.name}</span>
+                  <span className="attn-what">{whatIsWrong(t, a)}</span>
+                  <span className="attn-act">
+                    {shopping && !on && (
+                      <button
+                        type="button"
+                        className="btn secondary small attn-add"
+                        onClick={() => addToList(a)}
+                        disabled={adding !== null}
+                        aria-label={`${t("addToShopping")}: ${a.item.name}`}
+                        title={t("addToShopping")}
+                      >
+                        <Icon name="cart" size={16} />
+                        <span className="attn-add-text">{t("addToShopping")}</span>
+                      </button>
+                    )}
+                    {on && (
+                      <span className="attn-listed" title={t("onShoppingList")}>
+                        <Icon name="check" size={16} />
+                        <span className="attn-listed-text">{t("onShoppingList")}</span>
+                      </span>
+                    )}
                   </span>
-                )}
-              </div>
-            ))}
-          </Part>
-        </div>
+                </li>
+              );
+            })}
+          </ul>
+          {all.length > ATTENTION && (
+            <a className="home-link" href="#supplies">{t("homeMoreN").replace("{n}", String(all.length - ATTENTION))}</a>
+          )}
+        </section>
       )}
+      {err && <p className="error home-empty" role="alert">{err}</p>}
       {(sum !== null || note) && (
         <div className="home-foot">
+          {shop !== null && (
+            <a className="home-link" href="#supplies/shopping">
+              {toBuy > 0 ? `${t("homeToBuy")}: ${toBuy} ${countWord(toBuy, ["item", "items"], ["stavka", "stavke", "stavki"])}` : t("homeShoppingEmpty")}
+            </a>
+          )}
+          {toPutAway > 0 && (
+            <a className="home-link" href="#supplies/putaway">
+              {t("homeToPutAway")}: {toPutAway}
+            </a>
+          )}
           {sum !== null &&
             (sum.total_items > 0 ? (
               <span className="muted">
@@ -343,11 +450,6 @@ function SuppliesCard({
                 {t("homeNoSupplies")} <a className="home-link" href="#supplies">{t("addItem")}</a>
               </span>
             ))}
-          {toPutAway > 0 && (
-            <a className="home-link" href="#supplies/putaway">
-              {t("homeToPutAway")}: {toPutAway}
-            </a>
-          )}
           {note && <span className="muted home-note">{note}</span>}
         </div>
       )}

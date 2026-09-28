@@ -29,7 +29,7 @@ async function requestRestore(path: string, password: string, allowUnencrypted: 
 
 /**
  * Backups of the household's data (laptop only): daily by itself, to USB on request, and restore.
- * The page it is on (Household > Backups) gives the title; each part has an id the settings search jumps to.
+ * The page it is on (Settings › Backups) gives the title; each part has an id the settings search jumps to.
  */
 export default function Backups({ t }: { t: T }) {
   const [data, setData] = useState<Reply | null>(null);

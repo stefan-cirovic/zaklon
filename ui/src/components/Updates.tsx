@@ -40,7 +40,7 @@ export function UpdateBanner({ t }: { t: T }) {
   );
 }
 
-/** Household > Updates: the switch (laptop), a "check now" button and the last result. */
+/** Settings › Updates: the switch (laptop), a "check now" button and the last result. */
 export function UpdateSettings({ t, isHub }: { t: T; isHub: boolean }) {
   const [u, setU] = useState<UpdateState | null>(null);
   const [busy, setBusy] = useState(false);

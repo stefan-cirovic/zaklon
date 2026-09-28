@@ -1,6 +1,6 @@
 import type { Key, Lang } from "../i18n";
 import type { IconName } from "../components/Icon";
-import { fold } from "../settings";
+import { fold, upgradedHash } from "../settings";
 import { HELP_TOPICS, type HelpBlock, type HelpContent, type HelpSection, type HelpTopicId } from "./types";
 
 export { HELP_TOPICS, type HelpBlock, type HelpContent, type HelpSection, type HelpTopic, type HelpTopicId } from "./types";
@@ -8,7 +8,7 @@ export { HELP_TOPICS, type HelpBlock, type HelpContent, type HelpSection, type H
 /** The Help home: the topics in groups, in the order of the pages. */
 export const HELP_GROUPS: { title: Key; topics: HelpTopicId[] }[] = [
   { title: "helpGroupStart", topics: ["start", "pairing"] },
-  { title: "helpGroupScreens", topics: ["home", "assistant", "supplies", "library", "maps", "addons", "household"] },
+  { title: "helpGroupScreens", topics: ["home", "assistant", "supplies", "library", "maps", "addons", "settings"] },
   { title: "helpGroupTrouble", topics: ["offline", "troubleshooting"] },
 ];
 
@@ -21,7 +21,7 @@ export const HELP_ICONS: Record<HelpTopicId, IconName> = {
   library: "library",
   maps: "maps",
   addons: "addons",
-  household: "household",
+  settings: "settings",
   offline: "offline",
   troubleshooting: "wrench",
 };
@@ -37,7 +37,7 @@ export function helpHref(topic?: HelpTopicId, section?: string): string {
 
 /** The topic and section in an address like "#help/supplies/scan" (nulls for the Help home). */
 export function helpRoute(hash: string): { topic: HelpTopicId | null; section: string | null } {
-  const [tab, topic, section] = hash.replace(/^#/, "").split("/");
+  const [tab, topic, section] = upgradedHash(hash).replace(/^#/, "").split("/");
   if (tab !== "help" || !isHelpTopic(topic)) return { topic: null, section: null };
   return { topic, section: section || null };
 }

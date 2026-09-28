@@ -3,7 +3,7 @@
 // The user guide in English and Serbian must match: the same topics (the
 // types already make sure of that), the same sections in the same order, the
 // same kinds of blocks with the same number of steps, and the same links.
-// Every link must lead somewhere: a screen, a Household category or setting,
+// Every link must lead somewhere: a screen, a Settings category or setting,
 // an Add-ons folder, or a help page and section that exist.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -15,7 +15,7 @@ const sr = (await import("../../src/help/sr.ts")).default;
 const src = (file: string) => readFileSync(new URL(`../../src/${file}`, import.meta.url), "utf8");
 
 // What the addresses may name, read from the app's own lists.
-const SCREENS = ["home", "assistant", "tools", "household", "help", ...[...src("tools.ts").matchAll(/\{ id: "(\w+)", title:/g)].map((m) => m[1])];
+const SCREENS = ["home", "assistant", "tools", "settings", "help", ...[...src("tools.ts").matchAll(/\{ id: "(\w+)", title:/g)].map((m) => m[1])];
 const CATEGORIES = [...src("settings.ts").matchAll(/\{ id: "([\w-]+)", title: "\w+", desc:/g)].map((m) => m[1]);
 const SETTINGS = [...src("settings.ts").matchAll(/\{ id: "([\w-]+)", cat: "([\w-]+)"/g)].map((m) => `${m[2]}/${m[1]}`);
 const FOLDERS = [...src("addons.ts").matchAll(/\{ id: "(\w+)", name: "\w+", desc:/g)].map((m) => m[1]);
@@ -41,10 +41,10 @@ function checkHref(href: string, where: string) {
     if (a === undefined) return;
     assert.ok((HELP_TOPICS as readonly string[]).includes(a), `${where}: no help topic "${a}" (${href})`);
     if (b !== undefined) assert.ok((en as Content)[a].sections.some((s) => s.id === b), `${where}: no section "${b}" in help topic "${a}"`);
-  } else if (tab === "household") {
+  } else if (tab === "settings") {
     if (a === undefined) return;
-    assert.ok(CATEGORIES.includes(a), `${where}: no Household category "${a}" (${href})`);
-    if (b !== undefined) assert.ok(SETTINGS.includes(`${a}/${b}`), `${where}: no setting "${b}" in Household › ${a}`);
+    assert.ok(CATEGORIES.includes(a), `${where}: no Settings category "${a}" (${href})`);
+    if (b !== undefined) assert.ok(SETTINGS.includes(`${a}/${b}`), `${where}: no setting "${b}" in Settings › ${a}`);
   } else if (tab === "addons") {
     assert.equal(b, undefined, `${where}: ${href}`);
     if (a !== undefined) assert.ok(FOLDERS.includes(a), `${where}: no Add-ons folder "${a}" (${href})`);
@@ -98,9 +98,9 @@ for (const id of HELP_TOPICS) {
   });
 }
 
-// Each Household category page links to its section of the Household topic.
+// Each Settings category page links to its section of the Settings topic.
 for (const cat of CATEGORIES) {
-  assert.ok((en as Content).household.sections.some((s) => s.id === cat), `the Household topic has a section "${cat}" for its category page`);
+  assert.ok((en as Content).settings.sections.some((s) => s.id === cat), `the Settings topic has a section "${cat}" for its category page`);
 }
 
 console.log(`help: ${HELP_TOPICS.length} topics in English and Serbian match; ${links} links checked; about ${words} words.`);

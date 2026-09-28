@@ -77,18 +77,6 @@ export default function Tools({ t, go, pinned, pin }: Props) {
             </li>
           );
         })}
-        {/* Not a tool of its own (it cannot be pinned), but found here with them. */}
-        <li className="tool-card help-card">
-          <a className="tool-open" href="#help">
-            <span className="tool-icon">
-              <Icon name="help" size={26} />
-            </span>
-            <span className="tool-text">
-              <span className="tool-title">{t("help")}</span>
-              <span className="tool-desc">{t("helpToolDesc")}</span>
-            </span>
-          </a>
-        </li>
       </ul>
       <p className="muted tools-note">{pin ? t("pinForHousehold") : t("pinOnLaptop")}</p>
     </div>

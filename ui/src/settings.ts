@@ -1,11 +1,13 @@
 import { makeT, type Key } from "./i18n";
 
 /**
- * Household is laid out like Windows Settings: a tile for each category, and
- * each category on its own page at #household/<category>. A single setting
- * has an address too, #household/<category>/<setting>: the page opens at it.
- * That is where the search sends you. A new panel in Household gets an entry
- * in SETTINGS, and an element with the id "set-<setting id>" on its page.
+ * Settings is laid out like Windows Settings: the categories in a list on the
+ * left and the one open on the right (a phone shows the list first, then a
+ * category on its own). Each category has its page at #settings/<category>.
+ * A single setting has an address too, #settings/<category>/<setting>: the
+ * page opens at it. That is where the search sends you. A new panel in
+ * Settings gets an entry in SETTINGS, and an element with the id
+ * "set-<setting id>" on its page.
  */
 export type CategoryId = "devices" | "network" | "backups" | "privacy" | "appearance" | "language" | "assistant" | "updates" | "about";
 
@@ -19,7 +21,7 @@ export type Category = {
   hubOnly?: boolean;
 };
 
-/** In the order of the tiles. */
+/** In the order of the list; the first opens when Settings does (laptop). */
 export const CATEGORIES: readonly Category[] = [
   { id: "devices", title: "devices", desc: "catDevicesDesc", descPhone: "catDevicesDescPhone" },
   { id: "network", title: "catNetwork", desc: "catNetworkDesc", hubOnly: true },
@@ -82,14 +84,44 @@ function settingsFor(isHub: boolean): Setting[] {
 
 /** The address of a category's page, or of one setting on it. */
 export function settingsHref(cat: CategoryId, setting?: string): string {
-  return `#household/${cat}${setting ? `/${setting}` : ""}`;
+  return `#settings/${cat}${setting ? `/${setting}` : ""}`;
 }
 
-/** The page and setting in an address like "#household/network/hotspot" (nothing for the tiles). */
-export function householdRoute(hash: string): { cat: string | null; setting: string | null } {
-  const [tab, cat, setting] = hash.replace(/^#/, "").split("/");
-  if (tab !== "household") return { cat: null, setting: null };
+/** The page and setting in an address like "#settings/network/hotspot" (nothing for Settings itself). */
+export function settingsRoute(hash: string): { cat: string | null; setting: string | null } {
+  const [tab, cat, setting] = upgradedHash(hash).replace(/^#/, "").split("/");
+  if (tab !== "settings") return { cat: null, setting: null };
   return { cat: cat || null, setting: setting || null };
+}
+
+/**
+ * Settings was called Household, at #household/... (its help page at
+ * #help/household/...). An old address, from a bookmark or a link, leads to
+ * the same place under the new name.
+ */
+export function upgradedHash(hash: string): string {
+  return hash.replace(/^#household(?=\/|$)/, "#settings").replace(/^#help\/household(?=\/|$)/, "#help/settings");
+}
+
+/** Replace an old address in the address bar (without a new step in the history). */
+export function upgradeAddress() {
+  if (typeof location === "undefined") return;
+  const next = upgradedHash(location.hash);
+  if (next !== location.hash) history.replaceState(history.state, "", next);
+}
+
+/** "Add a phone" on Home: Settings › Devices opens with a pairing code already shown. */
+let pairingAsked = false;
+
+export function askForPairing() {
+  pairingAsked = true;
+}
+
+/** Whether "Add a phone" was chosen on Home; taking it clears it. */
+export function takePairingRequest(): boolean {
+  const asked = pairingAsked;
+  pairingAsked = false;
+  return asked;
 }
 
 /** Lowercase and without accents ("Šifrovanje" -> "sifrovanje", "đ" -> "dj", "Wi-Fi" -> "wifi"). */

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { CategoryId } from "../settings";
 import { Icon, IconFrame } from "./Icon";
 
-/** Household's line icons: one for each category, and the search, back and "open" marks. */
+/** Settings' line icons: one for each category, and the search, back and "open" marks. */
 export type SettingsIconName = Exclude<CategoryId, "assistant"> | "search" | "back" | "chevron";
 
 const dot = (cx: number, cy: number, r = 1) => <circle cx={cx} cy={cy} r={r} fill="currentColor" stroke="none" />;

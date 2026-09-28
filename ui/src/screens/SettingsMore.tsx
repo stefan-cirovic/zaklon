@@ -5,7 +5,7 @@ import { errText } from "../errors";
 import { fmtBytes, latinArticles, setLatinArticles } from "../format";
 import { Brand } from "../components/Brand";
 
-// The panels Household's category pages are built from (see Household.tsx).
+// The panels Settings' category pages are built from (see Settings.tsx).
 // A setting the search can jump to carries the id "set-<setting>" (settings.ts).
 
 type T = (k: Key) => string;

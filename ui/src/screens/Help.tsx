@@ -151,8 +151,18 @@ function HelpHome({ t, content }: { t: T; content: HelpContent }) {
 
   return (
     <div className="stack help-home">
+      {/* Help is at the end of Settings' list: "Settings › Help", with the way back there. */}
       <div className="page-head">
-        <h1>{t("help")}</h1>
+        <div className="set-head">
+          <a className="set-back" href="#settings" aria-label={t("backToSettings")} title={t("backToSettings")}>
+            <SettingsIcon name="back" size={20} />
+          </a>
+          <nav className="set-crumbs" aria-label={t("breadcrumb")}>
+            <a href="#settings">{t("settings")}</a>
+            <span aria-hidden="true">›</span>
+          </nav>
+          <h1>{t("help")}</h1>
+        </div>
         <p className="muted">{t("helpIntro")}</p>
       </div>
       <div className="set-search help-search" role="search">

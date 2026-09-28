@@ -9,18 +9,17 @@ import Backups, { SetupRestore } from "../components/Backups";
 import Hotspot from "../components/Hotspot";
 import Firewall from "../components/Firewall";
 import Memory from "../components/Memory";
-import { UpdateSettings, type UpdateState } from "../components/Updates";
-import { Brand, Mark } from "../components/Brand";
+import { UpdateSettings } from "../components/Updates";
+import { Brand } from "../components/Brand";
+import { Icon } from "../components/Icon";
 import { SettingsIcon } from "../components/SettingsIcon";
 import HelpLink from "../components/HelpLink";
-import { categoriesFor, categoryOf, findSettings, householdRoute, settingsHref, type Category, type CategoryId, type Setting } from "../settings";
-import { AboutZaklon, AiModel, Appearance, ChangePassword, LanguageSettings, Licenses, NetworkAddresses, Privacy, ThisHub, type Look } from "./HouseholdMore";
+import { categoriesFor, categoryOf, findSettings, settingsHref, settingsRoute, takePairingRequest, type Category, type CategoryId, type Setting } from "../settings";
+import { AboutZaklon, AiModel, Appearance, ChangePassword, LanguageSettings, Licenses, NetworkAddresses, Privacy, ThisHub, type Look } from "./SettingsMore";
 
 type T = (k: Key) => string;
 type Props = {
   status: Status | null;
-  /** The hub answers now (the status may be the last one it gave). */
-  online: boolean;
   t: T;
   lang: Lang;
   setLang: (l: Lang) => void;
@@ -38,32 +37,52 @@ type Props = {
 const KEEP_TICKS = 12;
 /** The space above a setting scrolled to (scroll-margin-top of .set-anchor). */
 const SCROLL_MARGIN = 20;
+/** From this width the list of categories and the page sit side by side (as in styles.css). */
+const WIDE = "(min-width: 900px)";
 
-/** The page and setting in the address (#household/backups), following the back and forward buttons. */
+/** The page and setting in the address (#settings/backups), following the back and forward buttons. */
 function useRoute() {
-  const [route, setRoute] = useState(() => householdRoute(location.hash));
+  const [route, setRoute] = useState(() => settingsRoute(location.hash));
   useEffect(() => {
-    const onHash = () => setRoute(householdRoute(location.hash));
+    const onHash = () => setRoute(settingsRoute(location.hash));
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
   return route;
 }
 
+/** Whether the window has room for the list and the page side by side; follows the window's size. */
+function useWide(): boolean {
+  const [wide, setWide] = useState(() => typeof matchMedia !== "undefined" && matchMedia(WIDE).matches);
+  useEffect(() => {
+    const media = matchMedia(WIDE);
+    const onChange = () => setWide(media.matches);
+    onChange();
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+  return wide;
+}
+
 /**
- * Household, laid out like Windows Settings: the hub at the top, a search,
- * and a tile for each category; a category opens as its own page
- * (#household/<category>) with the other categories beside it on a laptop.
- * A phone sees only what applies to it. First run shows the setup instead.
+ * Settings, laid out like Windows Settings. On a laptop it opens straight on
+ * a category: the list of categories on the left ("Find a setting" above it,
+ * Help below it) and the category on the right, Devices at first. A phone
+ * has no room for both: it shows the list first, and a category as a page of
+ * its own with a way back. Every category has its address
+ * (#settings/<category>). A phone sees only what applies to it. First run
+ * shows the setup instead.
  */
-export default function Household({ status, online, t, lang, setLang, refresh, isHub, ownDeviceId, look, top }: Props) {
+export default function Settings({ status, t, lang, setLang, refresh, isHub, ownDeviceId, look, top }: Props) {
   const route = useRoute();
+  const wide = useWide();
   const cats = useMemo(() => categoriesFor(isHub), [isHub]);
-  const cat = cats.find((c) => c.id === route.cat) ?? null;
+  // With room for both, a category is always open: the one in the address, or the first.
+  const cat = cats.find((c) => c.id === route.cat) ?? (wide ? cats[0] : null);
   const [query, setQuery] = useState("");
   // A search result for the page and setting already shown: open it again.
   const [jump, setJump] = useState(0);
-  // Back on the tiles, the one just left has the focus (as in Windows Settings).
+  // Back on the list (a phone), the category just left has the focus (as in Windows Settings).
   const here = cat?.id ?? null;
   const [shown, setShown] = useState({ here, setting: route.setting });
   const [from, setFrom] = useState<CategoryId | null>(null);
@@ -100,14 +119,13 @@ export default function Household({ status, online, t, lang, setLang, refresh, i
 
   if (!cat) {
     return (
-      <div className="stack settings-home">
+      <div className="stack settings-list">
         <div className="title-line">
-          <h1>{t("household")}</h1>
-          <HelpLink t={t} topic="household" />
+          <h1>{t("settings")}</h1>
+          <HelpLink t={t} topic="settings" />
         </div>
-        <HubCard t={t} status={status} online={online} isHub={isHub} />
         {isHub && status && <Firewall t={t} />}
-        {search(<Tiles t={t} cats={cats} isHub={isHub} from={from} landed={landed} />)}
+        {search(<CategoryList t={t} cats={cats} isHub={isHub} from={from} landed={landed} />)}
       </div>
     );
   }
@@ -119,6 +137,12 @@ export default function Household({ status, online, t, lang, setLang, refresh, i
     case "devices":
       body = (
         <>
+          {/* Where phones are added: the firewall keeping them out cannot be missed here. */}
+          {isHub && status && (
+            <div className="wide">
+              <Firewall t={t} />
+            </div>
+          )}
           {top && <Anchor id="hub-link" wide>{top}</Anchor>}
           {hub(status && <Devices t={t} status={status} isHub={isHub} ownDeviceId={ownDeviceId} />)}
         </>
@@ -179,10 +203,14 @@ export default function Household({ status, online, t, lang, setLang, refresh, i
   }
 
   return (
-    <CategoryPage t={t} cat={cat} setting={route.setting} jump={jump}
+    <CategoryPage
+      t={t}
+      cat={cat}
+      setting={route.setting}
+      jump={jump}
       side={
         <>
-          <HubMini t={t} status={status} online={online} />
+          <p className="set-side-title">{t("settings")}</p>
           {search(<CategoryNav t={t} cats={cats} current={cat.id} />)}
         </>
       }
@@ -192,7 +220,7 @@ export default function Household({ status, online, t, lang, setLang, refresh, i
   );
 }
 
-/** A setting's place on its page: where a search result or an address like #household/network/hotspot opens it. */
+/** A setting's place on its page: where a search result or an address like #settings/network/hotspot opens it. */
 function Anchor({ id, wide, children }: { id: string; wide?: boolean; children: ReactNode }) {
   return (
     <div id={`set-${id}`} className={"set-anchor" + (wide ? " wide" : "")} tabIndex={-1}>
@@ -201,116 +229,52 @@ function Anchor({ id, wide, children }: { id: string; wide?: boolean; children: 
   );
 }
 
-/** The top of Household: the hub, whether it runs, and a few facts about it. */
-function HubCard({ t, status, online, isHub }: { t: T; status: Status | null; online: boolean; isHub: boolean }) {
-  const [update, setUpdate] = useState<UpdateState | null>(null);
-  // undefined: not known yet; null: there is none.
-  const [lastBackup, setLastBackup] = useState<string | null | undefined>(undefined);
-  const answered = status !== null;
-  useEffect(() => {
-    if (!answered) return;
-    api<UpdateState>("/api/updates").then(setUpdate).catch(() => {});
-    if (isHub) {
-      api<{ backups: { created: string }[] }>("/api/backups")
-        .then((r) => setLastBackup(r.backups[0]?.created ?? null))
-        .catch(() => {});
-    }
-  }, [answered, isHub]);
-
-  const facts: [string, ReactNode][] = [[t("devices"), status?.devices ?? "–"]];
-  if (isHub) facts.push([t("addresses"), status?.addresses?.join(", ") || "–"]);
-  facts.push([
-    t("version"),
-    <>
-      {status?.version ?? "–"}
-      {update?.newer && update.latest && (
-        <>
-          {" · "}
-          <a href={settingsHref("updates", "updates")}>{t("newVersionFact")} {update.latest}</a>
-        </>
-      )}
-    </>,
-  ]);
-  if (isHub) facts.push([t("lastBackup"), lastBackup ? fmtDateTime(lastBackup) : lastBackup === null ? t("noBackupYetShort") : "–"]);
-
-  return (
-    <section className="hub-card" aria-label={t("hubStatus")}>
-      <div className="hub-id">
-        <span className="hub-avatar">
-          <Mark size={44} />
-        </span>
-        <div className="hub-id-text">
-          <div className="hub-name">{status?.hub_name ?? "Zaklon"}</div>
-          <div className="hub-state">
-            <span className={"status-dot" + (online ? "" : " off")} aria-hidden="true" /> {online ? t("online") : t("offline")}
-          </div>
-        </div>
-      </div>
-      <dl className="hub-facts">
-        {facts.map(([k, v]) => (
-          <div key={k}>
-            <dt>{k}</dt>
-            <dd>{v}</dd>
-          </div>
-        ))}
-      </dl>
-    </section>
-  );
-}
-
-/** The hub, small, at the top of the list of categories (laptop). */
-function HubMini({ t, status, online }: { t: T; status: Status | null; online: boolean }) {
-  return (
-    <div className="hub-mini">
-      <Mark size={32} />
-      <div style={{ minWidth: 0 }}>
-        <div className="hub-mini-name">{status?.hub_name ?? "Zaklon"}</div>
-        <div className="hub-state">
-          <span className={"status-dot" + (online ? "" : " off")} aria-hidden="true" /> {online ? t("online") : t("offline")}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-type TilesProps = {
+type ListProps = {
   t: T;
   cats: Category[];
   isHub: boolean;
-  /** The category just left: its tile gets the focus, once (then `landed`). */
+  /** The category just left: its row gets the focus, once (then `landed`). */
   from: CategoryId | null;
   landed: () => void;
 };
 
-function Tiles({ t, cats, isHub, from, landed }: TilesProps) {
-  const list = useRef<HTMLUListElement>(null);
+/** A phone's Settings: a row for each category, with what it holds, and Help at the end. */
+function CategoryList({ t, cats, isHub, from, landed }: ListProps) {
+  const list = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!from) return;
     list.current?.querySelector<HTMLElement>(`[data-cat="${from}"]`)?.focus();
     landed();
   }, [from, landed]);
+  const row = (href: string, icon: ReactNode, title: string, desc: string, cat?: CategoryId) => (
+    <a className="set-tile" href={href} data-cat={cat}>
+      <span className="set-tile-icon">{icon}</span>
+      <span className="set-tile-text">
+        <span className="set-tile-title">{title}</span>
+        <span className="set-tile-desc">{desc}</span>
+      </span>
+      <span className="set-tile-go">
+        <SettingsIcon name="chevron" size={18} />
+      </span>
+    </a>
+  );
   return (
-    <ul className="set-tiles" aria-label={t("settingsCategories")} ref={list}>
-      {cats.map((c) => (
-        <li key={c.id}>
-          <a className="set-tile" href={settingsHref(c.id)} data-cat={c.id}>
-            <span className="set-tile-icon">
-              <SettingsIcon name={c.id} size={24} />
-            </span>
-            <span className="set-tile-text">
-              <span className="set-tile-title">{t(c.title)}</span>
-              <span className="set-tile-desc">{t(!isHub && c.descPhone ? c.descPhone : c.desc)}</span>
-            </span>
-            <span className="set-tile-go">
-              <SettingsIcon name="chevron" size={18} />
-            </span>
-          </a>
-        </li>
-      ))}
-    </ul>
+    <nav className="set-list" aria-label={t("settingsCategories")} ref={list}>
+      <ul className="set-tiles">
+        {cats.map((c) => (
+          <li key={c.id}>
+            {row(settingsHref(c.id), <SettingsIcon name={c.id} size={24} />, t(c.title), t(!isHub && c.descPhone ? c.descPhone : c.desc), c.id)}
+          </li>
+        ))}
+      </ul>
+      <ul className="set-tiles set-tiles-help">
+        <li>{row("#help", <Icon name="help" size={24} />, t("help"), t("helpToolDesc"))}</li>
+      </ul>
+    </nav>
   );
 }
 
+/** A laptop's list of categories beside the page, the open one marked, and Help at the end. */
 function CategoryNav({ t, cats, current }: { t: T; cats: Category[]; current: CategoryId }) {
   return (
     <nav aria-label={t("settingsCategories")}>
@@ -324,6 +288,14 @@ function CategoryNav({ t, cats, current }: { t: T; cats: Category[]; current: Ca
           </li>
         ))}
       </ul>
+      <ul className="set-nav set-nav-help">
+        <li>
+          <a href="#help">
+            <Icon name="help" size={18} />
+            <span>{t("help")}</span>
+          </a>
+        </li>
+      </ul>
     </nav>
   );
 }
@@ -334,7 +306,7 @@ type SearchProps = {
   query: string;
   setQuery: (q: string) => void;
   go: (s: Setting) => void;
-  /** Shown while nothing is typed: the tiles, or the list of categories. */
+  /** Shown while nothing is typed: the list of categories. */
   children: ReactNode;
 };
 
@@ -440,7 +412,7 @@ type PageProps = {
   children: ReactNode;
 };
 
-/** One category: "Household › Backups" with a way back, its settings, and the other categories beside it on a laptop. */
+/** One category: its title (on a phone "Settings › Backups" with a way back), its settings, and the list of categories beside it on a laptop. */
 function CategoryPage({ t, cat, setting, jump, side, children }: PageProps) {
   const title = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -486,19 +458,19 @@ function CategoryPage({ t, cat, setting, jump, side, children }: PageProps) {
   }, [cat.id, setting, jump]);
 
   return (
-    <div className="set-page">
+    <div className="set-page settings-page">
       <aside className="set-side">{side}</aside>
       <div className="set-main">
         <div className="set-head">
-          <a className="set-back" href="#household" aria-label={t("backToHousehold")} title={t("backToHousehold")}>
+          <a className="set-back" href="#settings" aria-label={t("backToSettings")} title={t("backToSettings")}>
             <SettingsIcon name="back" size={20} />
           </a>
           <nav className="set-crumbs" aria-label={t("breadcrumb")}>
-            <a href="#household">{t("household")}</a>
+            <a href="#settings">{t("settings")}</a>
             <span aria-hidden="true">›</span>
           </nav>
           <h1 ref={title} tabIndex={-1}>{t(cat.title)}</h1>
-          <HelpLink t={t} topic="household" section={cat.id} />
+          <HelpLink t={t} topic="settings" section={cat.id} />
         </div>
         <div className="set-panels" key={cat.id}>
           {children}
@@ -615,7 +587,7 @@ type DevicesProps = {
   ownDeviceId: string | null;
 };
 
-/** Household > Devices: pairing a phone (laptop) and the phones paired. */
+/** Settings › Devices: pairing a phone (laptop) and the phones paired. */
 function Devices({ t, status, isHub, ownDeviceId }: DevicesProps) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [pair, setPair] = useState<PairStart | null>(null);
@@ -634,7 +606,13 @@ function Devices({ t, status, isHub, ownDeviceId }: DevicesProps) {
   }, [t]);
 
   useEffect(() => {
-    load();
+    // "Add a phone" on Home: a code shows right away, once the phones paired so far are known.
+    const asked = isHub && takePairingRequest();
+    load().then(() => {
+      if (asked) start();
+    });
+    // Only when the page opens (or the language changes).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
 
   // While a code is shown: tick the countdown and watch for the new phone.

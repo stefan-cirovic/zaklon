@@ -10,9 +10,10 @@ import { expect, test, type Page } from "@playwright/test";
 const PASSWORD = "correct horse";
 
 async function ensureSetUp(page: Page) {
-  await page.goto("/#household");
+  await page.goto("/#settings/devices");
   const setup = page.getByRole("heading", { name: /Set up your household|Podesi domaćinstvo/ });
-  const ready = page.locator(".hub-card .hub-state", { hasText: /Running|Radi/ });
+  // The paired phones show once the hub has answered.
+  const ready = page.getByRole("heading", { name: /^(Paired devices|Upareni uređaji)$/ });
   await expect(setup.or(ready)).toBeVisible({ timeout: 10_000 });
   if (await setup.isVisible()) {
     await page.getByLabel(/Hub name|Ime huba/).fill("E2E hub");
@@ -170,7 +171,7 @@ test("conversations: a copy is sent to another device of the household (device l
   devices = [];
   await page.getByRole("button", { name: "Conversation options" }).click();
   await page.getByRole("button", { name: "Send to…" }).click();
-  await expect(page.getByText("There is no other device yet. Pair a phone under Household.")).toBeVisible();
+  await expect(page.getByText("There is no other device yet. Pair a phone under Settings.")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByText("Send a copy to")).toHaveCount(0);
   await page.request.delete(`/api/conversations/${id}`);

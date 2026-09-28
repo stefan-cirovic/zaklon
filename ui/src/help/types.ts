@@ -20,7 +20,7 @@ export const HELP_TOPICS = [
   "library",
   "maps",
   "addons",
-  "household",
+  "settings",
   "offline",
   "troubleshooting",
 ] as const;

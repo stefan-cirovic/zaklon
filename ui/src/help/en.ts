@@ -37,7 +37,7 @@ const en: HelpContent = {
             list: [
               "At home, a phone uses everything the hub has: the supplies, the library, the assistant and the maps.",
               "Away from home, a phone still shows its last copy of the supplies, and its shopping list keeps working. See [Working without internet](#help/offline).",
-              "When there is no router (a power cut, a cabin), the laptop can make [a Wi-Fi network of its own](#help/household/network).",
+              "When there is no router (a power cut, a cabin), the laptop can make [a Wi-Fi network of its own](#help/settings/network).",
             ],
           },
         ],
@@ -49,13 +49,13 @@ const en: HelpContent = {
           {
             steps: [
               "**Set up the household.** The first time Zaklon opens, choose the language, a name for the hub and a household password (at least 8 characters).",
-              "**Pair the phones.** On the laptop, open [Household › Devices](#household/devices) and choose **Add a phone**. See [Pairing a phone](#help/pairing).",
+              "**Pair the phones.** On the laptop, choose **Add a phone** on [Home](#home), or open [Settings › Devices](#settings/devices) and choose it there. See [Pairing a phone](#help/pairing).",
               "**Get the content.** In [Add-ons](#addons), the starter set downloads knowledge, first-aid and repair guides and the AI model that fits this computer with one button. This needs internet once; after that, everything works without it.",
               "**Add your supplies** in [Supplies](#supplies), and ask the [Assistant](#assistant) anything.",
             ],
           },
           { note: "Everyone who knows the household password has the same rights: they can pair a phone and change anything. Choose a password the household will remember, and keep it safe; encrypted backups need it too." },
-          { p: "Moving from another computer? On the setup screen, restore the backup of your previous hub instead of setting up, and the phones keep working. See [Backups](#help/household/backups)." },
+          { p: "Moving from another computer? On the setup screen, restore the backup of your previous hub instead of setting up, and the phones keep working. See [Backups](#help/settings/backups)." },
         ],
       },
       {
@@ -65,10 +65,10 @@ const en: HelpContent = {
           { p: "The bar at the bottom is the same on the laptop and on phones:" },
           {
             list: [
-              "**Home**: the hub's state, what expires soon and what is running low.",
+              "**Home**: the hub's state and what needs attention, such as supplies that expire soon or run low.",
               "**Assistant**: ask questions in plain words.",
-              "**Tools**: every tool ([Supplies](#supplies), [Library](#library), [Maps](#maps) and [Add-ons](#addons)) and this help.",
-              "**Household**: phones, network, backups and the other settings.",
+              "**Tools**: every tool: [Supplies](#supplies), [Library](#library), [Maps](#maps) and [Add-ons](#addons).",
+              "**Settings**: phones, network, backups and the other settings, and this help at the end of its list.",
             ],
           },
           { p: "On the laptop, one tool can be pinned to the bar from the [Tools](#tools) screen. It then shows in the bar on every device in the household." },
@@ -81,7 +81,7 @@ const en: HelpContent = {
   pairing: {
     title: "Pairing a phone",
     summary: "Install the app on an Android phone and connect it to the hub, with the QR code or with the 6-digit code.",
-    open: { href: "#household/devices", label: "Open Household › Devices" },
+    open: { href: "#settings/devices", label: "Open Settings › Devices" },
     sections: [
       {
         id: "before",
@@ -102,7 +102,7 @@ const en: HelpContent = {
         body: [
           {
             steps: [
-              "Open [Household › Devices](#household/devices) and choose **Add a phone**.",
+              "Choose **Add a phone** next to **Devices** on [Home](#home), or open [Settings › Devices](#settings/devices) and choose **Add a phone** there.",
               "The laptop shows two QR codes, one for downloading the app and one for pairing, and a 6-digit code.",
               "The codes work for 5 minutes. When they run out, choose **New code**.",
             ],
@@ -170,9 +170,9 @@ const en: HelpContent = {
         body: [
           {
             list: [
-              "[Household › Devices](#household/devices) lists every paired phone and when it was last seen.",
+              "[Settings › Devices](#settings/devices) lists every paired phone and when it was last seen.",
               "On the laptop, **Remove** disconnects a phone for good. Its saved assistant conversations are deleted with it.",
-              "On the phone itself, **Forget this hub** (in Household › Devices) disconnects it; to use the hub again, pair it again.",
+              "On the phone itself, **Forget this hub** (in Settings › Devices) disconnects it; to use the hub again, pair it again.",
               "If the laptop was reinstalled or replaced, the phone says so and offers **Pair again**. Everything on the phone is kept until you do.",
             ],
           },
@@ -194,7 +194,7 @@ const en: HelpContent = {
           {
             list: [
               "**Power**: the laptop's battery and whether it is charging. A computer without a battery shows **On power**.",
-              "**Devices**: how many phones are paired.",
+              "**Devices**: how many phones are paired. On the laptop, **Add a phone** beside it shows the pairing codes right away (see [Pairing a phone](#help/pairing)).",
               "**Addresses**: where phones on the Wi-Fi reach the hub.",
             ],
           },
@@ -208,7 +208,7 @@ const en: HelpContent = {
           {
             list: [
               "The hub is not running, or the phone cannot reach it.",
-              "Windows Firewall keeps phones out; a button fixes it. See [Network](#household/network).",
+              "Windows Firewall keeps phones out; a button fixes it. See [Network](#settings/network).",
               "A newer version of Zaklon is out.",
             ],
           },
@@ -225,14 +225,16 @@ const en: HelpContent = {
         id: "lists",
         title: "Supplies",
         body: [
+          { p: "**Needs attention** is one list, the most urgent first:" },
           {
             list: [
-              "**Expired or expiring soon** lists supplies that have expired or expire within 30 days.",
-              "**Running low** lists supplies that have less than their **Warn below** amount.",
-              "**Shopping list** shows what is still to buy.",
+              "what has **expired** (in red), and how long ago;",
+              "what **expires** within 30 days (in amber), the soonest first;",
+              "what is **running low**: less than its **Warn below** amount, such as “2 of 3 kg”.",
             ],
           },
-          { p: "Each list shows up to five entries. Open [Supplies](#supplies) to see them all." },
+          { p: "Up to six lines show; open [Supplies](#supplies) for the rest. When nothing needs attention, the card just says **All good**." },
+          { p: "Beside something expired or running low is **Add to shopping list**; what is on the list already says **On the list**. Below, **To buy** says how many things are on the shopping list and opens it." },
         ],
       },
       {
@@ -306,7 +308,7 @@ const en: HelpContent = {
           { p: "Say “remember that Ana is allergic to penicillin” and the assistant offers to remember it; choose **Yes, do it** to keep the note. It uses the notes when they matter for a question." },
           {
             list: [
-              "The notes are under **What the assistant remembers**, at the bottom of the conversation list, and in [Household › AI assistant](#household/assistant/memory). You can add and delete notes there.",
+              "The notes are under **What the assistant remembers**, at the bottom of the conversation list, and in [Settings › AI assistant](#settings/assistant/memory). You can add and delete notes there.",
               "Everyone in the household sees the same notes. The assistant keeps up to 500 notes of up to 300 characters each.",
             ],
           },
@@ -363,7 +365,7 @@ const en: HelpContent = {
         id: "model",
         title: "The AI model",
         body: [
-          { p: "The assistant needs an AI model, downloaded once on the laptop. When there is none, the assistant offers the one recommended for this computer. Larger models answer better but are slower and need more memory. Change the model in the Assistant itself (the **Model** box) or in [Household › AI assistant](#household/assistant)." },
+          { p: "The assistant needs an AI model, downloaded once on the laptop. When there is none, the assistant offers the one recommended for this computer. Larger models answer better but are slower and need more memory. Change the model in the Assistant itself (the **Model** box) or in [Settings › AI assistant](#settings/assistant)." },
           { p: "A model that needs more memory than this computer has is marked **needs more memory** and cannot be chosen: it would make the whole computer slow. When no model fits, the assistant is not available on this computer, and the library, maps, supplies and phones still work. When the AI says there is not enough free memory right now, close some programs and ask again." },
           { p: "The AI starts with the first question and stops by itself after 20 minutes without questions. On the laptop, **free the memory now** stops it at once." },
         ],
@@ -505,7 +507,7 @@ const en: HelpContent = {
         id: "latin",
         title: "Serbian articles in Latin script",
         body: [
-          { p: "Serbian Wikipedia is written in Cyrillic. To read it in Latin script, switch on **Latin script for Serbian articles** in [Household › Language](#household/language/latin). It applies to this device only." },
+          { p: "Serbian Wikipedia is written in Cyrillic. To read it in Latin script, switch on **Latin script for Serbian articles** in [Settings › Language](#settings/language/latin). It applies to this device only." },
         ],
       },
       {
@@ -649,23 +651,24 @@ const en: HelpContent = {
     ],
   },
 
-  household: {
-    title: "Household settings",
+  settings: {
+    title: "Settings",
     summary: "Phones, the network, backups, the password and the other settings, category by category.",
-    open: { href: "#household", label: "Open Household" },
+    open: { href: "#settings", label: "Open Settings" },
     sections: [
       {
         id: "find",
         title: "Finding a setting",
         body: [
-          { p: "[Household](#household) shows the hub at the top, a **Find a setting** search and a tile for each category. The search understands English and Serbian words, with or without accents. Network and Backups are only on the laptop." },
+          { p: "On the laptop, [Settings](#settings) opens on **Devices**: the categories are listed on the left, and the one chosen shows beside them. On a phone the list comes first; choose a category to open it, and the arrow at the top goes back to the list." },
+          { p: "**Find a setting**, at the top of the list, understands English and Serbian words, with or without accents. **Help**, at the end of the list, opens this guide. Network and Backups are only on the laptop." },
         ],
       },
       {
         id: "devices",
         title: "Devices",
         body: [
-          { p: "Add a phone, and see the paired phones with when each was last seen. On a phone, **Forget this hub** is here too. See [Pairing a phone](#help/pairing)." },
+          { p: "Add a phone, and see the paired phones with when each was last seen; **Add a phone** on [Home](#home) leads here too. When Windows Firewall would keep phones out, its warning shows here as well. On a phone, **Forget this hub** is here too. See [Pairing a phone](#help/pairing)." },
         ],
       },
       {
@@ -676,6 +679,7 @@ const en: HelpContent = {
             list: [
               "**Wi-Fi network from this laptop**: when there is no router (a power cut, a cabin), the laptop can be the Wi-Fi network for the household's phones, with the Mobile hotspot built into Windows. Choose **Make the Wi-Fi network**; phones join by scanning the QR code or typing the password shown, then open Zaklon.",
               "**Windows Firewall**: when Windows would keep phones out, a warning appears with **Let phones connect**. Windows then asks the computer's administrator to confirm.",
+              "**Make this network private**: when Windows treats the laptop's network as public (usual for a new Wi-Fi on Windows 11), phones on it are kept out. If it is your home network, this button in the warning tells Windows to treat it as private; Windows asks the administrator to confirm. Do not do this on a network in a café or a hotel.",
               "**Network addresses**: where phones on the same network reach the laptop.",
             ],
           },
@@ -765,7 +769,7 @@ const en: HelpContent = {
         id: "no-router",
         title: "No router",
         body: [
-          { p: "Without a router (a power cut, a cabin), the laptop can make its own Wi-Fi network: open [Household › Network](#household/network/hotspot) and choose **Make the Wi-Fi network**. Phones join it, then open Zaklon." },
+          { p: "Without a router (a power cut, a cabin), the laptop can make its own Wi-Fi network: open [Settings › Network](#settings/network/hotspot) and choose **Make the Wi-Fi network**. Phones join it, then open Zaklon." },
         ],
       },
       {
@@ -816,12 +820,12 @@ const en: HelpContent = {
             steps: [
               "Check that the laptop is on and Zaklon is running: its icon is in the tray, and [Home](#home) on the laptop says **Running**.",
               "Check that the phone is on the **same Wi-Fi** as the laptop, not on mobile data. A guest network often keeps devices apart; use the main one.",
-              "On the laptop, open [Household](#household). If it warns that **phones may not be able to connect**, choose **Let phones connect** and confirm in Windows.",
-              "If Windows treats the network as public, phones are kept out. If it is your home network: in Windows Settings, open **Network & internet**, choose the network, and set its network profile type to **Private**.",
+              "On the laptop, open [Home](#home) or [Settings › Devices](#settings/devices). If it warns that **phones may not be able to connect**, choose **Let phones connect** and confirm in Windows.",
+              "If Windows treats the network as public, phones are kept out. If it is your home network, choose **Make this network private** in the warning and confirm in Windows (or, in Windows Settings, open **Network & internet**, choose the network, and set its network profile type to **Private**).",
               "If “Find hubs” finds nothing, pair with the QR code instead.",
             ],
           },
-          { p: "[Household › Network](#household/network/firewall) on the laptop shows whether Windows Firewall lets phones in." },
+          { p: "[Settings › Network](#settings/network/firewall) on the laptop shows whether Windows Firewall lets phones in." },
         ],
       },
       {
@@ -831,7 +835,7 @@ const en: HelpContent = {
           {
             list: [
               "**The code has expired**: choose **New code** on the laptop. A code works for 5 minutes and three tries.",
-              "**Wrong household password**: check it with whoever set it up. It can be changed on the laptop, in [Household › Privacy & security](#household/privacy/password).",
+              "**Wrong household password**: check it with whoever set it up. It can be changed on the laptop, in [Settings › Privacy & security](#settings/privacy/password).",
               "**Another device answered in place of the hub**: pair by scanning the QR code instead.",
               "**The hub was reinstalled or replaced**: the phone offers **Pair again**; everything on it is kept until then.",
             ],
@@ -845,7 +849,7 @@ const en: HelpContent = {
           {
             list: [
               "The first question after a break starts the AI, which takes up to a minute.",
-              "A smaller AI model answers faster. Choose one in [Household › AI assistant](#household/assistant) or download one in [Add-ons](#addons/models).",
+              "A smaller AI model answers faster. Choose one in [Settings › AI assistant](#settings/assistant) or download one in [Add-ons](#addons/models).",
               "The speed is shown under each answer. If the laptop has little free memory, close other programs.",
               "An answer that takes too long is stopped. Ask again, or use a smaller model.",
               "If the AI stops while it loads, the computer may not have enough free memory: try a smaller model.",
