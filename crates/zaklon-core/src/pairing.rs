@@ -34,10 +34,21 @@ pub fn random_token(bytes: usize) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(buf)
 }
 
-/// Six-digit one-time pairing code, shown on the laptop and typed or scanned on the phone.
+/// Six-digit one-time pairing code, shown on the laptop and typed on the
+/// phone. It works only through the code check from "Find hubs" (SPAKE2,
+/// see the zaklon-pake crate), which allows one guess per attempt.
 pub fn pairing_code() -> String {
     let n = rand::thread_rng().next_u32() % 1_000_000;
     format!("{n:06}")
+}
+
+/// The pairing QR code's own secret: 128 random bits as 32 hex digits. A
+/// phone that scanned the QR code pairs with it (and the household
+/// password); nobody can guess it, unlike the 6-digit code.
+pub fn pairing_secret() -> String {
+    let mut buf = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut buf);
+    buf.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 #[cfg(test)]
@@ -55,5 +66,9 @@ mod tests {
     fn tokens_are_unique() {
         assert_ne!(random_token(32), random_token(32));
         assert_eq!(pairing_code().len(), 6);
+        let secret = pairing_secret();
+        assert_eq!(secret.len(), 32);
+        assert!(secret.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()));
+        assert_ne!(secret, pairing_secret());
     }
 }

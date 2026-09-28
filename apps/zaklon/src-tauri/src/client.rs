@@ -69,16 +69,24 @@ pub struct LinkSummary {
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
 pub struct PairPayload {
+    /// 2: the QR code carries `secret` (version 1 carried the 6-digit code,
+    /// which the hub no longer takes on its own).
     pub v: u8,
     pub hosts: Vec<String>,
     pub port: u16,
+    /// The hub's certificate fingerprint, pinned from the start.
     pub fp: String,
-    pub code: String,
+    /// The QR code's pairing secret, sent with the household password.
+    #[serde(default)]
+    pub secret: String,
     #[serde(default)]
     pub name: String,
     #[serde(default)]
     pub install_port: u16,
 }
+
+/// The QR code's version this app pairs with.
+const QR_VERSION: u8 = 2;
 
 #[derive(Debug, Deserialize)]
 struct Paired {
@@ -337,14 +345,16 @@ impl ClientState {
         write_durably(&self.dir.join(file), data.as_bytes()).map_err(|e| format!("could not save on this phone: {e}"))
     }
 
-    /// Complete pairing: try every host from the QR until one answers.
+    /// Complete pairing from the QR code: over a connection pinned to the
+    /// certificate it names, send its secret and the household password,
+    /// trying every host from the QR code until one answers.
     pub async fn pair(&self, payload: PairPayload, password: String, device_name: String) -> Result<LinkSummary, String> {
-        if payload.v != 1 {
+        if payload.v != QR_VERSION || payload.secret.trim().is_empty() {
             return Err("unsupported pairing code version".into());
         }
         let client = pinned_client(&payload.fp)?;
         let body = serde_json::json!({
-            "code": payload.code,
+            "secret": payload.secret,
             "password": password,
             "device_name": device_name,
             "platform": std::env::consts::OS,
@@ -398,7 +408,7 @@ impl ClientState {
         let open = pairing_client(Arc::new(SeenVerifier { seen: Arc::default() }))?;
         let res = open
             .post(format!("{base}{}", zaklon_pake::START_PATH))
-            .json(&StartRequest { msg: zaklon_pake::to_hex(phone.message()) })
+            .json(&StartRequest { msg: zaklon_pake::to_hex(phone.message()), device_name: device_name.clone() })
             .send()
             .await
             .map_err(|e| format!("{host}: {}", short_err(&e)))?;
@@ -1342,7 +1352,11 @@ mod tests {
         assert!(!phone.summary().linked);
         // The right code with a wrong password.
         assert_eq!(try_pair(&phone, tls, &code, "not the password").await.unwrap_err(), "wrong household password");
-        // Both right (the third and last try of this code): paired and pinned.
+        // One phone may use only two of a code's three attempts.
+        assert!(try_pair(&phone, tls, &code, "correct horse").await.unwrap_err().contains("too many attempts"));
+        // A new code on the laptop, both right: paired and pinned.
+        let pair: Value = laptop.post(format!("{base}/api/pair/start")).send().await.unwrap().json().await.unwrap();
+        let code = pair["code"].as_str().unwrap().to_string();
         let link = try_pair(&phone, tls, &code, "correct horse").await.unwrap();
         assert!(link.linked);
         assert_eq!(link.hosts, ["127.0.0.1"]);
@@ -1352,6 +1366,26 @@ mod tests {
         assert!(me.body.contains("Ana's phone"));
         // The code is used up.
         assert!(try_pair(&phone, tls, &code, "correct horse").await.unwrap_err().contains("invalid or expired"));
+
+        // Pairing by QR code: the QR code's secret and the household password,
+        // over a connection pinned to the certificate the QR code names.
+        phone.forget().await.unwrap();
+        let pair: Value = laptop.post(format!("{base}/api/pair/start")).send().await.unwrap().json().await.unwrap();
+        let mut payload: PairPayload = serde_json::from_value(pair["payload"].clone()).unwrap();
+        assert_eq!((payload.v, payload.secret.len(), payload.fp.as_str()), (QR_VERSION, 32, fingerprint.as_str()));
+        // This hub listens on 127.0.0.1 only.
+        payload.hosts = vec!["127.0.0.1".into()];
+        // The QR code of an older hub (the 6-digit code in it) is not taken.
+        let older = PairPayload { v: 1, secret: String::new(), ..payload.clone() };
+        assert!(phone.pair(older, "correct horse".into(), "Ana's phone".into()).await.unwrap_err().contains("version"));
+        // The 6-digit code in place of the secret is refused like no code at all.
+        let guessed = PairPayload { secret: pair["code"].as_str().unwrap().into(), ..payload.clone() };
+        assert!(phone.pair(guessed, "correct horse".into(), "Ana's phone".into()).await.unwrap_err().contains("invalid or expired"));
+        let link = phone.pair(payload, "correct horse".into(), "Ana's phone".into()).await.unwrap();
+        assert!(link.linked);
+        assert_eq!(phone.link().unwrap().fingerprint, fingerprint);
+        let me = phone.request("GET".into(), "/api/me".into(), None).await.unwrap();
+        assert_eq!(me.status, 200, "{}", me.body);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

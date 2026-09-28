@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { api, inTauri } from "../api";
 import type { Key } from "../i18n";
-import { errText } from "../errors";
+import { errCode, errText } from "../errors";
 import { fmtBytes, fmtDateTime } from "../format";
 import { DrivePicker } from "./Usb";
 
@@ -12,12 +12,29 @@ type Reply = { backups: BackupFile[]; restore_pending: boolean; folder: string; 
 /** The backup chosen for restoring: one from the list, or the file typed in (not known yet whether it is encrypted). */
 type Picked = { path: string; encrypted: boolean | null; fromFile: boolean };
 
+/**
+ * Ask the hub to prepare a restore. An unencrypted backup cannot be checked,
+ * so where that matters the hub first answers "backup_not_encrypted"; this
+ * returns false then, and the same call with `allowUnencrypted` restores it.
+ */
+async function requestRestore(path: string, password: string, allowUnencrypted: boolean): Promise<boolean> {
+  try {
+    await api("/api/backups/restore", { json: { path, password, allow_unencrypted: allowUnencrypted } });
+    return true;
+  } catch (e) {
+    if (errCode(e) === "backup_not_encrypted") return false;
+    throw e;
+  }
+}
+
 /** Backups of the household's data (laptop only): daily by itself, to USB on request, and restore. */
 export default function Backups({ t }: { t: T }) {
   const [data, setData] = useState<Reply | null>(null);
   const [dir, setDir] = useState("");
   const [file, setFile] = useState("");
   const [picked, setPicked] = useState<Picked | null>(null);
+  /** The hub said the picked backup is not encrypted. */
+  const [unencrypted, setUnencrypted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -59,12 +76,22 @@ export default function Backups({ t }: { t: T }) {
     });
   };
 
+  // An unencrypted backup onto a hub whose backups are encrypted: said before
+  // it is restored, and restored only when the person goes ahead anyway.
+  const warnUnencrypted = unencrypted || (picked?.encrypted === false && data?.encryption === "on");
+
+  const pick = (p: Picked | null) => {
+    setErr(null);
+    setUnencrypted(false);
+    setPicked(p);
+  };
+
   const restore = (password: string) => {
     if (!picked) return;
     const path = picked.path;
     run(async () => {
-      await api("/api/backups/restore", { json: { path, password } });
-      setPicked(null);
+      if (await requestRestore(path, password, warnUnencrypted)) pick(null);
+      else setUnencrypted(true);
     });
   };
 
@@ -74,12 +101,17 @@ export default function Backups({ t }: { t: T }) {
       setNote(t("encryptionOn"));
     });
 
-  const restart = () => {
-    if (inTauri()) invoke("app_restart").catch(() => {});
-  };
-
   const confirm = (encrypted: boolean | null) => (
-    <RestoreConfirm t={t} encrypted={encrypted} busy={busy} err={err} onRestore={restore} onCancel={() => { setPicked(null); setErr(null); }} />
+    <RestoreConfirm
+      t={t}
+      note={t("restoreKeepsPhones")}
+      encrypted={encrypted}
+      warn={warnUnencrypted}
+      busy={busy}
+      err={err}
+      onRestore={restore}
+      onCancel={() => pick(null)}
+    />
   );
 
   return (
@@ -91,18 +123,7 @@ export default function Backups({ t }: { t: T }) {
       {err && !picked && <p className="error" role="alert">{err}</p>}
       {note && <p className="ok" role="status" style={{ margin: 0, wordBreak: "break-all" }}>{note}</p>}
 
-      {data?.restore_pending && (
-        <div className="stack notice">
-          <p style={{ margin: 0 }}><strong>{t("restoreReady")}</strong></p>
-          {inTauri() ? (
-            <div>
-              <button className="btn" onClick={restart}>{t("restartNow")}</button>
-            </div>
-          ) : (
-            <p className="muted" style={{ margin: 0 }}>{t("restartByHand")}</p>
-          )}
-        </div>
-      )}
+      {data?.restore_pending && <RestoreReady t={t} />}
 
       <div className="label">{t("backupsOnHub")}</div>
       {data && data.backups.length === 0 && <p className="muted" style={{ margin: 0 }}>{t("noBackupsYet")}</p>}
@@ -118,7 +139,7 @@ export default function Backups({ t }: { t: T }) {
                 </span>
               </span>
               {!open && (
-                <button className="btn secondary small" disabled={busy} onClick={() => { setErr(null); setPicked({ path: b.path, encrypted: b.encrypted, fromFile: false }); }}>
+                <button className="btn secondary small" disabled={busy} onClick={() => pick({ path: b.path, encrypted: b.encrypted, fromFile: false })}>
                   {t("restore")}
                 </button>
               )}
@@ -142,15 +163,15 @@ export default function Backups({ t }: { t: T }) {
         <input
           type="text"
           value={file}
-          onChange={(e) => { setFile(e.target.value); if (picked?.fromFile) setPicked(null); }}
-          placeholder="E:\zaklon-backup-2026-09-28-101500.zip"
+          onChange={(e) => { setFile(e.target.value); if (picked?.fromFile) pick(null); }}
+          placeholder={BACKUP_FILE_EXAMPLE}
           aria-label={t("restoreFromFile")}
         />
         {picked?.fromFile ? (
           confirm(null)
         ) : (
           <div>
-            <button className="btn secondary" disabled={busy || !file.trim()} onClick={() => { setErr(null); setPicked({ path: file.trim(), encrypted: null, fromFile: true }); }}>
+            <button className="btn secondary" disabled={busy || !file.trim()} onClick={() => pick({ path: file.trim(), encrypted: null, fromFile: true })}>
               {t("restore")}
             </button>
           </div>
@@ -161,10 +182,35 @@ export default function Backups({ t }: { t: T }) {
   );
 }
 
+const BACKUP_FILE_EXAMPLE = "E:\\zaklon-backup-2026-09-28-101500.zip";
+
+/** A restore is prepared: it happens when Zaklon starts again. */
+function RestoreReady({ t }: { t: T }) {
+  const restart = () => {
+    if (inTauri()) invoke("app_restart").catch(() => {});
+  };
+  return (
+    <div className="stack notice">
+      <p style={{ margin: 0 }}><strong>{t("restoreReady")}</strong></p>
+      {inTauri() ? (
+        <div>
+          <button className="btn" onClick={restart}>{t("restartNow")}</button>
+        </div>
+      ) : (
+        <p className="muted" style={{ margin: 0 }}>{t("restartByHand")}</p>
+      )}
+    </div>
+  );
+}
+
 type ConfirmProps = {
   t: T;
+  /** What the restore keeps and what it takes from the backup. */
+  note?: string;
   /** Whether the backup is encrypted; null when not known (a file typed in). */
   encrypted: boolean | null;
+  /** The backup is not encrypted where that needs a warning (see `requestRestore`). */
+  warn: boolean;
   busy: boolean;
   err: string | null;
   onRestore: (password: string) => void;
@@ -172,28 +218,104 @@ type ConfirmProps = {
 };
 
 /** The last step before a restore: what it keeps, and the password an encrypted backup needs. */
-function RestoreConfirm({ t, encrypted, busy, err, onRestore, onCancel }: ConfirmProps) {
+function RestoreConfirm({ t, note, encrypted, warn, busy, err, onRestore, onCancel }: ConfirmProps) {
   const [pw, setPw] = useState("");
+  const plain = encrypted === false || warn;
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    onRestore(encrypted === false ? "" : pw);
+    onRestore(plain ? "" : pw);
   };
   return (
     <form className="stack restore-confirm" onSubmit={submit}>
-      <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("restoreKeepsPhones")}</p>
-      {encrypted !== false && (
+      {note && <p className="muted" style={{ margin: 0, fontSize: 14 }}>{note}</p>}
+      {warn &&<p className="warn" role="alert" style={{ margin: 0 }}>{t("restoreUnencrypted")}</p>}
+      {!plain && (
         <label className="field">
           {t("restorePassword")}
           <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" autoFocus />
         </label>
       )}
-      {encrypted === null && <p className="muted" style={{ margin: 0, fontSize: 13 }}>{t("restorePasswordHint")}</p>}
+      {encrypted === null && !warn && <p className="muted" style={{ margin: 0, fontSize: 13 }}>{t("restorePasswordHint")}</p>}
       {err && <p className="error" role="alert" style={{ margin: 0 }}>{err}</p>}
       <div className="row wrap" style={{ gap: 8 }}>
-        <button className="btn" disabled={busy || (encrypted === true && !pw)}>{t("yesRestore")}</button>
+        <button className="btn" disabled={busy || (encrypted === true && !pw)}>{warn ? t("restoreAnyway") : t("yesRestore")}</button>
         <button type="button" className="btn secondary" onClick={onCancel} disabled={busy}>{t("cancel")}</button>
       </div>
     </form>
+  );
+}
+
+/**
+ * On a hub that is not set up yet: restore the backup of the household's
+ * previous hub instead. On a new install the restore takes the paired phones,
+ * the household password and the hub's identity from the backup too (a hub
+ * that was set up always keeps its own; see `Access` in the hub's backup.rs).
+ * `onReady` says when a restore is prepared, so setup can step aside.
+ */
+export function SetupRestore({ t, onReady }: { t: T; onReady: () => void }) {
+  const [file, setFile] = useState("");
+  const [picked, setPicked] = useState(false);
+  const [unencrypted, setUnencrypted] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const done = useCallback(() => {
+    setReady(true);
+    onReady();
+  }, [onReady]);
+
+  // A restore prepared before the window was reopened is still waiting.
+  useEffect(() => {
+    api<Reply>("/api/backups")
+      .then((r) => {
+        if (r.restore_pending) done();
+      })
+      .catch(() => {});
+  }, [done]);
+
+  const pick = (on: boolean) => {
+    setErr(null);
+    setUnencrypted(false);
+    setPicked(on);
+  };
+
+  const restore = async (password: string) => {
+    if (busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      if (await requestRestore(file.trim(), password, unencrypted)) done();
+      else setUnencrypted(true);
+    } catch (e) {
+      setErr(errText(t, e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (ready) return <RestoreReady t={t} />;
+  return (
+    <div className="panel stack left restore-file">
+      <h2>{t("setupRestoreTitle")}</h2>
+      <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("setupRestoreIntro")}</p>
+      <input
+        type="text"
+        value={file}
+        onChange={(e) => { setFile(e.target.value); if (picked) pick(false); }}
+        placeholder={BACKUP_FILE_EXAMPLE}
+        aria-label={t("restoreFromFile")}
+      />
+      {picked ? (
+        <RestoreConfirm t={t} encrypted={null} warn={unencrypted} busy={busy} err={err} onRestore={restore} onCancel={() => pick(false)} />
+      ) : (
+        <div>
+          <button className="btn secondary" disabled={!file.trim()} onClick={() => pick(true)}>
+            {t("restore")}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

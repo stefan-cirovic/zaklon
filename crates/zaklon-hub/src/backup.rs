@@ -16,8 +16,8 @@
 //!
 //! Restoring never touches the open database: the backup is checked and
 //! unpacked into `restore-pending/`, and the next start swaps it in, keeping
-//! the replaced data under `backups/` first. On a hub with paired phones, the
-//! swap keeps who may connect as it is (see [`finish_pending_restore`]).
+//! the replaced data under `backups/` first. Unless the household is moving
+//! to a new install, the swap keeps who may connect as it is (see [`Access`]).
 
 use std::fs::File;
 use std::io::{Read, Write};
@@ -41,10 +41,36 @@ const FORMAT_ENCRYPTED: u32 = 2;
 /// The newest format this version restores.
 const FORMAT: u32 = FORMAT_ENCRYPTED;
 const AUTO_PREFIX: &str = "zaklon-auto-";
+const MANUAL_PREFIX: &str = "zaklon-backup-";
 const KEEP_AUTO: usize = 7;
 const PENDING: &str = "restore-pending";
+/// In a prepared restore: whether it keeps who may connect ("keep" or
+/// "take", see [`Access`]). Never a name a backup's files are unpacked to.
+const ACCESS_FILE: &str = "access";
+/// Written last into a restored household folder: it is complete.
+const COMPLETE: &str = ".restore-complete";
+/// Folders of household data a restore replaced, under `backups/`.
+const SET_ASIDE_PREFIX: &str = "household-before-restore-";
+/// How many of those are kept (newest first): they hold the household's
+/// data unencrypted, and the backup made just before each restore has it too.
+const KEEP_SET_ASIDE: usize = 3;
+/// Where a backup's unencrypted pieces wait while it is made: the copy of
+/// the database and, for an encrypted backup, the plain backup before it is
+/// encrypted. In the data folder, not the system's temporary folder (which
+/// cleaners and sync tools look into); removed as soon as the backup is
+/// written or fails, and on every start (see [`clean_leftovers`]).
+const WORK_DIR: &str = "backup-temp";
 /// Largest file accepted inside a backup (the database of a very busy household).
 const MAX_ENTRY: u64 = 2 << 30;
+/// Largest settings, manifest or TLS file accepted inside a backup.
+const MAX_SMALL: u64 = 1 << 20;
+/// Most files accepted under `tls/` (the hub keeps two there).
+const MAX_TLS_FILES: usize = 8;
+/// The most a backup may unpack to: the largest database and the small files.
+const MAX_UNPACKED: u64 = MAX_ENTRY + 16 * MAX_SMALL;
+/// Room left on the data disk after a restore is unpacked, so that the hub
+/// can still write its database and logs.
+const DISK_RESERVE: u64 = 256 << 20;
 /// An encrypted backup's own files.
 const KEY_FILE: &str = "key.age";
 const DATA_FILE: &str = "data.age";
@@ -62,8 +88,8 @@ const WORK_FACTOR: u8 = if cfg!(test) { 10 } else { 18 };
 /// damaged or hostile file cannot keep the hub busy for hours.
 const MAX_WORK_FACTOR: u8 = 20;
 
-/// Settings that stay as they are when a backup is restored onto a hub with
-/// paired phones: who may connect, and with what.
+/// Settings that stay as they are when a restore keeps who may connect (see
+/// [`Access`]): who may connect, and with what.
 const KEPT_SETTINGS: &[&str] = &[SETTING_PASSWORD, crate::hotspot::SETTING_PASSPHRASE, crate::hotspot::SETTING_PREVIOUS, SETTING_KEY];
 /// hub.json fields kept the same way: the hub's identity and where its phones find it.
 const KEPT_CONFIG: &[&str] = &["hub_id", "port", "local_port", "install_port", "beacon_port"];
@@ -75,6 +101,11 @@ const WRONG_PASSWORD: &str = "the password does not open this backup";
 const NEEDS_PASSWORD: &str = "this backup is encrypted; enter the household password";
 const KEY_DAMAGED: &str = "the backup's key is damaged";
 const HUB_KEY_DAMAGED: &str = "this hub's backup key cannot be read; turn backup encryption on again";
+const DB_DAMAGED: &str = "the backup's database is damaged";
+const TOO_LARGE: &str = "this backup is too large for a household's data";
+const NO_SPACE: &str = "not enough free disk space";
+/// The answer when a restore needs a confirmation first (see [`needs_confirmation`]).
+pub const NOT_ENCRYPTED: &str = "this backup is not encrypted, so nothing shows whether it was changed; confirm to restore it anyway";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
@@ -218,38 +249,71 @@ pub fn create(cfg: &Config, db: &Db, dir: &Path, automatic: bool) -> Result<Path
     let key = BackupKey::load(db)?;
     std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
     let stamp = file_stamp();
-    let name = if automatic { format!("{AUTO_PREFIX}{stamp}.zip") } else { format!("zaklon-backup-{stamp}.zip") };
+    let name = if automatic { format!("{AUTO_PREFIX}{stamp}.zip") } else { format!("{MANUAL_PREFIX}{stamp}.zip") };
     let target = dir.join(&name);
     let part = dir.join(format!("{name}.part"));
 
-    // A consistent copy of the database, even while it is in use.
-    let tmp = std::env::temp_dir().join(format!("zaklon-backup-{}", uuid::Uuid::new_v4()));
+    // A consistent copy of the database, even while it is in use. Unencrypted,
+    // like the plain backup made from it: both wait in the work folder and
+    // are removed whatever happens next (the guard), the unfinished backup too.
+    let work = cfg.root.join(WORK_DIR);
+    std::fs::create_dir_all(&work).map_err(|e| format!("creating {}: {e}", work.display()))?;
+    let tmp = work.join(uuid::Uuid::new_v4().to_string());
     let (tmp_db, tmp_zip) = (tmp.with_extension("db"), tmp.with_extension("zip"));
+    let _scratch = Scratch(vec![tmp_db.clone(), tmp_zip.clone(), part.clone()]);
     db.snapshot_to(&tmp_db).map_err(|e| format!("copying the database: {e}"))?;
+    let created = now_rfc3339();
     let manifest = |format, encrypted| Manifest {
         format,
         app_version: env!("CARGO_PKG_VERSION").into(),
-        created: now_rfc3339(),
+        created: created.clone(),
         hub_id: cfg.hub_id.clone(),
         hub_name: cfg.hub_name.clone(),
         encrypted,
     };
-    let result = match &key {
-        None => write_plain(cfg, &tmp_db, &part, &manifest(FORMAT_PLAIN, false)),
+    match &key {
+        None => write_plain(cfg, &tmp_db, &part, &manifest(FORMAT_PLAIN, false))?,
         // The plain backup is made first, then encrypted as a stream: the
         // database is never held in memory.
-        Some(key) => write_plain(cfg, &tmp_db, &tmp_zip, &manifest(FORMAT_PLAIN, false))
-            .and_then(|()| write_encrypted(&tmp_zip, &part, &manifest(FORMAT_ENCRYPTED, true), key)),
-    };
-    let _ = std::fs::remove_file(&tmp_db);
-    let _ = std::fs::remove_file(&tmp_zip);
-    if let Err(e) = result {
-        let _ = std::fs::remove_file(&part);
-        return Err(e);
+        Some(key) => {
+            write_plain(cfg, &tmp_db, &tmp_zip, &manifest(FORMAT_PLAIN, false))?;
+            write_encrypted(&tmp_zip, &part, &manifest(FORMAT_ENCRYPTED, true), key)?;
+        }
     }
     std::fs::rename(&part, &target).map_err(|e| format!("finishing the backup: {e}"))?;
     info!(path = %target.display(), encrypted = key.is_some(), "backup written");
     Ok(target)
+}
+
+/// Files removed when this goes out of scope, however that happens.
+struct Scratch(Vec<PathBuf>);
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        for path in &self.0 {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+/// On start: remove what a backup or a restore that stopped halfway (the
+/// hub was closed, the computer lost power) left behind, all of it
+/// unencrypted copies of the household's data. Runs after a waiting restore
+/// was finished.
+pub fn clean_leftovers(root: &Path) {
+    let _ = std::fs::remove_dir_all(root.join(WORK_DIR));
+    let _ = std::fs::remove_dir_all(root.join(format!("{PENDING}.tmp")));
+    if !restore_pending(root) {
+        let _ = std::fs::remove_dir_all(root.join("household.new"));
+    }
+    if let Ok(rd) = std::fs::read_dir(root.join("backups")) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.ends_with(".zip.part") && (name.starts_with(AUTO_PREFIX) || name.starts_with(MANUAL_PREFIX)) {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
 }
 
 fn write_manifest<W: Write + std::io::Seek>(zip: &mut zip::ZipWriter<W>, manifest: &Manifest) -> Result<(), String> {
@@ -316,12 +380,12 @@ pub fn list(cfg: &Config) -> Vec<BackupFile> {
             rd.flatten()
                 .filter(|e| {
                     let n = e.file_name().to_string_lossy().to_string();
-                    n.ends_with(".zip") && (n.starts_with(AUTO_PREFIX) || n.starts_with("zaklon-backup-"))
+                    n.ends_with(".zip") && (n.starts_with(AUTO_PREFIX) || n.starts_with(MANUAL_PREFIX))
                 })
                 .filter_map(|e| {
                     let meta = e.metadata().ok()?;
                     let name = e.file_name().to_string_lossy().to_string();
-                    let (created, encrypted) = read_manifest(&e.path()).map(|m| (m.created, m.encrypted)).unwrap_or_default();
+                    let (created, encrypted) = inspect(&e.path()).map(|(m, encrypted)| (m.created, encrypted)).unwrap_or_default();
                     Some(BackupFile { path: e.path().display().to_string(), automatic: name.starts_with(AUTO_PREFIX), name, size: meta.len(), created, encrypted })
                 })
                 .collect()
@@ -370,12 +434,19 @@ pub fn auto_backup_if_due(cfg: &Config, db: &Db) {
 }
 
 pub fn read_manifest(path: &Path) -> Option<Manifest> {
+    inspect(path).map(|(manifest, _)| manifest)
+}
+
+/// A backup's manifest, and whether its data is encrypted: whether it holds
+/// a locked key, not what the manifest says (anyone can write that).
+fn inspect(path: &Path) -> Option<(Manifest, bool)> {
     let file = File::open(path).ok()?;
     let mut zip = zip::ZipArchive::new(file).ok()?;
-    let mut entry = zip.by_name("manifest.json").ok()?;
     let mut text = String::new();
-    entry.by_ref().take(64 * 1024).read_to_string(&mut text).ok()?;
-    serde_json::from_str(&text).ok()
+    zip.by_name("manifest.json").ok()?.take(64 * 1024).read_to_string(&mut text).ok()?;
+    let manifest = serde_json::from_str(&text).ok()?;
+    let encrypted = zip.by_name(KEY_FILE).is_ok();
+    Some((manifest, encrypted))
 }
 
 // ---- restoring --------------------------------------------------------------------
@@ -386,6 +457,109 @@ pub struct Unlocked {
     path: PathBuf,
     manifest: Manifest,
     secret: Option<age::x25519::Identity>,
+}
+
+impl Unlocked {
+    /// Whether the backup's data is encrypted: from what the file holds (a
+    /// locked key that opened), not from what its manifest says.
+    pub fn encrypted(&self) -> bool {
+        self.secret.is_some()
+    }
+}
+
+/// What a prepared restore brings, as the backup's own content says.
+#[derive(Debug, Clone, Serialize)]
+pub struct Staged {
+    /// For an encrypted backup, the manifest from inside the encryption (the
+    /// one outside it could have been changed). `encrypted` says whether
+    /// the data really was encrypted.
+    #[serde(flatten)]
+    pub manifest: Manifest,
+    /// The restore keeps this hub's phones, password and identity (see [`Access`]).
+    pub keeps_access: bool,
+}
+
+/// Who may connect after a restore. Decided once, when the restore is
+/// prepared, and kept with it: a crash halfway through the swap cannot turn
+/// one into the other.
+///
+/// The rule compares the hub id in the backup's hub.json (inside the
+/// encryption, for an encrypted backup) with this hub's own:
+/// - A backup of another hub, restored onto a hub that was never set up (no
+///   household password yet: a new install, the household moving to another
+///   computer), takes everything from the backup ([`Access::Take`]), so the
+///   household's phones keep working with it.
+/// - Every other restore keeps who may connect as it is ([`Access::Keep`]).
+///   A backup of this same hub always keeps, even when no phone is paired
+///   right now: removing every phone and changing the password (after a
+///   phone was stolen, say) is never undone by restoring an older backup.
+///
+/// Keeping means that this hub's paired phones, household password, Wi-Fi
+/// network password and backup key stay, and so does its identity (TLS key,
+/// hub id and ports); everything else comes from the backup. A current
+/// database that cannot be read at all has nothing to keep: the restore then
+/// takes everything from the backup (see [`finish_pending_restore`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Access {
+    Keep,
+    Take,
+}
+
+impl Access {
+    fn word(self) -> &'static str {
+        match self {
+            Access::Keep => "keep",
+            Access::Take => "take",
+        }
+    }
+}
+
+/// The access decision for restoring the backup unpacked in `restored` onto
+/// the household folder `household` (see [`Access`]).
+fn decide_access(household: &Path, restored: &Path) -> Access {
+    let hub_id = |dir: &Path| std::fs::read_to_string(dir.join("hub.json")).ok().and_then(|t| Config::from_json(&t).ok()).map(|c| c.hub_id);
+    let same_hub = hub_id(household).is_some_and(|ours| hub_id(restored).is_some_and(|theirs| theirs == ours));
+    let set_up = has_password(&household.join("household.db")) == Some(true);
+    if same_hub || set_up {
+        Access::Keep
+    } else {
+        Access::Take
+    }
+}
+
+/// Whether the household database at `path` has a household password;
+/// `None` when there is no database or it cannot be read.
+fn has_password(path: &Path) -> Option<bool> {
+    if !path.is_file() {
+        return None;
+    }
+    match zaklon_core::db::setting_in(path, SETTING_PASSWORD) {
+        Ok(hash) => Some(hash.is_some()),
+        Err(e) => {
+            warn!("the current database cannot be read: {e:#}");
+            None
+        }
+    }
+}
+
+fn write_access(dir: &Path, access: Access) -> Result<(), String> {
+    zaklon_core::config::write_atomic(&dir.join(ACCESS_FILE), access.word().as_bytes()).map_err(|e| format!("preparing the restore: {e}"))
+}
+
+fn read_access(dir: &Path) -> Option<Access> {
+    match std::fs::read_to_string(dir.join(ACCESS_FILE)).ok()?.trim() {
+        "keep" => Some(Access::Keep),
+        "take" => Some(Access::Take),
+        _ => None,
+    }
+}
+
+/// An unencrypted backup cannot be checked: anyone could have written it,
+/// or changed it since. Restoring one waits for a confirmation where that
+/// matters: on a hub whose own backups are encrypted, and on a hub that was
+/// never set up (which may take who may connect from the backup).
+pub fn needs_confirmation(db: &Db, backup: &Unlocked) -> bool {
+    !backup.encrypted() && (encryption_state(db) == "on" || !db.is_set_up().unwrap_or(false))
 }
 
 /// Check that `zip_path` is a backup this version restores and, if it is
@@ -417,54 +591,85 @@ pub fn unlock(zip_path: &Path, password: &str) -> Result<Unlocked, String> {
 }
 
 /// Check a backup and unpack it next to the data, ready for the next start.
-pub fn stage_restore(cfg: &Config, zip_path: &Path, password: &str) -> Result<Manifest, String> {
+pub fn stage_restore(cfg: &Config, zip_path: &Path, password: &str) -> Result<Staged, String> {
     stage_unlocked(cfg, unlock(zip_path, password)?)
 }
 
-/// Unpack a backup opened with [`unlock`] next to the data, ready for the next start.
-pub fn stage_unlocked(cfg: &Config, backup: Unlocked) -> Result<Manifest, String> {
+/// Unpack a backup opened with [`unlock`] next to the data, ready for the
+/// next start, and decide who may connect after it (see [`Access`]).
+pub fn stage_unlocked(cfg: &Config, backup: Unlocked) -> Result<Staged, String> {
     // Unpack next to the real pending folder and swap it in only when
     // everything is written and checked: a power cut halfway leaves nothing
     // half-done, and a failed second attempt keeps the first one waiting.
     let pending = cfg.root.join(format!("{PENDING}.tmp"));
     let _ = std::fs::remove_dir_all(&pending);
     std::fs::create_dir_all(pending.join("tls")).map_err(|e| e.to_string())?;
-    let result = (|| -> Result<(), String> {
-        match &backup.secret {
-            None => unpack(&backup.path, &pending)?,
+    let result = (|| -> Result<(Manifest, Access), String> {
+        let manifest = match &backup.secret {
+            None => {
+                unpack(&backup.path, &pending)?;
+                Manifest { encrypted: false, ..backup.manifest.clone() }
+            }
             Some(secret) => {
                 // Decrypted into a file, not memory: the database may be large.
                 let plain = pending.join("backup.zip");
                 decrypt_data(&backup.path, secret, &plain)?;
-                // Inside is an unencrypted backup, and only that.
+                // Inside is an unencrypted backup of the same hub, and only that.
                 let inner = read_manifest(&plain).ok_or(NOT_A_BACKUP)?;
-                if inner.format != FORMAT_PLAIN {
+                if inner.format != FORMAT_PLAIN || inner.hub_id != backup.manifest.hub_id {
                     return Err(NOT_A_BACKUP.into());
                 }
                 let unpacked = unpack(&plain, &pending);
                 let _ = std::fs::remove_file(&plain);
                 unpacked?;
+                Manifest { format: backup.manifest.format, encrypted: true, ..inner }
             }
-        }
+        };
         if !pending.join("household.db").is_file() || !pending.join("hub.json").is_file() {
             return Err(INCOMPLETE.into());
         }
-        // It must open as a household database, and the hub must be able
-        // to start with its settings: a restore that cannot start is refused
-        // now, not found out after the swap.
-        Db::open(&pending.join("household.db")).map_err(|_| "the backup's database is damaged".to_string())?;
+        // Only tables and indexes, and it must open as a household database;
+        // the hub must be able to start with its settings. A restore that
+        // cannot work is refused now, not found out after the swap.
+        prepare_database(&pending)?;
         settings_ok(&pending)?;
-        Ok(())
+        let access = decide_access(&cfg.household_dir(), &pending);
+        write_access(&pending, access)?;
+        Ok((manifest, access))
     })();
-    if let Err(e) = result {
-        let _ = std::fs::remove_dir_all(&pending);
-        return Err(e);
-    }
+    let (manifest, access) = match result {
+        Ok(staged) => staged,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&pending);
+            return Err(e);
+        }
+    };
     let ready = cfg.root.join(PENDING);
     let _ = std::fs::remove_dir_all(&ready);
     std::fs::rename(&pending, &ready).map_err(|e| format!("preparing the restore: {e}"))?;
-    info!(from = %backup.path.display(), encrypted = backup.secret.is_some(), "restore staged; it completes on the next start");
-    Ok(backup.manifest)
+    info!(from = %backup.path.display(), encrypted = manifest.encrypted, access = access.word(), "restore staged; it completes on the next start");
+    Ok(Staged { manifest, keeps_access: access == Access::Keep })
+}
+
+/// Check the unpacked backup's database and bring it up to date (see
+/// `zaklon_core::db::prepare_foreign`). A database with triggers or views
+/// in it is refused like a damaged one.
+fn prepare_database(dir: &Path) -> Result<(), String> {
+    zaklon_core::db::prepare_foreign(&dir.join("household.db")).map_err(|e| {
+        warn!("the backup's database was refused: {e:#}");
+        DB_DAMAGED.to_string()
+    })
+}
+
+/// How much may be written into `dir` (on the data disk): `most`, or less
+/// when the disk has less to spare. True when the disk is what limits it.
+fn room_in(dir: &Path, most: u64) -> (u64, bool) {
+    let free = fs4::available_space(dir).unwrap_or(u64::MAX).saturating_sub(DISK_RESERVE);
+    if free < most {
+        (free, true)
+    } else {
+        (most, false)
+    }
 }
 
 /// Decrypt an encrypted backup's data (an unencrypted backup) into `to`.
@@ -475,11 +680,12 @@ fn decrypt_data(zip_path: &Path, secret: &age::x25519::Identity, to: &Path) -> R
     let decryptor = age::Decryptor::new(entry).map_err(|_| INCOMPLETE.to_string())?;
     // The key opened, but it is not the one this data was encrypted to.
     let reader = decryptor.decrypt(std::iter::once(secret as &dyn age::Identity)).map_err(|_| KEY_DAMAGED.to_string())?;
+    // Room for the largest database and the rest, if the disk has it.
+    let (room, disk_limited) = room_in(to.parent().unwrap_or(Path::new(".")), MAX_UNPACKED);
     let mut out = File::create(to).map_err(|e| format!("unpacking the backup: {e}"))?;
-    // Room for the largest database and the rest.
-    let mut limited = reader.take(2 * MAX_ENTRY);
-    let copied = std::io::copy(&mut limited, &mut out);
+    let copied = std::io::copy(&mut reader.take(room + 1), &mut out);
     match copied {
+        Ok(n) if n > room => Err(if disk_limited { NO_SPACE } else { TOO_LARGE }.into()),
         Ok(_) => Ok(()),
         // Cut short (a USB stick pulled out too early) or changed.
         Err(e) if matches!(e.kind(), std::io::ErrorKind::InvalidData | std::io::ErrorKind::UnexpectedEof) => Err(INCOMPLETE.into()),
@@ -487,21 +693,53 @@ fn decrypt_data(zip_path: &Path, secret: &age::x25519::Identity, to: &Path) -> R
     }
 }
 
+/// A file a backup keeps under `tls/`: a plain name, nothing that leads elsewhere.
+fn is_tls_file(name: &str) -> bool {
+    name.strip_prefix("tls/").is_some_and(|n| !n.is_empty() && n != "." && n != ".." && n.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)))
+}
+
 /// Unpack an unencrypted backup's files into `into`. Only the files a backup
-/// is made of; nothing else is written anywhere.
+/// is made of, no more of them than a hub makes, and no more bytes than a
+/// household's data takes or the disk can spare; nothing else is written
+/// anywhere. The sizes the zip states are not trusted: at most the allowed
+/// size of each file is written.
 fn unpack(zip_path: &Path, into: &Path) -> Result<(), String> {
     let file = File::open(zip_path).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipArchive::new(file).map_err(|_| NOT_A_BACKUP.to_string())?;
+    let (mut room, disk_limited) = room_in(into, MAX_UNPACKED);
+    let no_room = || if disk_limited { NO_SPACE } else { TOO_LARGE }.to_string();
+    let mut tls_files = 0;
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
         let name = entry.name().to_string();
-        let allowed = matches!(name.as_str(), "manifest.json" | "household.db" | "hub.json")
-            || name.strip_prefix("tls/").is_some_and(|n| !n.is_empty() && n != "." && n != ".." && n.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)));
-        if !allowed || entry.size() > MAX_ENTRY {
-            continue;
+        let most = match name.as_str() {
+            "household.db" => MAX_ENTRY,
+            "manifest.json" | "hub.json" => MAX_SMALL,
+            n if is_tls_file(n) => {
+                tls_files += 1;
+                if tls_files > MAX_TLS_FILES {
+                    return Err(TOO_LARGE.into());
+                }
+                MAX_SMALL
+            }
+            _ => continue,
+        };
+        if entry.size() > most {
+            return Err(TOO_LARGE.into());
         }
+        if entry.size() > room {
+            return Err(no_room());
+        }
+        let cap = most.min(room);
         let mut out = File::create(into.join(&name)).map_err(|e| e.to_string())?;
-        std::io::copy(&mut entry.by_ref().take(MAX_ENTRY), &mut out).map_err(|e| e.to_string())?;
+        let written = std::io::copy(&mut entry.by_ref().take(cap + 1), &mut out).map_err(|e| e.to_string())?;
+        if written > most {
+            return Err(TOO_LARGE.into());
+        }
+        if written > cap {
+            return Err(no_room());
+        }
+        room -= written;
     }
     Ok(())
 }
@@ -517,46 +755,86 @@ pub fn restore_pending(root: &Path) -> bool {
 }
 
 /// On start, before the database is opened: swap in a staged restore,
-/// keeping the replaced household folder under `backups/`. The new folder is
-/// complete before anything is moved, and a failed swap is rolled back, so
-/// the household always has either its old data or the restored data.
+/// keeping the replaced household folder under `backups/`. Who may connect
+/// afterwards was decided when the restore was prepared (see [`Access`]).
 ///
-/// Who may connect: if this hub has paired phones, they stay as they are,
-/// with the household password, the Wi-Fi network's password, the backup
-/// key and the hub's identity (TLS key, id, ports); everything else comes
-/// from the backup. So a phone removed after the backup was made, or an old
-/// password, never comes back. A hub with no paired phones (a new install)
-/// takes everything from the backup, so the household's phones keep working.
+/// The restored folder is built next to the current one (`household.new`),
+/// with a marker written last, before anything is moved; a failed move is
+/// rolled back. If the hub stops between setting the current folder aside
+/// and moving the restored one in, the next start only finishes that move.
+/// So the household always has either its old data or the restored data,
+/// and never the wrong phones.
 pub fn finish_pending_restore(root: &Path) -> Result<bool, String> {
     let pending = root.join(PENDING);
     if !restore_pending(root) {
         return Ok(false);
     }
+    let household = root.join("household");
+    let fresh = root.join("household.new");
+    let interrupted = !household.exists() && fresh.join(COMPLETE).is_file();
+    let mut set_aside = None;
+    if !interrupted {
+        let kept_access = build_restored(&household, &fresh, &pending)?;
+        std::fs::create_dir_all(root.join("backups")).map_err(|e| e.to_string())?;
+        let aside = unused_path(&root.join("backups"), &format!("{SET_ASIDE_PREFIX}{}", file_stamp()));
+        if household.exists() {
+            std::fs::rename(&household, &aside).map_err(|e| format!("setting the old data aside: {e}"))?;
+        }
+        info!(old = %aside.display(), kept_access, "the replaced data is set aside");
+        set_aside = Some(aside);
+    }
+    if let Err(e) = std::fs::rename(&fresh, &household) {
+        // Put the old data back rather than start with nothing.
+        if let Some(aside) = set_aside.filter(|a| a.exists()) {
+            let _ = std::fs::rename(&aside, &household);
+        }
+        return Err(format!("swapping in the restored data: {e}"));
+    }
+    // Downloads and the library stay as they are on this computer.
+    finished(root, &household, &pending);
+    info!(interrupted, "restore finished");
+    Ok(true)
+}
+
+/// Build the restored household folder `fresh` from the prepared restore in
+/// `pending` and the current folder `household`, and mark it complete.
+/// Returns whether it kept who may connect.
+fn build_restored(household: &Path, fresh: &Path, pending: &Path) -> Result<bool, String> {
     if !pending.join("household.db").is_file() || !pending.join("hub.json").is_file() {
-        let _ = std::fs::remove_dir_all(&pending);
+        discard(pending);
         return Err("the prepared restore was incomplete and was discarded".into());
     }
     // Checked when it was prepared, but perhaps by an older version that
-    // checked less: never swap in settings the hub cannot start with.
-    if let Err(e) = settings_ok(&pending) {
-        let _ = std::fs::remove_dir_all(&pending);
+    // checked less: never swap in settings the hub cannot start with, or a
+    // database with triggers or views in it.
+    if let Err(e) = settings_ok(pending).and_then(|()| prepare_database(pending)) {
+        discard(pending);
         return Err(format!("{e}; the prepared restore was discarded"));
     }
-    let household = root.join("household");
-    let fresh = root.join("household.new");
-    let _ = std::fs::remove_dir_all(&fresh);
+    let access = match read_access(pending) {
+        Some(access) => access,
+        // Prepared by a version that did not record it: decided now, and
+        // recorded before anything moves.
+        None => {
+            let access = decide_access(household, pending);
+            write_access(pending, access)?;
+            access
+        }
+    };
+    let current_db = household.join("household.db");
+    let keep_access = access == Access::Keep && has_password(&current_db).is_some();
+    if access == Access::Keep && !keep_access {
+        warn!("the current database cannot be read; the restore takes the phones and the password from the backup");
+    }
+    let _ = std::fs::remove_dir_all(fresh);
     std::fs::create_dir_all(fresh.join("tls")).map_err(|e| e.to_string())?;
-    // Copied, not moved: if the swap fails, the staged restore is still
-    // whole and the next start tries again.
-    std::fs::copy(pending.join("household.db"), fresh.join("household.db")).map_err(|e| format!("restoring household.db: {e}"))?;
-    let keep_access = has_phones(&household.join("household.db"));
+    // Only rows are copied from the backup's database, into this version's
+    // own schema; the staged restore stays whole, so a failed swap is tried
+    // again on the next start.
+    let db_access = if keep_access { zaklon_core::db::RestoreAccess::Keep { current: &current_db, settings: KEPT_SETTINGS } } else { zaklon_core::db::RestoreAccess::Take };
+    zaklon_core::db::restore_into(&fresh.join("household.db"), &pending.join("household.db"), db_access)
+        .map_err(|e| format!("restoring household.db: {e:#}"))?;
     let (settings, tls) = if keep_access {
-        // Not read, not kept: rather no restore than the backup's phones.
-        let restored = Db::open(&fresh.join("household.db")).map_err(|e| format!("restoring household.db: {e:#}"))?;
-        restored
-            .take_devices_and_settings_from(&household.join("household.db"), KEPT_SETTINGS)
-            .map_err(|e| format!("keeping the paired phones: {e:#}"))?;
-        drop(restored);
         (merged_settings(&pending.join("hub.json"), &household.join("hub.json"))?, household.join("tls"))
     } else {
         (std::fs::read(pending.join("hub.json")).map_err(|e| format!("restoring hub.json: {e}"))?, pending.join("tls"))
@@ -567,22 +845,35 @@ pub fn finish_pending_restore(root: &Path) -> Result<bool, String> {
             std::fs::copy(e.path(), fresh.join("tls").join(e.file_name())).map_err(|e| format!("restoring the identity: {e}"))?;
         }
     }
-    std::fs::create_dir_all(root.join("backups")).map_err(|e| e.to_string())?;
-    let keep = unused_path(&root.join("backups"), &format!("household-before-restore-{}", file_stamp()));
-    if household.exists() {
-        std::fs::rename(&household, &keep).map_err(|e| format!("setting the old data aside: {e}"))?;
+    // Written last: with it, the folder is complete (see `finish_pending_restore`).
+    zaklon_core::config::write_atomic(&fresh.join(COMPLETE), b"").map_err(|e| format!("restoring: {e}"))?;
+    Ok(keep_access)
+}
+
+/// The restored folder is in place: the restore is done.
+fn finished(root: &Path, household: &Path, pending: &Path) {
+    let _ = std::fs::remove_file(household.join(COMPLETE));
+    discard(pending);
+    prune_set_aside(&root.join("backups"));
+}
+
+/// Remove a prepared restore, the manifest first: without it the folder is
+/// no longer a restore waiting, even if the rest cannot be removed now.
+fn discard(pending: &Path) {
+    let _ = std::fs::remove_file(pending.join("manifest.json"));
+    let _ = std::fs::remove_dir_all(pending);
+}
+
+/// Keep only the newest [`KEEP_SET_ASIDE`] folders of replaced data.
+fn prune_set_aside(backups: &Path) {
+    let mut set_aside: Vec<PathBuf> = std::fs::read_dir(backups)
+        .map(|rd| rd.flatten().filter(|e| e.file_name().to_string_lossy().starts_with(SET_ASIDE_PREFIX) && e.path().is_dir()).map(|e| e.path()).collect())
+        .unwrap_or_default();
+    // By name: the time they were set aside ("-2" and on for the same second).
+    set_aside.sort();
+    while set_aside.len() > KEEP_SET_ASIDE {
+        let _ = std::fs::remove_dir_all(set_aside.remove(0));
     }
-    if let Err(e) = std::fs::rename(&fresh, &household) {
-        // Put the old data back rather than start with nothing.
-        if keep.exists() {
-            let _ = std::fs::rename(&keep, &household);
-        }
-        return Err(format!("swapping in the restored data: {e}"));
-    }
-    // Downloads and the library stay as they are on this computer.
-    let _ = std::fs::remove_dir_all(&pending);
-    info!(old = %keep.display(), kept_phones = keep_access, "restore finished");
-    Ok(true)
 }
 
 /// `dir/name`, or `dir/name-2`, `-3`... when that is taken (two restores
@@ -595,21 +886,6 @@ fn unused_path(dir: &Path, name: &str) -> PathBuf {
         n += 1;
     }
     path
-}
-
-/// Whether the database at `path` has paired phones. One that cannot be
-/// opened (missing or damaged, perhaps the reason for the restore) has none.
-fn has_phones(path: &Path) -> bool {
-    if !path.is_file() {
-        return false;
-    }
-    match Db::open(path).and_then(|db| db.count_devices()) {
-        Ok(n) => n > 0,
-        Err(e) => {
-            warn!("the current database cannot be read ({e:#}); the restore takes the phones and the password from the backup");
-            false
-        }
-    }
 }
 
 /// The backup's hub.json with this hub's identity and ports, so the phones
@@ -886,9 +1162,51 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// A new install (set up, no phones yet) restores the old laptop's backup.
+    /// Every phone was removed and the password changed (a phone was
+    /// stolen); then an older backup of this same hub is restored to undo a
+    /// mistake in the supplies. With no phone paired now, who may connect
+    /// still stays as it is.
     #[test]
-    fn a_restore_onto_a_hub_without_phones_takes_everything() {
+    fn a_restore_of_this_hub_with_no_phones_left_keeps_who_may_connect() {
+        let root = temp_root();
+        let cfg = Config::load_or_init(&root).unwrap();
+        let db = Db::open(&cfg.db_path()).unwrap();
+        set_household_password(&db, "old password").unwrap();
+        add_phone(&db, "stolen");
+        db.set_setting(crate::hotspot::SETTING_PASSPHRASE, "oldwifipass").unwrap();
+        db.set_setting("marker", "from the backup").unwrap();
+        write_tls(&cfg, "OLD CERT", "OLD KEY");
+        let zip = create(&cfg, &db, &cfg.backups_dir(), false).unwrap();
+
+        db.delete_device("stolen").unwrap();
+        assert_eq!(db.count_devices().unwrap(), 0);
+        set_household_password(&db, "new password").unwrap();
+        let key_now = db.get_setting(SETTING_KEY).unwrap();
+        db.set_setting(crate::hotspot::SETTING_PASSPHRASE, "newwifipass").unwrap();
+        db.set_setting("marker", "current").unwrap();
+        write_tls(&cfg, "NEW CERT", "NEW KEY");
+        drop(db);
+
+        let staged = stage_restore(&cfg, &zip, "old password").unwrap();
+        assert!(staged.keeps_access);
+        assert!(finish_pending_restore(&root).unwrap());
+        let db = Db::open(&cfg.db_path()).unwrap();
+        assert_eq!(db.get_setting("marker").unwrap().as_deref(), Some("from the backup"));
+        assert!(phones(&db).is_empty(), "the removed phone stays removed");
+        assert!(db.device_by_token_hash("stolen-token-hash", &now_rfc3339()).unwrap().is_none());
+        assert!(password_is(&db, "new password") && !password_is(&db, "old password"));
+        assert_eq!(db.get_setting(SETTING_KEY).unwrap(), key_now);
+        assert_eq!(db.get_setting(crate::hotspot::SETTING_PASSPHRASE).unwrap().as_deref(), Some("newwifipass"));
+        assert_eq!(read_tls(&cfg), ("NEW CERT".to_string(), "NEW KEY".to_string()));
+        drop(db);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The household moves to a new computer: the old laptop's backup is
+    /// restored onto the new install before it is set up, and the phones
+    /// paired with the old laptop keep working with the new one.
+    #[test]
+    fn a_backup_of_another_hub_onto_a_new_install_takes_who_may_connect() {
         let base = temp_root();
         let old_cfg = Config::load_or_init(&base.join("old")).unwrap();
         let old_db = Db::open(&old_cfg.db_path()).unwrap();
@@ -899,22 +1217,285 @@ mod tests {
         let zip = create(&old_cfg, &old_db, &base.join("usb"), false).unwrap();
         let old_key = old_db.get_setting(SETTING_KEY).unwrap();
 
+        // Never set up: no household password yet.
         let cfg = Config::load_or_init(&base.join("new")).unwrap();
+        let db = Db::open(&cfg.db_path()).unwrap();
+        write_tls(&cfg, "NEW CERT", "NEW KEY");
+        drop(db);
+
+        let staged = stage_restore(&cfg, &zip, "household password").unwrap();
+        assert!(!staged.keeps_access);
+        assert!(finish_pending_restore(&cfg.root).unwrap());
+        let db = Db::open(&cfg.db_path()).unwrap();
+        assert_eq!(db.get_setting("marker").unwrap().as_deref(), Some("old laptop"));
+        assert_eq!(phones(&db), ["kitchen"], "the household's phones keep working");
+        assert!(password_is(&db, "household password"));
+        assert_eq!(db.get_setting(SETTING_KEY).unwrap(), old_key);
+        assert_eq!(read_tls(&cfg), ("OLD CERT".to_string(), "OLD KEY".to_string()));
+        assert_eq!(Config::load_or_init(&cfg.root).unwrap().hub_id, old_cfg.hub_id);
+        drop(db);
+
+        // Set up first (a household password, no phones yet), the new hub
+        // keeps its own: the phones then pair with it again.
+        let cfg = Config::load_or_init(&base.join("set-up")).unwrap();
         let db = Db::open(&cfg.db_path()).unwrap();
         set_household_password(&db, "set up anew").unwrap();
         write_tls(&cfg, "NEW CERT", "NEW KEY");
         drop(db);
-
-        restore(&cfg, &zip, "household password").unwrap();
+        assert!(stage_restore(&cfg, &zip, "household password").unwrap().keeps_access);
+        assert!(finish_pending_restore(&cfg.root).unwrap());
         let db = Db::open(&cfg.db_path()).unwrap();
         assert_eq!(db.get_setting("marker").unwrap().as_deref(), Some("old laptop"));
-        assert_eq!(phones(&db), ["kitchen"], "the household's phones keep working");
-        assert!(password_is(&db, "household password") && !password_is(&db, "set up anew"));
-        assert_eq!(db.get_setting(SETTING_KEY).unwrap(), old_key);
-        assert_eq!(read_tls(&cfg), ("OLD CERT".to_string(), "OLD KEY".to_string()));
-        assert_eq!(Config::load_or_init(&cfg.root).unwrap().hub_id, old_cfg.hub_id);
+        assert!(phones(&db).is_empty());
+        assert!(password_is(&db, "set up anew") && !password_is(&db, "household password"));
+        assert_eq!(read_tls(&cfg), ("NEW CERT".to_string(), "NEW KEY".to_string()));
+        assert_ne!(Config::load_or_init(&cfg.root).unwrap().hub_id, old_cfg.hub_id);
         drop((db, old_db));
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The hub stopped after the current data was set aside and before the
+    /// restored data was moved in. The next start only finishes the move, so
+    /// the restore still keeps who may connect; building it again would find
+    /// no current data, and take the backup's phones and password.
+    #[test]
+    fn a_restore_interrupted_between_the_moves_keeps_who_may_connect() {
+        let root = temp_root();
+        let cfg = Config::load_or_init(&root).unwrap();
+        let db = Db::open(&cfg.db_path()).unwrap();
+        set_household_password(&db, "old password").unwrap();
+        add_phone(&db, "stolen");
+        let zip = create(&cfg, &db, &cfg.backups_dir(), false).unwrap();
+        db.delete_device("stolen").unwrap();
+        add_phone(&db, "new");
+        set_household_password(&db, "new password").unwrap();
+        drop(db);
+
+        stage_restore(&cfg, &zip, "old password").unwrap();
+        let pending = root.join(PENDING);
+        assert_eq!(read_access(&pending), Some(Access::Keep), "decided when it was prepared");
+        // The first half of the swap, then the hub stops.
+        let (household, fresh) = (root.join("household"), root.join("household.new"));
+        assert!(build_restored(&household, &fresh, &pending).unwrap());
+        std::fs::rename(&household, cfg.backups_dir().join(format!("{SET_ASIDE_PREFIX}interrupted"))).unwrap();
+
+        assert!(finish_pending_restore(&root).unwrap());
+        assert!(!restore_pending(&root) && !fresh.exists() && !household.join(COMPLETE).exists());
+        let db = Db::open(&cfg.db_path()).unwrap();
+        assert_eq!(phones(&db), ["new"]);
+        assert!(password_is(&db, "new password"));
+        drop(db);
+
+        // A restore prepared by a version that did not record the decision:
+        // decided on the next start, by the same rule, before anything moves.
+        stage_restore(&cfg, &zip, "old password").unwrap();
+        std::fs::remove_file(pending.join(ACCESS_FILE)).unwrap();
+        assert!(finish_pending_restore(&root).unwrap());
+        let db = Db::open(&cfg.db_path()).unwrap();
+        assert_eq!(phones(&db), ["new"]);
+        assert!(password_is(&db, "new password"));
+        drop(db);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A backup's database with triggers in it (the security review's proof
+    /// of concept is in zaklon-core's db.rs) is refused when the restore is
+    /// prepared, and one prepared by an older version, which did not look,
+    /// is discarded on the next start without touching anything.
+    #[test]
+    fn a_backup_whose_database_has_triggers_is_refused() {
+        let base = temp_root();
+        let cfg = Config::load_or_init(&base.join("hub")).unwrap();
+        let db = Db::open(&cfg.db_path()).unwrap();
+        set_household_password(&db, "our password").unwrap();
+        add_phone(&db, "ours");
+        drop(db);
+        // Made on some other computer, unencrypted: no password needed.
+        let evil_cfg = Config::load_or_init(&base.join("evil")).unwrap();
+        let evil_db = Db::open(&evil_cfg.db_path()).unwrap();
+        evil_db.set_setting("marker", "evil").unwrap();
+        let conn = zaklon_core::rusqlite::Connection::open(evil_cfg.db_path()).unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER inject AFTER INSERT ON settings WHEN NEW.key = 'household_password_hash'
+             BEGIN
+               INSERT OR IGNORE INTO devices VALUES ('evil', 'Phone', 'android', 'ATTACKER-TOKEN-HASH', 't', NULL);
+               UPDATE settings SET value = 'ATTACKER-HASH' WHERE key = 'household_password_hash';
+             END;",
+        )
+        .unwrap();
+        drop(conn);
+        let zip = create(&evil_cfg, &evil_db, &base.join("usb"), false).unwrap();
+        drop(evil_db);
+
+        assert_eq!(stage_restore(&cfg, &zip, "").unwrap_err(), DB_DAMAGED);
+        assert!(!restore_pending(&cfg.root));
+
+        let pending = cfg.root.join(PENDING);
+        std::fs::create_dir_all(pending.join("tls")).unwrap();
+        unpack(&zip, &pending).unwrap();
+        let err = finish_pending_restore(&cfg.root).unwrap_err();
+        assert!(err.contains("database is damaged") && err.contains("discarded"), "{err}");
+        assert!(!restore_pending(&cfg.root));
+        let db = Db::open(&cfg.db_path()).unwrap();
+        assert_eq!(phones(&db), ["ours"]);
+        assert!(password_is(&db, "our password"));
+        assert_eq!(db.get_setting("marker").unwrap(), None);
+        drop(db);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// What a backup holds decides, not what its manifest (outside the
+    /// encryption, so anyone can change it) says.
+    #[test]
+    fn what_a_backup_really_holds_decides_not_its_manifest() {
+        let root = temp_root();
+        let cfg = Config::load_or_init(&root).unwrap();
+        let db = Db::open(&cfg.db_path()).unwrap();
+        // Never set up: its backups are not encrypted, and it needs a confirmation for them.
+        let plain = create(&cfg, &db, &root.join("plain"), false).unwrap();
+        assert!(needs_confirmation(&db, &unlock(&plain, "").unwrap()));
+        // Set up before backups were encrypted: its own backups are like that.
+        db.set_setting(SETTING_PASSWORD, &zaklon_core::pairing::hash_password("correct horse").unwrap()).unwrap();
+        assert!(!needs_confirmation(&db, &unlock(&plain, "").unwrap()));
+        turn_on_encryption(&db, "correct horse").unwrap();
+        let encrypted = create(&cfg, &db, &root.join("encrypted"), false).unwrap();
+
+        // An encrypted backup with a manifest that claims otherwise.
+        let claim = |hub_id: &str| {
+            let manifest = Manifest {
+                format: FORMAT_ENCRYPTED,
+                app_version: "0.0.1".into(),
+                created: "2020-01-01T00:00:00Z".into(),
+                hub_id: hub_id.into(),
+                hub_name: "Changed".into(),
+                encrypted: false,
+            };
+            with_files(&encrypted, &[("manifest.json", &serde_json::to_vec(&manifest).unwrap())])
+        };
+        let claims_plain = claim(&cfg.hub_id);
+        std::fs::copy(&claims_plain, cfg.backups_dir().join(format!("{MANUAL_PREFIX}claims-plain.zip"))).unwrap();
+        let listed = list(&cfg);
+        assert_eq!(listed.len(), 1);
+        assert!(listed[0].encrypted, "it holds a locked key");
+        let unlocked = unlock(&claims_plain, "correct horse").unwrap();
+        assert!(unlocked.encrypted() && !needs_confirmation(&db, &unlocked));
+        // An unencrypted one, on a hub whose backups are encrypted.
+        let unlocked = unlock(&plain, "").unwrap();
+        assert!(!unlocked.encrypted() && needs_confirmation(&db, &unlocked));
+        drop(db);
+
+        // What was restored comes from inside the encryption.
+        let staged = stage_restore(&cfg, &claims_plain, "correct horse").unwrap();
+        assert!(staged.manifest.encrypted);
+        assert_eq!(staged.manifest.hub_name, cfg.hub_name);
+        assert_ne!(staged.manifest.created, "2020-01-01T00:00:00Z");
+        assert!(!stage_restore(&cfg, &plain, "").unwrap().manifest.encrypted);
+        // A manifest naming another hub than the data inside is not this backup's.
+        assert_eq!(stage_restore(&cfg, &claim("someone-else"), "correct horse").unwrap_err(), NOT_A_BACKUP);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A copy of the backup `good` with more files added.
+    fn with_added(good: &Path, add: &[(&str, &[u8])]) -> PathBuf {
+        let path = good.with_file_name(format!("added-{}.zip", uuid::Uuid::new_v4()));
+        let mut src = zip::ZipArchive::new(File::open(good).unwrap()).unwrap();
+        let mut out = zip::ZipWriter::new(File::create(&path).unwrap());
+        let opts = zip::write::SimpleFileOptions::default();
+        for i in 0..src.len() {
+            let mut e = src.by_index(i).unwrap();
+            let name = e.name().to_string();
+            let mut bytes = Vec::new();
+            e.read_to_end(&mut bytes).unwrap();
+            out.start_file(name, opts).unwrap();
+            out.write_all(&bytes).unwrap();
+        }
+        for (name, bytes) in add {
+            out.start_file(*name, opts).unwrap();
+            out.write_all(bytes).unwrap();
+        }
+        out.finish().unwrap();
+        path
+    }
+
+    /// No more files, and no larger ones, than a hub's backup has.
+    #[test]
+    fn unpacking_is_limited() {
+        let root = temp_root();
+        let cfg = Config::load_or_init(&root).unwrap();
+        let db = Db::open(&cfg.db_path()).unwrap();
+        let good = create(&cfg, &db, &root.join("usb"), false).unwrap();
+        drop(db);
+        let names: Vec<String> = (0..=MAX_TLS_FILES).map(|i| format!("tls/extra-{i}.pem")).collect();
+        let many: Vec<(&str, &[u8])> = names.iter().map(|n| (n.as_str(), &b"x"[..])).collect();
+        assert_eq!(stage_restore(&cfg, &with_added(&good, &many), "").unwrap_err(), TOO_LARGE);
+        let big = vec![b' '; MAX_SMALL as usize + 1];
+        assert_eq!(stage_restore(&cfg, &with_files(&good, &[("hub.json", &big)]), "").unwrap_err(), TOO_LARGE);
+        assert!(!restore_pending(&root) && !root.join(format!("{PENDING}.tmp")).exists());
+        // A few files more are fine.
+        stage_restore(&cfg, &with_added(&good, &many[..2]), "").unwrap();
+        assert!(restore_pending(&root));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The unencrypted copies a backup is made from stay in the data folder
+    /// and are gone once it is written, or once it failed; what a hub that
+    /// stopped halfway left behind goes on the next start.
+    #[test]
+    fn unencrypted_pieces_stay_in_the_data_folder_and_go_away() {
+        let root = temp_root();
+        let cfg = Config::load_or_init(&root).unwrap();
+        let db = Db::open(&cfg.db_path()).unwrap();
+        set_household_password(&db, "correct horse").unwrap();
+        create(&cfg, &db, &cfg.backups_dir(), false).unwrap();
+        let work = root.join(WORK_DIR);
+        assert!(work.is_dir(), "made in the data folder");
+        assert_eq!(std::fs::read_dir(&work).unwrap().count(), 0, "and removed");
+        // A backup that fails halfway (the settings file is gone) leaves nothing either.
+        let settings = std::fs::read(cfg.config_path()).unwrap();
+        std::fs::remove_file(cfg.config_path()).unwrap();
+        let usb = root.join("usb");
+        assert!(create(&cfg, &db, &usb, false).is_err());
+        assert_eq!(std::fs::read_dir(&work).unwrap().count(), 0);
+        assert_eq!(std::fs::read_dir(&usb).unwrap().count(), 0, "no unfinished backup");
+        std::fs::write(cfg.config_path(), settings).unwrap();
+        drop(db);
+
+        std::fs::write(work.join("left.db"), b"plain").unwrap();
+        std::fs::create_dir_all(root.join(format!("{PENDING}.tmp"))).unwrap();
+        std::fs::write(root.join(format!("{PENDING}.tmp")).join("backup.zip"), b"plain").unwrap();
+        std::fs::create_dir_all(root.join("household.new")).unwrap();
+        std::fs::write(cfg.backups_dir().join(format!("{AUTO_PREFIX}2020-01-01-000000.zip.part")), b"plain").unwrap();
+        std::fs::write(cfg.backups_dir().join("mine.txt"), b"not ours").unwrap();
+        clean_leftovers(&root);
+        assert!(!work.exists() && !root.join(format!("{PENDING}.tmp")).exists() && !root.join("household.new").exists());
+        let names: Vec<String> = std::fs::read_dir(cfg.backups_dir()).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        assert!(names.contains(&"mine.txt".to_string()) && !names.iter().any(|n| n.ends_with(".part")), "{names:?}");
+        assert!(cfg.db_path().is_file(), "the household is left alone");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn only_the_newest_replaced_data_is_kept() {
+        let root = temp_root();
+        let cfg = Config::load_or_init(&root).unwrap();
+        let db = Db::open(&cfg.db_path()).unwrap();
+        let zip = create(&cfg, &db, &cfg.backups_dir(), false).unwrap();
+        drop(db);
+        for day in 1..=4 {
+            std::fs::create_dir_all(cfg.backups_dir().join(format!("{SET_ASIDE_PREFIX}2020-01-0{day}-000000"))).unwrap();
+        }
+        restore(&cfg, &zip, "").unwrap();
+        let mut left: Vec<String> = std::fs::read_dir(cfg.backups_dir())
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.starts_with(SET_ASIDE_PREFIX))
+            .collect();
+        left.sort();
+        assert_eq!(left.len(), KEEP_SET_ASIDE, "{left:?}");
+        assert_eq!(left[0], format!("{SET_ASIDE_PREFIX}2020-01-03-000000"));
+        assert!(!left[KEEP_SET_ASIDE - 1].contains("2020-"), "today's is kept: {left:?}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

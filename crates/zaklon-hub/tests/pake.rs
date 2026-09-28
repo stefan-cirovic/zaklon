@@ -2,15 +2,15 @@
 //! The phone checks with the pairing code that it talks to the hub whose
 //! certificate it sees (SPAKE2, see the zaklon-pake crate) before it sends
 //! the household password. The right code pairs; a wrong code costs one of
-//! the code's attempts; a device that answers in place of the hub and passes
-//! the messages on with its own certificate is caught before the password
-//! is sent.
+//! the code's attempts (one address may use only two of the three); a device
+//! that answers in place of the hub and passes the messages on with its own
+//! certificate is caught before the password is sent.
 //!
 //! Run with: `cargo test -p zaklon-hub --test pake -- --nocapture`
 
 mod common;
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -18,14 +18,22 @@ use common::*;
 use serde_json::{json, Value};
 use zaklon_pake::{FinishRequest, Phone, Refusal, StartReply, StartRequest};
 
+/// The name the phones in this test check the code with.
+const PHONE_NAME: &str = "Found phone";
+
 // ---- the phone's three steps ----------------------------------------------------
 
 /// Step 1 at `base`: the hub's answer and the certificate it came with, or
 /// the refusal (status and body).
 async fn start(base: &str, phone: &Phone) -> Result<(StartReply, [u8; 32]), (u16, Value)> {
-    let res = finder_client()
+    start_with(&finder_client(), base, phone, PHONE_NAME).await
+}
+
+/// Step 1 from `client`, for the phone named `name`.
+async fn start_with(client: &reqwest::Client, base: &str, phone: &Phone, name: &str) -> Result<(StartReply, [u8; 32]), (u16, Value)> {
+    let res = client
         .post(format!("{base}{}", zaklon_pake::START_PATH))
-        .json(&StartRequest { msg: zaklon_pake::to_hex(phone.message()) })
+        .json(&StartRequest { msg: zaklon_pake::to_hex(phone.message()), device_name: name.into() })
         .send()
         .await
         .unwrap();
@@ -47,26 +55,45 @@ fn check(phone: Phone, reply: &StartReply, seen: &[u8; 32]) -> Result<String, Re
 
 /// Step 3, over a connection pinned to `fingerprint`.
 async fn finish(base: &str, fingerprint: &str, session: &str, proof: &str, password: &str, nonce: Option<&str>) -> (u16, Value) {
+    finish_with(&phone_client(fingerprint), base, session, proof, password, nonce).await
+}
+
+async fn finish_with(client: &reqwest::Client, base: &str, session: &str, proof: &str, password: &str, nonce: Option<&str>) -> (u16, Value) {
     let body = FinishRequest {
         session: session.into(),
         proof: proof.into(),
         password: password.into(),
-        device_name: "Found phone".into(),
+        // The phone pairs under the name it checked the code with.
+        device_name: "Name sent at the end".into(),
         platform: None,
         nonce: nonce.map(String::from),
     };
-    let res = phone_client(fingerprint).post(format!("{base}{}", zaklon_pake::FINISH_PATH)).json(&body).send().await.unwrap();
+    let res = client.post(format!("{base}{}", zaklon_pake::FINISH_PATH)).json(&body).send().await.unwrap();
     (res.status().as_u16(), res.json().await.unwrap())
 }
 
 /// All three steps, the way the phone app takes them (`pair_found` in
 /// client.rs): it stops at the first refusal and says why.
 async fn pair_like_the_phone(base: &str, code: &str, password: &str) -> Result<Value, String> {
+    pair_like_a_phone_at(None, base, code, password).await
+}
+
+/// The same from the address `from` (another device on the network).
+async fn pair_like_a_phone_at(from: Option<IpAddr>, base: &str, code: &str, password: &str) -> Result<Value, String> {
     let error = |body: &Value| body["error"].as_str().unwrap_or_default().to_string();
+    let open = match from {
+        Some(ip) => finder_client_from(ip),
+        None => finder_client(),
+    };
     let phone = Phone::start(code);
-    let (reply, seen) = start(base, &phone).await.map_err(|(_, body)| error(&body))?;
+    let (reply, seen) = start_with(&open, base, &phone, PHONE_NAME).await.map_err(|(_, body)| error(&body))?;
     let proof = check(phone, &reply, &seen).map_err(|r| r.to_string())?;
-    match finish(base, &zaklon_pake::to_hex(&seen), &reply.session, &proof, password, None).await {
+    let fingerprint = zaklon_pake::to_hex(&seen);
+    let pinned = match from {
+        Some(ip) => phone_client_from(&fingerprint, ip),
+        None => phone_client(&fingerprint),
+    };
+    match finish_with(&pinned, base, &reply.session, &proof, password, None).await {
         (200, paired) => Ok(paired),
         (_, body) => Err(error(&body)),
     }
@@ -142,8 +169,11 @@ async fn pairing_with_a_hub_found_on_the_network() {
     assert_eq!(code_of(refused), (403, "code_expired".into()));
 
     // 2. The right code: the hub proves its certificate, the phone proves the
-    //    code, and the household password pairs the phone.
+    //    code, and the household password pairs the phone. A check that does
+    //    not say which phone it is for is refused and takes no attempt.
     let code = new_code(&hub).await;
+    let refused = start_with(&finder_client(), &hub.tls, &Phone::start(&code), "  ").await.unwrap_err();
+    assert_eq!(code_of(refused), (400, "other".into()));
     let phone = Phone::start(&code);
     let (reply, seen) = start(&hub.tls, &phone).await.unwrap();
     assert_eq!(zaklon_pake::to_hex(&seen), fingerprint, "the phone reached the hub itself");
@@ -163,21 +193,28 @@ async fn pairing_with_a_hub_found_on_the_network() {
     assert_eq!(r.status().as_u16(), 200);
     let devices: Value = r.json().await.unwrap();
     assert_eq!(devices.as_array().unwrap().len(), 1);
-    assert_eq!(devices[0]["name"], "Found phone");
+    assert_eq!(devices[0]["name"], PHONE_NAME, "the name the code was checked with");
     // The code is used up.
     let err = pair_like_the_phone(&hub.tls, &code, "correct horse").await.unwrap_err();
     assert!(err.contains("invalid or expired"), "{err}");
 
     // 3. A wrong code: the phone notices before it sends anything more, and
-    //    each try takes one of the code's three attempts.
+    //    each try takes one of the code's three attempts. One address may take
+    //    only two of them, so one device cannot use up a code on its own.
     let code = new_code(&hub).await;
     let wrong = if code == "000000" { "111111" } else { "000000" };
-    for i in 0..3 {
+    for i in 0..2 {
         let phone = Phone::start(wrong);
         let (reply, seen) = start(&hub.tls, &phone).await.unwrap();
         assert_eq!(check(phone, &reply, &seen), Err(Refusal::WrongCode), "try {i}");
     }
     let refused = start(&hub.tls, &Phone::start(&code)).await.unwrap_err();
+    assert_eq!(code_of(refused), (403, "too_many_attempts".into()), "this address has had its share");
+    let other = finder_client_from(other_device(2));
+    let phone = Phone::start(wrong);
+    let (reply, seen) = start_with(&other, &hub.tls, &phone, PHONE_NAME).await.unwrap();
+    assert_eq!(check(phone, &reply, &seen), Err(Refusal::WrongCode), "another device has the last attempt");
+    let refused = start_with(&other, &hub.tls, &Phone::start(&code), PHONE_NAME).await.unwrap_err();
     assert_eq!(code_of(refused), (403, "too_many_attempts".into()), "the code is burned");
 
     // 4. Without the phone's proof of the code the hub never looks at the
@@ -191,7 +228,7 @@ async fn pairing_with_a_hub_found_on_the_network() {
     let refused = finish(&hub.tls, &fingerprint, &reply.session, &proof, "correct horse", None).await;
     assert_eq!(code_of(refused), (403, "code_expired".into()), "a check is answered once");
     // A wrong password takes an attempt too (the second of this code).
-    let err = pair_like_the_phone(&hub.tls, &code, "wrong password").await.unwrap_err();
+    let err = pair_like_a_phone_at(Some(other_device(3)), &hub.tls, &code, "wrong password").await.unwrap_err();
     assert_eq!(err, "wrong household password");
 
     // 5. A device in between. The right code goes through it, so the phone
@@ -213,11 +250,19 @@ async fn pairing_with_a_hub_found_on_the_network() {
     // The relay saw a whole check go by, but without the key it cannot answer it.
     let refused = finish(&relay.url, &relay.fingerprint, &reply.session, &"00".repeat(32), "guess", None).await;
     assert_eq!(code_of(refused), (403, "wrong_code".into()));
-    // The same code still pairs with the hub itself (its third and last attempt).
-    let paired = pair_like_the_phone(&hub.tls, &code, "correct horse").await.unwrap();
+    // The same code still pairs with the hub itself (its third and last
+    // attempt; the relay's address had its two).
+    let paired = pair_like_a_phone_at(Some(other_device(2)), &hub.tls, &code, "correct horse").await.unwrap();
     assert_eq!(paired["fingerprint"], fingerprint.as_str());
 
-    // 6. Every check counts as a failure of its address until it pairs; too
+    // 6. The pairing requests exist only on the network listener: a web page
+    //    in the laptop's browser cannot reach them through the loopback port.
+    for path in ["/api/pair/complete", zaklon_pake::START_PATH, zaklon_pake::FINISH_PATH] {
+        let (st, body) = hub.post(path, json!({ "msg": "00", "device_name": "x" })).await;
+        assert_eq!((st, body["code"].as_str()), (404, Some("not_found")), "{path}");
+    }
+
+    // 7. Every check counts as a failure of its address until it pairs; too
     //    many and that address waits, even with a new code on the laptop.
     let mut blocked = false;
     for _ in 0..=zaklon_hub::PairingFailures::MAX_PER_IP {

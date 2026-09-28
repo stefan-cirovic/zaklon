@@ -4,7 +4,7 @@
 // Each test program uses its own share of these.
 #![allow(dead_code)]
 
-use std::net::TcpListener;
+use std::net::{IpAddr, TcpListener};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -73,25 +73,41 @@ impl ServerCertVerifier for Pin {
     }
 }
 
-fn tls_client(pin: Pin) -> reqwest::Client {
+fn tls_client(pin: Pin, from: Option<IpAddr>) -> reqwest::Client {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let tls = rustls::ClientConfig::builder()
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(pin))
         .with_no_client_auth();
-    reqwest::Client::builder().use_preconfigured_tls(tls).tls_info(true).no_proxy().build().unwrap()
+    reqwest::Client::builder().use_preconfigured_tls(tls).tls_info(true).no_proxy().local_address(from).build().unwrap()
 }
 
 /// A "phone": TLS client that only accepts the hub certificate with this fingerprint.
 pub fn phone_client(fingerprint: &str) -> reqwest::Client {
-    tls_client(Pin(Some(fingerprint.to_string())))
+    tls_client(Pin(Some(fingerprint.to_string())), None)
 }
 
 /// A phone that found a hub on the network and does not know its
 /// certificate yet: it accepts any, and each answer says which one it came
 /// with (see `seen_certificate`).
 pub fn finder_client() -> reqwest::Client {
-    tls_client(Pin(None))
+    tls_client(Pin(None), None)
+}
+
+/// Another device on the network: the hub sees it at `127.0.0.<n>` (every
+/// 127.x.x.x address is this computer).
+pub fn other_device(n: u8) -> IpAddr {
+    IpAddr::from([127, 0, 0, n])
+}
+
+/// `finder_client`, connecting from the address `from`.
+pub fn finder_client_from(from: IpAddr) -> reqwest::Client {
+    tls_client(Pin(None), Some(from))
+}
+
+/// `phone_client`, connecting from the address `from`.
+pub fn phone_client_from(fingerprint: &str, from: IpAddr) -> reqwest::Client {
+    tls_client(Pin(Some(fingerprint.to_string())), Some(from))
 }
 
 /// The certificate the answer came with.

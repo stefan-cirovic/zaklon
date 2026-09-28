@@ -24,6 +24,12 @@ async fn file_server(dir: &Path) -> String {
     format!("http://{addr}")
 }
 
+/// A pairing by QR code from the phone `client`: the status and the reply.
+async fn pair_by_qr(client: &reqwest::Client, hub: &Hub, body: Value) -> (u16, Value) {
+    let r = client.post(format!("{}/api/pair/complete", hub.tls)).json(&body).send().await.unwrap();
+    (r.status().as_u16(), r.json().await.unwrap_or(Value::Null))
+}
+
 async fn wait_pack(hub: &Hub, id: &str, until: &[&str]) -> Value {
     let deadline = Instant::now() + Duration::from_secs(60);
     loop {
@@ -154,39 +160,45 @@ async fn full_hub_flow() {
     let r = phone.get(format!("{}/api/devices", hub.tls)).bearer_auth("not-a-token").send().await.unwrap();
     assert_eq!(r.status().as_u16(), 401);
 
-    // 7. Pairing: wrong password counts attempts; the third wrong one burns the code.
+    // 7. Pairing by QR code. The QR code carries a long secret, not the
+    //    6-digit code, and the phone pairs with that secret and the household
+    //    password. A wrong secret (the 6-digit code too) gets the same answer
+    //    as no open code at all, and every failed request takes one of the
+    //    code's three attempts.
     let (_, pair) = hub.post("/api/pair/start", json!({})).await;
     let code = pair["code"].as_str().unwrap().to_string();
+    let secret = pair["payload"]["secret"].as_str().unwrap().to_string();
+    assert_eq!(pair["payload"]["v"], 2);
     assert_eq!(pair["payload"]["fp"], fingerprint.as_str());
-    for i in 0..3 {
-        let r = phone
-            .post(format!("{}/api/pair/complete", hub.tls))
-            .json(&json!({ "code": code, "password": "wrong password", "device_name": "x" }))
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(r.status().as_u16(), 403, "attempt {i}");
-    }
-    let r = phone
-        .post(format!("{}/api/pair/complete", hub.tls))
-        .json(&json!({ "code": code, "password": "correct horse", "device_name": "x" }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(r.status().as_u16(), 403, "burned code stays invalid");
+    assert_eq!(secret.len(), 32);
+    assert!(pair["payload"].get("code").is_none(), "the QR code does not carry the 6-digit code");
+    let other = phone_client_from(&fingerprint, other_device(2));
+    let (st, body) = pair_by_qr(&phone, &hub, json!({ "secret": code, "password": "correct horse", "device_name": "x" })).await;
+    assert_eq!((st, body["code"].as_str()), (403, Some("code_expired")), "the 6-digit code is no secret");
+    // Only who has the QR code learns that the password was wrong.
+    let (st, body) = pair_by_qr(&phone, &hub, json!({ "secret": secret, "password": "wrong password", "device_name": "x" })).await;
+    assert_eq!((st, body["code"].as_str()), (403, Some("wrong_password")));
+    let (st, body) = pair_by_qr(&other, &hub, json!({ "secret": "0".repeat(32), "password": "correct horse", "device_name": "x" })).await;
+    assert_eq!((st, body["code"].as_str()), (403, Some("code_expired")));
+    // Three attempts are used: now even the right secret and password are refused.
+    let (st, body) = pair_by_qr(&other, &hub, json!({ "secret": secret, "password": "correct horse", "device_name": "x" })).await;
+    assert_eq!((st, body["code"].as_str()), (403, Some("too_many_attempts")), "burned code stays invalid");
+    let (st, body) = pair_by_qr(&other, &hub, json!({ "secret": secret, "password": "correct horse", "device_name": "x" })).await;
+    assert_eq!((st, body["code"].as_str()), (403, Some("code_expired")));
 
     // 8. Pairing with a fresh code and the right password. Starting a new code
-    //    cancels the previous one.
+    //    cancels the previous one. One address may take only two of a code's
+    //    three attempts.
     let (_, old) = hub.post("/api/pair/start", json!({})).await;
     let (_, pair) = hub.post("/api/pair/start", json!({})).await;
-    let r = phone
-        .post(format!("{}/api/pair/complete", hub.tls))
-        .json(&json!({ "code": old["code"], "password": "correct horse", "device_name": "x" }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(r.status().as_u16(), 403, "an older code is no longer valid");
-    let request = json!({ "code": pair["code"], "password": "correct horse", "device_name": "Ana's phone", "nonce": "0123456789abcdef-e2e" });
+    let (st, _) = pair_by_qr(&phone, &hub, json!({ "secret": old["payload"]["secret"], "password": "correct horse", "device_name": "x" })).await;
+    assert_eq!(st, 403, "an older code is no longer valid");
+    let (st, _) = pair_by_qr(&phone, &hub, json!({ "secret": pair["payload"]["secret"], "password": "wrong password", "device_name": "x" })).await;
+    assert_eq!(st, 403);
+    let (st, body) = pair_by_qr(&phone, &hub, json!({ "secret": pair["payload"]["secret"], "password": "correct horse", "device_name": "x" })).await;
+    assert_eq!((st, body["code"].as_str()), (403, Some("too_many_attempts")), "this address has had its two");
+    let (_, pair) = hub.post("/api/pair/start", json!({})).await;
+    let request = json!({ "secret": pair["payload"]["secret"], "password": "correct horse", "device_name": "Ana's phone", "nonce": "0123456789abcdef-e2e" });
     let r = phone.post(format!("{}/api/pair/complete", hub.tls)).json(&request).send().await.unwrap();
     assert_eq!(r.status().as_u16(), 200);
     let paired: Value = r.json().await.unwrap();
@@ -563,13 +575,8 @@ async fn full_hub_flow() {
     let (st, _) = hub.post("/api/password", json!({ "new_password": "new household pw" })).await;
     assert_eq!(st, 204);
     let (_, pair) = hub.post("/api/pair/start", json!({})).await;
-    let r = phone
-        .post(format!("{}/api/pair/complete", hub.tls))
-        .json(&json!({ "code": pair["code"], "password": "correct horse", "device_name": "x" }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(r.status().as_u16(), 403);
+    let (st, body) = pair_by_qr(&phone, &hub, json!({ "secret": pair["payload"]["secret"], "password": "correct horse", "device_name": "x" })).await;
+    assert_eq!((st, body["code"].as_str()), (403, Some("wrong_password")));
 
     // 20. Env port overrides were not written to disk.
     let saved: Value = serde_json::from_str(&std::fs::read_to_string(hub.root.join("household/hub.json")).unwrap()).unwrap();

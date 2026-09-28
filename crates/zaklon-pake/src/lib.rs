@@ -18,7 +18,8 @@
 //! connection pinned to that certificate.
 //!
 //! The messages (all binary values as lower-case hex):
-//! 1. phone to hub, [`START_PATH`], [`StartRequest`]: the phone's SPAKE2 message.
+//! 1. phone to hub, [`START_PATH`], [`StartRequest`]: the phone's SPAKE2 message
+//!    and the name it pairs under.
 //! 2. hub to phone, [`StartReply`]: the hub's SPAKE2 message; `check`, a MAC
 //!    over both messages (it tells a wrong code apart); and `proof`, a MAC
 //!    over the hub's certificate fingerprint and both messages.
@@ -79,6 +80,11 @@ impl std::error::Error for Refusal {}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StartRequest {
     pub msg: String,
+    /// The name the phone will pair under. A check without one is refused
+    /// before it takes one of the code's attempts; the hub logs who checks
+    /// the code, and the phone is added under this name.
+    #[serde(default)]
+    pub device_name: String,
 }
 
 /// Step 2, hub to phone.
@@ -171,6 +177,12 @@ pub fn hub_answer(code: &str, phone_msg: &[u8], own: &Fingerprint) -> Result<Hub
 /// Whether the phone's proof is the expected one, compared in constant time.
 pub fn proof_matches(expect: &Tag, got: &[u8]) -> bool {
     bool::from(expect[..].ct_eq(got))
+}
+
+/// Whether a secret the phone sent is the expected one (the pairing QR
+/// code's secret), compared in constant time. Only the length can show.
+pub fn secrets_match(expect: &[u8], got: &[u8]) -> bool {
+    bool::from(expect.ct_eq(got))
 }
 
 /// The phone's side of one run.
@@ -312,6 +324,14 @@ mod tests {
         assert!(!proof_matches(&t, &[5; 31]));
         assert!(!proof_matches(&t, &[5; 33]));
         assert!(!proof_matches(&t, b""));
+    }
+
+    #[test]
+    fn secrets_are_compared_whole() {
+        assert!(secrets_match(b"0123456789abcdef", b"0123456789abcdef"));
+        assert!(!secrets_match(b"0123456789abcdef", b"0123456789abcdeF"));
+        assert!(!secrets_match(b"0123456789abcdef", b"0123456789abcde"));
+        assert!(!secrets_match(b"0123456789abcdef", b""));
     }
 
     #[test]

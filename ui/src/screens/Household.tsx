@@ -5,7 +5,7 @@ import { errText } from "../errors";
 import { fmtDateTime, latinArticles, securityCode, setLatinArticles } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
 import Qr from "../components/Qr";
-import Backups from "../components/Backups";
+import Backups, { SetupRestore } from "../components/Backups";
 import Hotspot from "../components/Hotspot";
 import Firewall from "../components/Firewall";
 import { Brand } from "../components/Brand";
@@ -59,6 +59,9 @@ function Setup({ t, lang, setLang, onDone, defaultName }: SetupProps) {
   const [checkUpdates, setCheckUpdates] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // A backup of the previous hub is prepared instead: nothing to set up.
+  const [restoring, setRestoring] = useState(false);
+  const onRestoreReady = useCallback(() => setRestoring(true), []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,45 +81,58 @@ function Setup({ t, lang, setLang, onDone, defaultName }: SetupProps) {
     }
   };
 
-  return (
-    <form className="stack form" onSubmit={submit}>
-      <div className="page-head centered">
-        <div className="brand-hero">
-          <Brand size={64} layout="column" />
-        </div>
-        <h1>{t("setupTitle")}</h1>
-        <p className="muted">{t("setupIntro")}</p>
+  const head = (
+    <div className="page-head centered">
+      <div className="brand-hero">
+        <Brand size={64} layout="column" />
       </div>
-      <label className="field">
-        {t("language")}
-        <select value={lang} onChange={(e) => setLang(e.target.value as Lang)}>
-          <option value="en">{t("english")}</option>
-          <option value="sr">{t("serbian")}</option>
-        </select>
-      </label>
-      <label className="field">
-        {t("hubName")}
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
-      </label>
-      <label className="field">
-        {t("password")}
-        <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} minLength={8} required autoComplete="new-password" />
-      </label>
-      <label className="field">
-        {t("passwordAgain")}
-        <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} minLength={8} required autoComplete="new-password" />
-      </label>
-      <p className="muted" style={{ fontSize: 14 }}>{t("passwordRule")}</p>
-      <label className="check-line">
-        <input type="checkbox" checked={checkUpdates} onChange={(e) => setCheckUpdates(e.target.checked)} />
-        <span>
-          {t("updateSwitch")}
-          <span className="muted" style={{ display: "block", fontSize: 14 }}>{t("setupUpdatesHint")}</span>
-        </span>
-      </label>
-      {err && <p className="error" role="alert">{err}</p>}
-      <button className="btn" disabled={busy || pw.length < 8}>{t("finish")}</button>
-    </form>
+      <h1>{t("setupTitle")}</h1>
+      {!restoring && <p className="muted">{t("setupIntro")}</p>}
+    </div>
+  );
+
+  // The restore panel stays in the same place, so it keeps its state when
+  // the form steps aside.
+  return (
+    <div className="stack form">
+      {restoring ? (
+        head
+      ) : (
+        <form className="stack" onSubmit={submit}>
+          {head}
+          <label className="field">
+            {t("language")}
+            <select value={lang} onChange={(e) => setLang(e.target.value as Lang)}>
+              <option value="en">{t("english")}</option>
+              <option value="sr">{t("serbian")}</option>
+            </select>
+          </label>
+          <label className="field">
+            {t("hubName")}
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
+          </label>
+          <label className="field">
+            {t("password")}
+            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} minLength={8} required autoComplete="new-password" />
+          </label>
+          <label className="field">
+            {t("passwordAgain")}
+            <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} minLength={8} required autoComplete="new-password" />
+          </label>
+          <p className="muted" style={{ fontSize: 14 }}>{t("passwordRule")}</p>
+          <label className="check-line">
+            <input type="checkbox" checked={checkUpdates} onChange={(e) => setCheckUpdates(e.target.checked)} />
+            <span>
+              {t("updateSwitch")}
+              <span className="muted" style={{ display: "block", fontSize: 14 }}>{t("setupUpdatesHint")}</span>
+            </span>
+          </label>
+          {err && <p className="error" role="alert">{err}</p>}
+          <button className="btn" disabled={busy || pw.length < 8}>{t("finish")}</button>
+        </form>
+      )}
+      <SetupRestore t={t} onReady={onRestoreReady} />
+    </div>
   );
 }
 

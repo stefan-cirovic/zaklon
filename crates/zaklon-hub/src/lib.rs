@@ -45,7 +45,16 @@ pub use zaklon_core::config::{BEACON_PORT, INSTALL_PORT, LOCAL_PORT};
 #[derive(Debug, Clone)]
 pub struct PairingSession {
     pub expires_at: Instant,
+    /// Attempts taken, from every address together.
     pub failed_attempts: u8,
+    /// Attempts taken by each address: one address may take only some of
+    /// them (see `api.rs`), so a device that is not the phone being paired
+    /// cannot use them all up on its own.
+    pub attempts_by_ip: HashMap<IpAddr, u8>,
+    /// The pairing QR code's secret (see `zaklon_core::pairing::pairing_secret`):
+    /// a phone that scanned the QR code pairs with it. The 6-digit code
+    /// itself works only through a code check from "Find hubs".
+    pub secret: String,
     /// Code checks from "Find hubs" waiting for the phone's answer, by run
     /// id. Each one took one of the code's attempts, so there are never more
     /// than those.
@@ -59,6 +68,8 @@ pub struct PakeRun {
     pub started: Instant,
     /// The address that started it.
     pub ip: IpAddr,
+    /// The name the phone gave when it started the check; it pairs under it.
+    pub device_name: String,
     /// The proof the phone must send back.
     pub expect: [u8; 32],
 }
@@ -243,6 +254,8 @@ impl Hub {
             // The swap either happened or was rolled back; the household keeps its data.
             Err(e) => tracing::error!("could not finish the restore, keeping the current data: {e}"),
         }
+        // Unencrypted copies left by a backup or a restore that stopped halfway.
+        backup::clean_leftovers(root);
         let config = Config::load_or_init(root).context("loading hub configuration")?;
         config.ensure_layout()?;
         let db = Db::open(&config.db_path()).context("opening household database")?;

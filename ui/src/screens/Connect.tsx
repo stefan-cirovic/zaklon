@@ -28,7 +28,7 @@ export default function Connect({ t, lang, setLang, onLinked, notice }: Props) {
     }
     try {
       const parsed = JSON.parse(r.text) as PairPayload;
-      if (parsed.v !== 1 || !Array.isArray(parsed.hosts) || !parsed.fp || !parsed.code) throw new Error("bad");
+      if (parsed.v !== 2 || !Array.isArray(parsed.hosts) || !parsed.fp || !parsed.secret) throw new Error("bad");
       setPayload(parsed);
     } catch {
       setErr(t("notAPairingCode"));
@@ -52,7 +52,7 @@ export default function Connect({ t, lang, setLang, onLinked, notice }: Props) {
   // A hub found on the network is only a suggestion: anyone on the Wi-Fi can
   // answer. The phone checks it with the code from the laptop before the
   // password is sent (pair_found in client.rs). The QR code carries the hub's
-  // certificate itself.
+  // certificate itself, and a secret to pair with in place of the code.
   const found = payload === null ? picked : null;
   const ready = payload !== null || (found !== null && code.length === 6);
 

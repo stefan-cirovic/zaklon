@@ -43,12 +43,17 @@ export type Status = {
 
 export type Device = { id: string; name: string; platform: string; created_at: string; last_seen: string | null };
 
+/**
+ * What the pairing QR code holds (version 2): the hub's addresses and
+ * certificate fingerprint, and a long secret the phone pairs with. The
+ * 6-digit code is not in it; that one is typed after "Find hubs".
+ */
 export type PairPayload = {
   v: number;
   hosts: string[];
   port: number;
   fp: string;
-  code: string;
+  secret: string;
   name: string;
   install_port: number;
 };

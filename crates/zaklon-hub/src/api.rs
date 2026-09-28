@@ -42,14 +42,26 @@ pub enum Listener {
 }
 
 pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
+    // A phone pairs over the network (TLS) listener. The laptop never pairs
+    // with itself, so on its loopback listener these do not exist: a web page
+    // open in the laptop's browser cannot reach them there either (DNS
+    // rebinding), with or without a code on the screen.
+    let pairing = match listener {
+        Listener::Network => Router::new()
+            .route("/api/pair/complete", post(pair_complete))
+            .route(zaklon_pake::START_PATH, post(pake_start))
+            .route(zaklon_pake::FINISH_PATH, post(pake_finish)),
+        Listener::Local => Router::new()
+            .route("/api/pair/complete", post(network_only))
+            .route(zaklon_pake::START_PATH, post(network_only))
+            .route(zaklon_pake::FINISH_PATH, post(network_only)),
+    };
     Router::new()
+        .merge(pairing)
         .route("/api/status", get(status))
         .route("/api/setup", post(setup))
         .route("/api/password", post(change_password))
         .route("/api/pair/start", post(pair_start))
-        .route("/api/pair/complete", post(pair_complete))
-        .route(zaklon_pake::START_PATH, post(pake_start))
-        .route(zaklon_pake::FINISH_PATH, post(pake_finish))
         .route("/api/devices", get(list_devices))
         .route("/api/devices/{id}", axum::routing::patch(rename_device).delete(delete_device))
         .route("/api/me", get(me))
@@ -134,6 +146,7 @@ impl IntoResponse for ApiError {
 const ERROR_CODES: &[(&str, &str)] = &[
     ("wrong household password", "wrong_password"),
     ("does not open this backup", "backup_wrong_password"),
+    ("backup is not encrypted", "backup_not_encrypted"),
     ("backup is encrypted", "backup_needs_password"),
     ("backup key cannot be read", "backup_key_damaged"),
     ("pairing code is invalid or expired", "code_expired"),
@@ -163,6 +176,7 @@ const ERROR_CODES: &[(&str, &str)] = &[
     ("database is damaged", "not_a_backup"),
     ("settings are damaged", "not_a_backup"),
     ("key is damaged", "not_a_backup"),
+    ("backup is too large", "not_a_backup"),
     ("made by a newer Zaklon", "newer_backup"),
     ("a copy is already running", "copy_running"),
     ("writing to the drive", "drive_write"),
@@ -223,6 +237,11 @@ fn unauthorized() -> ApiError {
 }
 fn not_found(msg: &str) -> ApiError {
     ApiError(StatusCode::NOT_FOUND, msg.into())
+}
+
+/// What the laptop's own listener answers for the phones' pairing requests.
+async fn network_only() -> ApiError {
+    not_found("no such endpoint here; phones pair over the network")
 }
 
 /// Runs slow work that blocks (disk, Argon2, PowerShell, copying the
@@ -490,6 +509,28 @@ async fn change_password(
 }
 
 // ---- pairing ----------------------------------------------------------------
+//
+// "Add a phone" on the laptop opens one code at a time, for a few minutes,
+// with three attempts. It shows two things:
+// - The pairing QR code, with the hub's addresses, its certificate
+//   fingerprint and a 128-bit secret. A phone that scans it pins the
+//   certificate and pairs with the secret and the household password
+//   (`/api/pair/complete`). The secret cannot be guessed.
+// - The 6-digit code, typed on a phone that found the hub with "Find hubs".
+//   It is accepted only through the code check (SPAKE2, below), where each
+//   attempt is one guess at it, and never on its own: otherwise a device on
+//   the Wi-Fi could try codes until one is accepted, then answer "Find hubs"
+//   in the hub's place with it.
+// Every request that fails takes one of the open code's attempts, and one
+// address may take only two of the three, so a single device that is not the
+// phone being paired cannot use them all up. Each failure also counts against
+// its address (see `PairingFailures`); a blocked address is refused before it
+// takes an attempt.
+
+/// Most of a code's attempts one address may take.
+const MAX_ATTEMPTS_PER_ADDRESS: u8 = 2;
+const CODE_EXPIRED: &str = "pairing code is invalid or expired";
+const TOO_MANY_ATTEMPTS: &str = "too many attempts; start pairing again on the laptop";
 
 #[derive(Serialize)]
 struct PairStart {
@@ -499,13 +540,15 @@ struct PairStart {
     payload: PairPayload,
 }
 
+/// The pairing QR code's content.
 #[derive(Serialize)]
 struct PairPayload {
+    /// 2: the QR code carries `secret`, not the 6-digit code.
     v: u8,
     hosts: Vec<String>,
     port: u16,
     fp: String,
-    code: String,
+    secret: String,
     name: String,
     install_port: u16,
 }
@@ -515,6 +558,7 @@ async fn pair_start(State(state): State<Arc<HubState>>, _: Local) -> Result<Json
         return Err(bad("set a household password first"));
     }
     let code = pairing::pairing_code();
+    let secret = pairing::pairing_secret();
     state.pairing_failures.lock().unwrap_or_else(|p| p.into_inner()).reset_total();
     {
         let mut sessions = state.pairing.lock().unwrap_or_else(|p| p.into_inner());
@@ -522,19 +566,25 @@ async fn pair_start(State(state): State<Arc<HubState>>, _: Local) -> Result<Json
         sessions.clear();
         sessions.insert(
             code.clone(),
-            PairingSession { expires_at: Instant::now() + PAIRING_TTL, failed_attempts: 0, runs: Default::default() },
+            PairingSession {
+                expires_at: Instant::now() + PAIRING_TTL,
+                failed_attempts: 0,
+                attempts_by_ip: HashMap::new(),
+                secret: secret.clone(),
+                runs: Default::default(),
+            },
         );
     }
     let cfg = state.config();
     Ok(Json(PairStart {
-        code: code.clone(),
+        code,
         expires_in_secs: PAIRING_TTL.as_secs(),
         payload: PairPayload {
-            v: 1,
+            v: 2,
             hosts: state.lan_addresses().iter().map(|a| a.to_string()).collect(),
             port: cfg.port,
             fp: state.identity.fingerprint.clone(),
-            code,
+            secret,
             name: cfg.hub_name,
             install_port: cfg.install_port,
         },
@@ -543,7 +593,9 @@ async fn pair_start(State(state): State<Arc<HubState>>, _: Local) -> Result<Json
 
 #[derive(Deserialize)]
 struct PairComplete {
-    code: String,
+    /// The secret from the pairing QR code.
+    #[serde(default)]
+    secret: String,
     password: String,
     device_name: String,
     #[serde(default = "default_platform")]
@@ -567,43 +619,57 @@ pub struct Paired {
     fingerprint: String,
 }
 
-/// Takes one of the code's attempts. Returns the reason when there is none.
-fn take_attempt(sessions: &mut HashMap<String, PairingSession>, code: &str) -> Option<&'static str> {
-    match sessions.get_mut(code) {
-        None => Some("pairing code is invalid or expired"),
-        Some(session) if session.failed_attempts >= MAX_PAIRING_ATTEMPTS => {
-            sessions.remove(code);
-            Some("too many attempts; start pairing again on the laptop")
-        }
-        Some(session) => {
-            session.failed_attempts += 1;
-            None
-        }
+/// Takes one of the code's attempts for `ip`. Returns the reason when there
+/// is none to take.
+fn take_attempt(sessions: &mut HashMap<String, PairingSession>, code: &str, ip: IpAddr) -> Option<&'static str> {
+    let Some(session) = sessions.get_mut(code) else {
+        return Some(CODE_EXPIRED);
+    };
+    if session.failed_attempts >= MAX_PAIRING_ATTEMPTS {
+        sessions.remove(code);
+        return Some(TOO_MANY_ATTEMPTS);
     }
+    let taken = session.attempts_by_ip.entry(ip).or_insert(0);
+    if *taken >= MAX_ATTEMPTS_PER_ADDRESS {
+        return Some(TOO_MANY_ATTEMPTS);
+    }
+    *taken += 1;
+    session.failed_attempts += 1;
+    None
 }
 
-/// Checks a pairing code and the household password. Returns the reason on
-/// failure. The password check (Argon2, slow on purpose) runs on a blocking
-/// thread without holding the pairing lock; an attempt is reserved before it
-/// starts, so parallel guesses still count toward the per-code limit.
-async fn pair_check(
-    state: &Arc<HubState>,
-    code: &str,
-    password: &str,
-    now: Instant,
-) -> Result<Option<&'static str>, ApiError> {
-    {
-        let mut sessions = state.pairing.lock().unwrap_or_else(|p| p.into_inner());
-        sessions.retain(|_, s| s.expires_at > now);
-        if let Some(reason) = take_attempt(&mut sessions, code) {
-            return Ok(Some(reason));
-        }
+/// The open code, if any (only the newest code is open).
+fn open_code(sessions: &mut HashMap<String, PairingSession>, now: Instant) -> Option<String> {
+    sessions.retain(|_, s| s.expires_at > now);
+    sessions.keys().next().cloned()
+}
+
+/// For a pairing by QR code: takes one of the open code's attempts and
+/// checks the QR code's secret. Returns the open code, or the reason for
+/// refusing.
+///
+/// Every call takes an attempt, whatever it sends. A wrong secret gets the
+/// same answer as no open code at all, so a caller without the QR code learns
+/// nothing: not whether a code is open, and nothing about the code or the
+/// password (which is checked only after the secret, see `check_password`).
+fn qr_check(state: &HubState, secret: &str, ip: IpAddr, now: Instant) -> Result<String, &'static str> {
+    let mut sessions = state.pairing.lock().unwrap_or_else(|p| p.into_inner());
+    let Some(code) = open_code(&mut sessions, now) else {
+        return Err(CODE_EXPIRED);
+    };
+    let right = sessions.get(&code).is_some_and(|s| zaklon_pake::secrets_match(s.secret.as_bytes(), secret.trim().as_bytes()));
+    match take_attempt(&mut sessions, &code, ip) {
+        None if right => Ok(code),
+        Some(reason) if right => Err(reason),
+        _ => Err(CODE_EXPIRED),
     }
-    check_password(state, code, password).await
 }
 
 /// Checks the household password for an attempt already taken on `code`.
-/// Returns the reason on failure; on success the code is used up.
+/// Returns the reason on failure; on success the code is used up. The check
+/// (Argon2, slow on purpose) runs on a blocking thread without holding the
+/// pairing lock; the attempt was taken before it started, so parallel
+/// guesses still count toward the limits.
 async fn check_password(state: &Arc<HubState>, code: &str, password: &str) -> Result<Option<&'static str>, ApiError> {
     let hash = state.db.get_setting("household_password_hash")?.unwrap_or_default();
     let password = password.to_string();
@@ -613,14 +679,14 @@ async fn check_password(state: &Arc<HubState>, code: &str, password: &str) -> Re
     sessions.retain(|_, s| s.expires_at > Instant::now());
     // The code may have been used, replaced, canceled or burned meanwhile.
     let Some(session) = sessions.get(code) else {
-        return Ok(Some("pairing code is invalid or expired"));
+        return Ok(Some(CODE_EXPIRED));
     };
     if ok {
         sessions.remove(code);
         Ok(None)
     } else if session.failed_attempts >= MAX_PAIRING_ATTEMPTS {
         sessions.remove(code);
-        Ok(Some("too many attempts; start pairing again on the laptop"))
+        Ok(Some(TOO_MANY_ATTEMPTS))
     } else {
         Ok(Some("wrong household password"))
     }
@@ -679,10 +745,15 @@ async fn refuse_slowly(msg: &str) -> ApiError {
     forbidden(msg)
 }
 
+/// The name a phone pairs under: trimmed, at most 60 characters.
+fn device_name_from(name: &str) -> String {
+    name.trim().chars().take(60).collect()
+}
+
 /// Adds a phone that passed every check, and returns what it keeps.
 fn add_device(state: &HubState, device_name: &str, platform: String) -> Result<Paired, ApiError> {
     let token = pairing::random_token(32);
-    let mut name: String = device_name.trim().chars().take(60).collect();
+    let mut name = device_name_from(device_name);
     if name.is_empty() || reserved_device_name(&name) {
         name = "Phone".to_string();
     }
@@ -705,6 +776,7 @@ fn add_device(state: &HubState, device_name: &str, platform: String) -> Result<P
     })
 }
 
+/// Pairing by QR code: the QR code's secret and the household password.
 async fn pair_complete(
     State(state): State<Arc<HubState>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -713,14 +785,20 @@ async fn pair_complete(
     let now = Instant::now();
     let ip = peer.ip();
     let nonce = pair_nonce(body.nonce.as_deref());
-    let repeat = format!("code:{}", body.code);
+    let repeat = format!("qr:{}", body.secret.trim());
     if let Some(paired) = repeated_pair(&state, nonce.as_deref(), &repeat) {
         return Ok(Json(paired));
     }
     refuse_if_blocked(&state, ip, now).await?;
 
-    let failure = pair_check(&state, &body.code, &body.password, now).await?;
-    if let Some(msg) = failure {
+    let code = match qr_check(&state, &body.secret, ip, now) {
+        Ok(code) => code,
+        Err(msg) => {
+            record_failure(&state, ip, now);
+            return Err(refuse_slowly(msg).await);
+        }
+    };
+    if let Some(msg) = check_password(&state, &code, &body.password).await? {
         record_failure(&state, ip, now);
         return Err(refuse_slowly(msg).await);
     }
@@ -738,7 +816,8 @@ async fn pair_complete(
 // tell whether the phone typed the right code, only the phone can, so each
 // check is one guess at the code: it takes one of the code's attempts, and it
 // counts as a failed attempt from its address until the phone pairs with it.
-// A check that is refused (no open code, or no attempts left) guesses nothing.
+// A check that is refused (no open code, no attempts left for it, or no name
+// for the phone) guesses nothing and takes nothing.
 
 async fn pake_start(
     State(state): State<Arc<HubState>>,
@@ -749,31 +828,36 @@ async fn pake_start(
     let ip = peer.ip();
     refuse_if_blocked(&state, ip, now).await?;
     let phone_msg = zaklon_pake::from_hex(&body.msg).ok_or_else(|| bad("bad pairing message"))?;
+    // The phone says who it is before it may take an attempt; it pairs
+    // under that name, and the log says who checked the code.
+    let device_name = device_name_from(&body.device_name);
+    if device_name.is_empty() {
+        return Err(bad("bad pairing message"));
+    }
     let own = zaklon_pake::fingerprint_from_hex(&state.identity.fingerprint)
         .ok_or_else(|| ApiError::from(anyhow::anyhow!("the hub's certificate fingerprint is not 64 hex digits")))?;
     let code = {
         let mut sessions = state.pairing.lock().unwrap_or_else(|p| p.into_inner());
-        sessions.retain(|_, s| s.expires_at > now);
-        // Only the newest code is open: showing a new one cancels the others.
-        let Some(code) = sessions.keys().next().cloned() else {
-            return Err(forbidden("pairing code is invalid or expired"));
+        let Some(code) = open_code(&mut sessions, now) else {
+            return Err(forbidden(CODE_EXPIRED));
         };
-        if let Some(reason) = take_attempt(&mut sessions, &code) {
+        if let Some(reason) = take_attempt(&mut sessions, &code, ip) {
             return Err(forbidden(reason));
         }
         code
     };
     record_failure(&state, ip, now);
+    tracing::info!(%ip, device = %device_name, "a phone checks the pairing code");
     let answer = zaklon_pake::hub_answer(&code, &phone_msg, &own).map_err(|_| bad("bad pairing message"))?;
     let session = pairing::random_token(16);
     {
         let mut sessions = state.pairing.lock().unwrap_or_else(|p| p.into_inner());
         // Replaced or canceled meanwhile (too many failures cancel every code).
         let Some(open) = sessions.get_mut(&code) else {
-            return Err(forbidden("pairing code is invalid or expired"));
+            return Err(forbidden(CODE_EXPIRED));
         };
         open.runs.retain(|_, run| now.saturating_duration_since(run.started) < PAKE_RUN_TTL);
-        open.runs.insert(session.clone(), PakeRun { started: now, ip, expect: answer.expect });
+        open.runs.insert(session.clone(), PakeRun { started: now, ip, device_name, expect: answer.expect });
     }
     Ok(Json(zaklon_pake::StartReply {
         session,
@@ -805,7 +889,7 @@ async fn pake_finish(
         sessions.iter_mut().find_map(|(code, s)| s.runs.remove(&body.session).map(|run| (code.clone(), run)))
     };
     let Some((code, run)) = run.filter(|(_, run)| now.saturating_duration_since(run.started) < PAKE_RUN_TTL) else {
-        return Err(refuse_slowly("pairing code is invalid or expired").await);
+        return Err(refuse_slowly(CODE_EXPIRED).await);
     };
     // Only a phone with the same key (the same code) can make this proof, and
     // only then is the password looked at: a guess at the code never tells
@@ -817,7 +901,7 @@ async fn pake_finish(
         return Err(refuse_slowly(msg).await);
     }
     state.pairing_failures.lock().unwrap_or_else(|p| p.into_inner()).forgive(run.ip);
-    let paired = add_device(&state, &body.device_name, body.platform.unwrap_or_else(default_platform))?;
+    let paired = add_device(&state, &run.device_name, body.platform.unwrap_or_else(default_platform))?;
     remember_pair(&state, nonce, repeat, &paired);
     Ok(Json(paired))
 }
@@ -1703,20 +1787,28 @@ struct RestoreBody {
     /// For an encrypted backup: the household password from when it was made.
     #[serde(default)]
     password: String,
+    /// The person saw that the backup is not encrypted and restores it
+    /// anyway (see `backup::needs_confirmation`).
+    #[serde(default)]
+    allow_unencrypted: bool,
 }
 
 /// Check a backup and prepare it; it replaces the data on the next start
-/// (on a hub with paired phones, keeping who may connect: see
-/// `backup::finish_pending_restore`).
-async fn backups_restore(State(state): State<Arc<HubState>>, _: Local, Json(body): Json<RestoreBody>) -> Result<Json<crate::backup::Manifest>, ApiError> {
+/// (keeping who may connect unless this is a new install: see
+/// `backup::Access`). The reply says what the backup really holds, not what
+/// its manifest claims: `encrypted` is false for a backup that was not.
+async fn backups_restore(State(state): State<Arc<HubState>>, _: Local, Json(body): Json<RestoreBody>) -> Result<Json<crate::backup::Staged>, ApiError> {
     let cfg = state.config();
     let path = std::path::PathBuf::from(body.path.trim().trim_matches('"'));
     if !path.is_file() {
         return Err(bad("that file does not exist"));
     }
     // A wrong password is found out before anything is written.
-    let password = body.password;
+    let (password, allow_unencrypted) = (body.password, body.allow_unencrypted);
     let backup = blocking(move || crate::backup::unlock(&path, &password)).await?.map_err(|e| bad(&e))?;
+    if !allow_unencrypted && crate::backup::needs_confirmation(&state.db, &backup) {
+        return Err(bad(crate::backup::NOT_ENCRYPTED));
+    }
     // Keep today's data too, whatever happens next.
     let st = state.clone();
     let cfg2 = cfg.clone();
@@ -1955,6 +2047,9 @@ mod error_code_tests {
             (BAD, "this backup was made by a newer Zaklon; update first", "newer_backup"),
             (BAD, "the password does not open this backup", "backup_wrong_password"),
             (BAD, "this backup is encrypted; enter the household password", "backup_needs_password"),
+            (BAD, "this backup is not encrypted, so nothing shows whether it was changed; confirm to restore it anyway", "backup_not_encrypted"),
+            (BAD, "this backup is too large for a household's data", "not_a_backup"),
+            (NOT_FOUND, "no such endpoint here; phones pair over the network", "not_found"),
             (BAD, "this hub's backup key cannot be read; turn backup encryption on again", "backup_key_damaged"),
             (BAD, "wrong household password", "wrong_password"),
             (BAD, "a copy is already running", "copy_running"),
