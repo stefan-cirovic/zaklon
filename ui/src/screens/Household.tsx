@@ -467,9 +467,11 @@ function CategoryPage({ t, cat, setting, jump, side, children }: PageProps) {
       if (el !== target) {
         target = el;
         show(el);
-      } else if (Math.abs(el.getBoundingClientRect().top - SCROLL_MARGIN) > 4) {
-        el.scrollIntoView({ block: "start" });
+        return;
       }
+      // It could not take the focus while it was empty (hidden).
+      if (document.activeElement === document.body) el.focus({ preventScroll: true });
+      if (Math.abs(el.getBoundingClientRect().top - SCROLL_MARGIN) > 4) el.scrollIntoView({ block: "start" });
     }, 150);
     const events = ["wheel", "touchstart", "keydown"] as const;
     for (const e of events) window.addEventListener(e, stop, { passive: true });

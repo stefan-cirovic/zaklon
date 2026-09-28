@@ -387,6 +387,10 @@ a.btn:hover { text-decoration: none; }
 .set-panels { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
 .set-panels > .wide { grid-column: 1 / -1; }
 .set-panels > .set-anchor { display: grid; }
+/* A part still loading (or with nothing to say) leaves no empty cell. */
+.set-panels > .set-anchor:empty { display: none; }
+/* Panels in a row are as tall as the tallest; their content stays at the top. */
+.set-panels .stack { align-content: start; }
 .set-panels > p { margin: 0; }
 .set-anchor { --flash-gap: 0px; scroll-margin-top: 20px; border-radius: var(--radius); }
 .panel .set-anchor { --flash-gap: 6px; }
@@ -408,7 +412,8 @@ a.btn:hover { text-decoration: none; }
 .set-row-text { display: grid; gap: 2px; min-width: 0; flex: 1 1 240px; }
 .set-row-title { color: var(--text); font-size: 14px; }
 .set-row-desc { color: var(--muted); font-size: 13px; }
-label.set-row { justify-content: flex-start; column-gap: 14px; }
+label.set-row { justify-content: flex-start; flex-wrap: nowrap; column-gap: 14px; }
+label.set-row > .set-row-title { flex: 1; min-width: 0; }
 label.set-row:hover { background: var(--hover); }
 .set-row-select { width: auto; min-width: 180px; }
 .set-action { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 24px; }
