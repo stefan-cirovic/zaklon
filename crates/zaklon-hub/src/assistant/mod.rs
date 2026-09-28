@@ -51,7 +51,7 @@ pub use plan::{
     health_question, mentions_supplies, parse_keywords, parse_plan, plain_supplies_question, remember_request, route, supplies_override, Plan,
     PlannedChange,
 };
-pub use prompts::clean_history;
+pub use prompts::{clean_history, HISTORY_TURNS};
 pub use sources::Passage;
 pub use supplies::{convert, match_item, match_items, propose, supplies_list, supplies_named, ItemMatch, Proposal};
 pub use text::{article_text, search_terms, search_words, stem, strip_html};

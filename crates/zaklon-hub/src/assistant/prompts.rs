@@ -10,7 +10,7 @@ use super::Turn;
 /// runs about 2.5 characters a token, and the answer needs room too.
 pub(super) const PROMPT_CHARS: usize = 12_000;
 /// Earlier turns carried into a prompt, and the longest question or answer kept from each.
-pub(super) const HISTORY_TURNS: usize = 2;
+pub const HISTORY_TURNS: usize = 2;
 const HISTORY_CHARS: usize = 600;
 
 /// The conversation as it goes into a prompt: the last few turns, without

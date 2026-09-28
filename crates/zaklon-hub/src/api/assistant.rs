@@ -53,10 +53,6 @@ pub(super) struct AskBody {
     new_conversation: bool,
 }
 
-/// How many earlier answers of a saved conversation go with a question (as
-/// many as the assistant uses).
-const HISTORY_TURNS: usize = 2;
-
 pub(super) async fn assistant_ask(State(state): State<Arc<HubState>>, caller: Caller, Json(body): Json<AskBody>) -> Result<Json<serde_json::Value>, ApiError> {
     let owner = caller.owner();
     // A saved conversation brings its own history. It must be this device's
@@ -67,8 +63,9 @@ pub(super) async fn assistant_ask(State(state): State<Arc<HubState>>, caller: Ca
             if conv.turns.len() >= zaklon_core::conversations::MAX_TURNS {
                 return Err(bad("the conversation is too long; start a new one"));
             }
+            // As many earlier answers as the assistant uses.
             let answered: Vec<_> = conv.turns.iter().filter(|t| t.status == "done" && !t.answer.is_empty()).collect();
-            answered[answered.len().saturating_sub(HISTORY_TURNS)..]
+            answered[answered.len().saturating_sub(crate::assistant::HISTORY_TURNS)..]
                 .iter()
                 .map(|t| crate::assistant::Turn { question: t.question.clone(), answer: t.answer.clone() })
                 .collect()
