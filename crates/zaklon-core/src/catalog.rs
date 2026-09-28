@@ -61,6 +61,12 @@ pub struct Pack {
     #[serde(default)]
     pub description: Localized,
     pub category: Category,
+    /// What a knowledge pack is about; the Add-ons screen shows it in the
+    /// folder of that name: "reference" (encyclopedias, dictionaries, books),
+    /// "health", "garden" (garden and food) or "skills" (repair and know-how).
+    /// Empty or unknown: the "Other knowledge" folder.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub topic: String,
     pub version: String,
     pub size: u64,
     pub files: Vec<PackFile>,
@@ -276,6 +282,10 @@ mod tests {
             }
         }
         assert!(c.pack("kiwix-tools").is_some());
+        // Every knowledge pack names the folder the Add-ons screen shows it in.
+        for p in c.packs.iter().filter(|p| p.category == Category::Knowledge) {
+            assert!(["reference", "health", "garden", "skills"].contains(&p.topic.as_str()), "no known topic for {}", p.id);
+        }
         for p in &c.packs {
             assert!(p.is_safe(), "unsafe pack {}", p.id);
             for f in &p.files {

@@ -163,6 +163,7 @@ pub fn packs() -> Vec<Pack> {
             title: Localized { en: local_name(&r.id, "en"), sr: local_name(&r.id, "sr") },
             description: Localized::default(),
             category: Category::Maps,
+            topic: String::new(),
             version: t.version.to_string(),
             size: r.size,
             files: vec![PackFile {
@@ -189,6 +190,7 @@ pub fn packs() -> Vec<Pack> {
             sr: "Offline mape i navigacija za Android. Hub je deli telefonima zajedno sa mapama.".into(),
         },
         category: Category::App,
+        topic: String::new(),
         version: COMAPS_APK_VERSION.into(),
         size: COMAPS_APK_SIZE,
         files: vec![PackFile {

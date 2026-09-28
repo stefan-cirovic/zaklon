@@ -979,13 +979,16 @@ async fn me(caller: Caller) -> Result<Json<serde_json::Value>, ApiError> {
 struct CatalogReply {
     packs: Vec<crate::downloads::PackView>,
     system: crate::downloads::SystemInfo,
+    /// The root of the drive the library is on ("D:\"), which the Add-ons
+    /// screen shows as the hub's drive.
+    library_drive: String,
 }
 
 async fn catalog(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<CatalogReply>, ApiError> {
     let d = &state.downloads;
     // Map pieces (over a thousand) have their own screen and endpoint.
     let packs = d.snapshot().into_iter().filter(|v| v.pack.category != zaklon_core::catalog::Category::Maps).collect();
-    Ok(Json(CatalogReply { packs, system: crate::downloads::system_info(d.library_dir()) }))
+    Ok(Json(CatalogReply { packs, system: crate::downloads::system_info(d.library_dir()), library_drive: crate::machine::drive_root(d.library_dir()) }))
 }
 
 async fn system(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<crate::downloads::SystemInfo>, ApiError> {

@@ -49,6 +49,21 @@ pub fn drive_of(path: &Path) -> Option<Drive> {
     drives().into_iter().filter(|d| p.starts_with(&drive_key(Path::new(&d.path)))).max_by_key(|d| d.path.len())
 }
 
+/// The root of the drive `path` is on, like "D:\" (on Windows), or "/" for
+/// other systems; "" when it cannot be told. Cheap: nothing is read from disk.
+pub fn drive_root(path: &Path) -> String {
+    use std::path::{Component, Prefix};
+    let abs = if path.is_absolute() { path.to_path_buf() } else { std::env::current_dir().map(|d| d.join(path)).unwrap_or_else(|_| path.to_path_buf()) };
+    match abs.components().next() {
+        Some(Component::Prefix(p)) => match p.kind() {
+            Prefix::Disk(l) | Prefix::VerbatimDisk(l) => format!("{}:\\", (l as char).to_ascii_uppercase()),
+            _ => p.as_os_str().to_string_lossy().into_owned(),
+        },
+        Some(Component::RootDir) => "/".into(),
+        _ => String::new(),
+    }
+}
+
 /// A path in the form drive roots are compared in: upper case, backslashes,
 /// ending in one ("E:" and "e:/x" become "E:\" and "E:\X\").
 fn drive_key(path: &Path) -> String {
@@ -216,6 +231,19 @@ mod tests {
             assert!(drive_key(Path::new(typed)).starts_with(&root), "{typed}");
         }
         assert!(!drive_key(Path::new("F:")).starts_with(&root));
+    }
+
+    #[test]
+    fn the_drive_root_of_a_folder() {
+        #[cfg(windows)]
+        {
+            assert_eq!(drive_root(Path::new("d:\\Zaklon\\library")), "D:\\");
+            assert_eq!(drive_root(Path::new("\\\\?\\E:\\Zaklon")), "E:\\");
+            // A relative folder is on the drive of the current folder.
+            assert!(drive_root(Path::new("library")).ends_with(":\\"));
+        }
+        #[cfg(not(windows))]
+        assert_eq!(drive_root(Path::new("/home/zaklon/library")), "/");
     }
 
     #[test]
