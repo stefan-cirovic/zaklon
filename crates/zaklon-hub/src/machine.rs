@@ -43,6 +43,90 @@ pub fn hardware() -> Hardware {
     Hardware { cpu: cpu_name(), cores, ram_total, ram_free, os: os_name() }
 }
 
+/// The processor's cores, as the AI engine cares about them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cores {
+    pub physical: usize,
+    /// Threads the cores run together (two a core with simultaneous multithreading).
+    pub logical: usize,
+    /// Every core is of one kind and runs as many threads as the others: no
+    /// mix of performance and efficiency cores.
+    pub uniform: bool,
+}
+
+impl Cores {
+    /// Threads for reading a prompt, when using every thread of the processor
+    /// beats the engine's own choice (one a core): on alike cores that each
+    /// run two threads. Measured on a Ryzen 5 1600 (6 cores, 12 threads) with
+    /// the 9B model: 14 to 15 tokens a second with 6 threads, 17 to 20 with
+    /// 12. Mixed performance and efficiency cores are left to the engine,
+    /// where the slow cores would hold the fast ones back.
+    pub fn prompt_threads(&self) -> Option<usize> {
+        (self.uniform && self.physical >= 2 && self.logical == 2 * self.physical).then_some(self.logical)
+    }
+}
+
+/// The processor's cores, read once.
+pub fn cores() -> Option<Cores> {
+    static CORES: std::sync::OnceLock<Option<Cores>> = std::sync::OnceLock::new();
+    *CORES.get_or_init(read_cores)
+}
+
+#[cfg(all(windows, target_pointer_width = "64"))]
+fn read_cores() -> Option<Cores> {
+    use windows_sys::Win32::System::SystemInformation::{GetLogicalProcessorInformationEx, RelationProcessorCore};
+    let mut len: u32 = 0;
+    // SAFETY: with no buffer the call only says how many bytes it needs.
+    unsafe { GetLogicalProcessorInformationEx(RelationProcessorCore, std::ptr::null_mut(), &mut len) };
+    if len == 0 {
+        return None;
+    }
+    // u64s, so the records are aligned as Windows writes them.
+    let mut buf = vec![0u64; (len as usize).div_ceil(8)];
+    // SAFETY: the buffer holds at least `len` bytes.
+    if unsafe { GetLogicalProcessorInformationEx(RelationProcessorCore, buf.as_mut_ptr().cast(), &mut len) } == 0 {
+        return None;
+    }
+    // SAFETY: `len` bytes of the buffer were written, and it has at least that many.
+    let bytes = unsafe { std::slice::from_raw_parts(buf.as_ptr().cast::<u8>(), (len as usize).min(buf.len() * 8)) };
+    cores_from_records(bytes)
+}
+
+#[cfg(not(all(windows, target_pointer_width = "64")))]
+fn read_cores() -> Option<Cores> {
+    None
+}
+
+/// Cores from the records `GetLogicalProcessorInformationEx` writes for
+/// `RelationProcessorCore`, one a core, in their 64-bit layout: the record's
+/// kind at byte 0 and its size at 4, the core's efficiency class at 9, how
+/// many processor groups it spans at 30 and the first group's mask of
+/// threads at 32.
+#[cfg_attr(not(all(windows, target_pointer_width = "64")), allow(dead_code))]
+fn cores_from_records(bytes: &[u8]) -> Option<Cores> {
+    let u32_at = |o: usize| bytes.get(o..o + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+    let mut classes: Vec<u8> = Vec::new();
+    let mut threads: Vec<u32> = Vec::new();
+    let mut off = 0;
+    while let (Some(kind), Some(size)) = (u32_at(off), u32_at(off + 4)) {
+        let size = size as usize;
+        if size < 40 || off + size > bytes.len() {
+            break;
+        }
+        if kind == 0 {
+            let mask = u64::from_le_bytes(bytes[off + 32..off + 40].try_into().ok()?);
+            classes.push(bytes[off + 9]);
+            threads.push(mask.count_ones());
+        }
+        off += size;
+    }
+    if threads.is_empty() {
+        return None;
+    }
+    let uniform = classes.iter().all(|c| *c == classes[0]) && threads.iter().all(|t| *t == threads[0]);
+    Some(Cores { physical: threads.len(), logical: threads.iter().map(|t| *t as usize).sum(), uniform })
+}
+
 /// The drive that holds `path`, if it is one of ours.
 pub fn drive_of(path: &Path) -> Option<Drive> {
     let p = drive_key(path);
@@ -216,11 +300,46 @@ mod tests {
         assert!(h.ram_total > 0);
         #[cfg(windows)]
         {
+            let c = cores().expect("the cores are read on Windows");
+            assert!(c.physical >= 1 && c.logical >= c.physical, "{c:?}");
             assert!(!h.cpu.is_empty());
             assert!(h.os.starts_with("Windows"), "{}", h.os);
             let d = drives();
             assert!(d.iter().any(|d| d.system), "the system drive is listed: {d:?}");
         }
+    }
+
+    /// A core's record as Windows writes it (64-bit layout, one processor group).
+    fn core_record(class: u8, threads: u32) -> Vec<u8> {
+        let mut r = vec![0u8; 48];
+        r[4..8].copy_from_slice(&48u32.to_le_bytes());
+        r[9] = class;
+        r[30..32].copy_from_slice(&1u16.to_le_bytes());
+        r[32..40].copy_from_slice(&((1u64 << threads) - 1).to_le_bytes());
+        r
+    }
+
+    fn processor(cores: &[(u8, u32)]) -> Option<Cores> {
+        cores_from_records(&cores.iter().flat_map(|&(class, threads)| core_record(class, threads)).collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn prompts_use_every_thread_only_on_alike_cores() {
+        // Ryzen 5 1600: 6 cores, 12 threads.
+        let ryzen = processor(&[(0, 2); 6]).unwrap();
+        assert_eq!(ryzen, Cores { physical: 6, logical: 12, uniform: true });
+        assert_eq!(ryzen.prompt_threads(), Some(12));
+        // One thread a core: the engine's own choice.
+        assert_eq!(processor(&[(0, 1); 4]).unwrap().prompt_threads(), None);
+        // 6 performance cores with two threads and 8 efficiency cores with one.
+        let hybrid = processor(&[[(1, 2); 6].as_slice(), [(0, 1); 8].as_slice()].concat()).unwrap();
+        assert_eq!((hybrid.physical, hybrid.logical, hybrid.uniform), (14, 20, false));
+        assert_eq!(hybrid.prompt_threads(), None);
+        // Alike cores of another class than 0 are still alike.
+        assert_eq!(processor(&[(1, 2); 4]).unwrap().prompt_threads(), Some(8));
+        // Nothing, or a cut record, tells nothing.
+        assert_eq!(cores_from_records(&[]), None);
+        assert_eq!(cores_from_records(&core_record(0, 2)[..40]), None);
     }
 
     #[test]

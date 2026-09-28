@@ -38,9 +38,41 @@ const START_TIMEOUT: Duration = Duration::from_secs(180);
 const LOADING_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// Database setting that remembers the chosen model.
 pub const SETTING_MODEL: &str = "assistant_model";
-/// Characters of each source passage given to the model.
+/// Characters of each source passage read from an article.
 const SOURCE_CHARS: usize = 1400;
 const MAX_SOURCES: usize = 3;
+/// About how long the engine may take to read an answer's sources: before
+/// its first word it reads all of them, and a 9B model on a six-core
+/// processor reads only 15 to 20 tokens a second. Sources get as much text
+/// as that takes on this computer (see `source_budget`): on the test
+/// computer (Ryzen 5 1600, 9B model) about 2,400 characters of the 4,200
+/// three sources hold at most, and the first word came after 45 seconds
+/// instead of 82, with answers as good. Much less costs answers: with 30
+/// seconds (1,600 characters, sentences picked by their words) 7 of 25
+/// library questions of the evaluation were answered well, not 11 to 13.
+const READ_TIME: Duration = Duration::from_secs(45);
+/// Characters a token of source text, about (Serbian runs 2.7 to 3, English 4).
+const CHARS_PER_TOKEN: f64 = 2.8;
+/// Source text an answer gets at least, however slow the computer.
+const MIN_SOURCE_CHARS: usize = 900;
+/// A prompt's read time counts as a measure of the engine's speed from this
+/// many tokens on.
+const MEASURE_TOKENS: f64 = 100.0;
+/// The engine's slots, one for each kind of prompt. A slot keeps what it
+/// read last up to the start of the last message, and reads only what
+/// follows: the instructions and examples of the plan (in Serbian and in
+/// English), the instructions for answers, those for health answers, and
+/// those for the supplies with the supplies list are each read once, not
+/// again whenever the kind of question changes (200 to 1,000 tokens, 10 to
+/// 50 seconds on a slow computer).
+const SLOT_PLAN: u32 = 0;
+const SLOT_PLAN_EN: u32 = 1;
+const SLOT_ANSWER: u32 = 2;
+const SLOT_HEALTH: u32 = 3;
+const SLOT_SUPPLIES: u32 = 4;
+const SLOTS: u32 = 5;
+/// Tokens of context in each slot.
+const SLOT_CONTEXT: u32 = 6144;
 /// Articles read before the final ranking, best first. Reading one is cheap
 /// next to a search (a few hundredths of a second on a quiet disk), and the
 /// title ranking alone lets a word's lookalike ("Можданице" for "moždani
@@ -178,6 +210,9 @@ pub struct Answer {
     pub total_ms: u64,
     /// The plan did not come in time; the question was routed by its words.
     pub plan_fallback: bool,
+    /// A plain question about the supplies: routed by its words without
+    /// asking the model, which would have come to the same.
+    pub plan_skipped: bool,
     /// Library searches started, how many of them recent results answered,
     /// and articles read.
     pub lookups: u32,
@@ -185,6 +220,12 @@ pub struct Answer {
     pub articles_read: u32,
     /// The library's time ran out before every search or read was done.
     pub search_cut: bool,
+    /// Characters of source text the answer was given.
+    pub source_chars: u32,
+    /// Prompt tokens the engine read for the answer, and the ones before
+    /// them it still had from an earlier prompt.
+    pub prompt_tokens: u32,
+    pub cached_tokens: u32,
     #[serde(skip)]
     created: Instant,
     /// Someone asked to stop this answer.
@@ -228,10 +269,14 @@ impl Answer {
             first_token_ms: 0,
             total_ms: 0,
             plan_fallback: false,
+            plan_skipped: false,
             lookups: 0,
             lookups_cached: 0,
             articles_read: 0,
             search_cut: false,
+            source_chars: 0,
+            prompt_tokens: 0,
+            cached_tokens: 0,
             created: now,
             cancel: false,
             seen: now,
@@ -319,6 +364,10 @@ pub struct Assistant {
     cancel_load: AtomicBool,
     /// The running engine has read the plan's instructions once (they stay cached).
     plan_warm: AtomicBool,
+    /// How fast the engine reads a prompt, in tokens a second, and for which
+    /// model: measured on every long enough prompt, and what decides how
+    /// much source text an answer gets (see `source_budget`).
+    read_speed: Mutex<Option<(String, f64)>>,
     #[cfg(windows)]
     job: crate::kiwix::job::Job,
     http: reqwest::Client,
@@ -362,6 +411,7 @@ impl Assistant {
             turn: tokio::sync::Mutex::new(()),
             cancel_load: AtomicBool::new(false),
             plan_warm: AtomicBool::new(false),
+            read_speed: Mutex::new(None),
             #[cfg(windows)]
             job: crate::kiwix::job::Job::new(),
             http: reqwest::Client::builder().no_proxy().connect_timeout(Duration::from_secs(5)).build().expect("http client"),
@@ -504,10 +554,11 @@ impl Assistant {
         let mut cmd = Command::new(self.exe());
         cmd.arg("-m")
             .arg(&path)
-            // Two slots, each keeping its own prompt cache: slot 0 decides what a
-            // question is about (its long instructions and examples stay cached),
-            // slot 1 writes answers. 12288 tokens of context, 6144 per slot.
-            .args(["--host", "127.0.0.1", "--port", &port.to_string(), "-c", "12288", "-np", "2", "--jinja"])
+            // A slot for each kind of prompt, each keeping what it read last
+            // (see `SLOT_PLAN`), with `SLOT_CONTEXT` tokens of context each.
+            .args(["--host", "127.0.0.1", "--port", &port.to_string(), "--jinja"])
+            .args(["-c", &(SLOTS * SLOT_CONTEXT).to_string(), "-np", &SLOTS.to_string()])
+            .args(engine_tuning(crate::machine::cores()))
             .current_dir(&self.engine_dir)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
@@ -744,7 +795,10 @@ impl Assistant {
         self.stop_requested(id)?;
         self.update(id, |a| a.status = AnswerStatus::Searching);
         let t0 = Instant::now();
-        let planned = self.unless_stopped(id, self.plan(port, question, language)).await?;
+        // A plain question about the supplies ends up there whatever the
+        // model says (see `route`): it is not asked, which saves seconds.
+        let skipped = plain_supplies_question(question);
+        let planned = if skipped { Some(supplies_plan(question)) } else { self.unless_stopped(id, self.plan(port, question, language)).await? };
         let plan_ms = ms(t0);
         let fallback = planned.is_none();
         // No plan in time: a library question searched by its own words, with
@@ -752,12 +806,15 @@ impl Assistant {
         let mut plan = planned.unwrap_or_else(|| parse_plan(""));
         if fallback {
             info!(ms = plan_ms, "assistant: no plan in time; routing by the question's words");
+        } else if skipped {
+            info!("assistant: a plain question about the supplies; no plan needed");
         } else {
             info!(ms = plan_ms, kind = %plan.kind, "assistant: plan");
         }
         self.update(id, |a| {
             a.plan_ms = plan_ms;
             a.plan_fallback = fallback;
+            a.plan_skipped = skipped;
         });
         self.stop_requested(id)?;
         route(&mut plan, question, items);
@@ -806,15 +863,16 @@ impl Assistant {
 
         // 2b. A question about the supplies: answer from the list.
         if plan.kind == "supplies_question" {
-            let context = supplies_context(items, &plan.terms, question, language);
+            let list = supplies_list(items, language);
+            let named = supplies_named(items, &plan.terms, question, language);
             self.update(id, |a| {
                 a.from_supplies = true;
                 a.grounded = true;
                 a.searched = plan.terms.clone();
                 a.status = AnswerStatus::Thinking;
             });
-            let messages = with_notes(supplies_messages(question, language, &context, history), &known, language, true);
-            return self.stream_answer(id, port, messages, language, Finish::default()).await;
+            let messages = with_notes(supplies_messages(question, language, &list, &named, history), &known, language, true);
+            return self.stream_answer(id, port, SLOT_SUPPLIES, messages, language, Finish::default()).await;
         }
 
         // 2c. Everything else: find passages in the library, if there is one.
@@ -873,12 +931,18 @@ impl Assistant {
             a.sources = sources;
             a.status = AnswerStatus::Thinking;
         });
+        // Reading the sources is most of the wait for the first word: they
+        // get as much text as this computer reads in `READ_TIME`, the best
+        // source the most, each its paragraphs about the question first.
+        trim_sources(&mut passages, &trim_stems(&terms, &terms_en, question), self.source_budget());
         // Keep the whole prompt inside the engine's context.
         let used = question.chars().count()
             + history.iter().map(|t| t.question.chars().count() + t.answer.chars().count()).sum::<usize>()
             + known.iter().map(|n| n.chars().count() + 3).sum::<usize>()
             + 1800;
         fit_passages(&mut passages, PROMPT_CHARS.saturating_sub(used));
+        let source_chars = passages.iter().map(|p| p.text.chars().count()).sum::<usize>();
+        self.update(id, |a| a.source_chars = source_chars as u32);
         let finish = Finish {
             library: !passages.is_empty(),
             safety,
@@ -887,7 +951,8 @@ impl Assistant {
         };
         let messages = with_notes(build_messages(question, language, &passages, history, safety), &known, language, !safety);
         let t2 = Instant::now();
-        let r = self.stream_answer(id, port, messages, language, finish).await;
+        let slot = if safety { SLOT_HEALTH } else { SLOT_ANSWER };
+        let r = self.stream_answer(id, port, slot, messages, language, finish).await;
         info!(ms = t2.elapsed().as_millis() as u64, "assistant: answer written");
         r
     }
@@ -913,15 +978,41 @@ impl Assistant {
         passages
     }
 
+    /// Characters of source text for an answer: what the engine reads in
+    /// `READ_TIME` at the speed last measured with this model, or at a guess
+    /// by the model's size before that (the first plan on a new engine reads
+    /// about a thousand tokens and measures it).
+    fn source_budget(&self) -> usize {
+        let model = self.selected().unwrap_or_default();
+        let measured = self.read_speed.lock().unwrap_or_else(|p| p.into_inner()).as_ref().filter(|(m, _)| *m == model).map(|(_, s)| *s);
+        source_budget(measured.unwrap_or_else(|| guessed_read_speed(&model)))
+    }
+
+    /// Learn how fast the engine reads a prompt from its `timings`, when it
+    /// read enough of one to tell. Half the new measure and half the old, so
+    /// one answer read while something else kept the processor busy does
+    /// not decide alone.
+    fn note_read_speed(&self, timings: &serde_json::Value) {
+        let Some(speed) = prompt_speed(timings) else { return };
+        let Some(model) = self.selected() else { return };
+        let mut known = self.read_speed.lock().unwrap_or_else(|p| p.into_inner());
+        let smoothed = match known.as_ref() {
+            Some((m, old)) if *m == model => (old + speed) / 2.0,
+            _ => speed,
+        };
+        info!(per_second = format!("{speed:.1}"), smoothed = format!("{smoothed:.1}"), "assistant: prompt read");
+        *known = Some((model, smoothed));
+    }
+
     /// Ask the model, streaming its text into the answer as it comes. The
     /// engine gets `FIRST_BYTE` to start and `STALL` between pieces, and a
     /// stopped answer keeps what was written.
-    async fn stream_answer(&self, id: &str, port: u16, messages: Vec<serde_json::Value>, language: &'static str, finish: Finish) -> Result<(), String> {
+    async fn stream_answer(&self, id: &str, port: u16, slot: u32, messages: Vec<serde_json::Value>, language: &'static str, finish: Finish) -> Result<(), String> {
         let body = serde_json::json!({
             "messages": messages,
             "stream": true,
             "max_tokens": 380,
-            "id_slot": 1,
+            "id_slot": slot,
             "cache_prompt": true,
             "temperature": 0.3,
             "repeat_penalty": 1.1,
@@ -980,6 +1071,15 @@ impl Assistant {
                 if !v["error"].is_null() {
                     let msg = v["error"]["message"].as_str().map(str::to_string).unwrap_or_else(|| v["error"].to_string());
                     return Err(format!("AI engine: {msg}"));
+                }
+                // The last piece says how much of the prompt was read and how fast.
+                if v["timings"].is_object() {
+                    let count = |k: &str| v["timings"][k].as_u64().unwrap_or(0) as u32;
+                    self.update(id, |a| {
+                        a.prompt_tokens = count("prompt_n");
+                        a.cached_tokens = count("cache_n");
+                    });
+                    self.note_read_speed(&v["timings"]);
                 }
                 if let Some(piece) = v["choices"][0]["delta"]["content"].as_str() {
                     if !piece.is_empty() {
@@ -1132,7 +1232,7 @@ quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; categor
             "messages": messages,
             // Room for a long note; the grammar ends the output at the closing brace anyway.
             "max_tokens": 256,
-            "id_slot": 0,
+            "id_slot": if sr { SLOT_PLAN } else { SLOT_PLAN_EN },
             "cache_prompt": true,
             "temperature": 0.1,
             "chat_template_kwargs": { "enable_thinking": false },
@@ -1152,6 +1252,9 @@ quantity is a number (0 if not said); unit is pcs, kg, g, l, ml or pack; categor
             return None;
         }
         let v = reply.json::<serde_json::Value>().await.ok()?;
+        // The first plan on a new engine reads all of its instructions: a
+        // good measure of how fast this computer reads.
+        self.note_read_speed(&v["timings"]);
         let text = v["choices"][0]["message"]["content"].as_str()?;
         self.plan_warm.store(true, Ordering::Relaxed);
         Some(parse_plan(text))
@@ -1899,6 +2002,20 @@ pub fn route(plan: &mut Plan, question: &str, items: &[Item]) {
     }
 }
 
+/// A question plainly about the household's supplies: asked as a question
+/// ("Koliko imamo brašna?", not "Stavi hleb na listu za kupovinu") with a
+/// clear cue (`SUPPLY_MARKS`), and not a request to remember something.
+/// `route` turns any plan for it into a supplies question (all but a
+/// mistaken "remember"), so the model need not be asked.
+pub fn plain_supplies_question(question: &str) -> bool {
+    is_question(question) && mentions_supplies(question) && remember_request(question).is_none()
+}
+
+/// The plan for a plain supplies question, from its own words.
+fn supplies_plan(question: &str) -> Plan {
+    Plan { kind: "supplies_question".into(), terms: search_words(question).iter().map(|w| stem(w)).collect(), ..Plan::default() }
+}
+
 /// "Zapamti da je Ana alergična na penicilin" -> "Ana je alergična na penicilin."
 pub fn remember_request(question: &str) -> Option<String> {
     let q = question.trim();
@@ -2022,7 +2139,9 @@ fn limit_notes(notes: impl Iterator<Item = String>) -> Vec<String> {
 /// quietly in the instructions ("Ana is allergic to penicillin" matters more
 /// than any encyclopedia article about penicillin). With `mention`, the model
 /// is asked to name the note at the start; health answers leave that to the
-/// hub, which shows the notes above the answer itself.
+/// hub, which shows the notes above the answer itself. The rule goes with
+/// the notes, not into the instructions: those stay the same from one
+/// question to the next, notes or not, so the engine need not read them again.
 fn with_notes(mut messages: Vec<serde_json::Value>, notes: &[String], language: &str, mention: bool) -> Vec<serde_json::Value> {
     if notes.is_empty() {
         return messages;
@@ -2036,13 +2155,9 @@ fn with_notes(mut messages: Vec<serde_json::Value>, notes: &[String], language: 
     };
     let head = if sr { "Beleške domaćinstva:" } else { "Household notes:" };
     let list = notes.iter().map(|n| format!("- {n}")).collect::<Vec<_>>().join("\n");
-    if let Some(sys) = messages.first_mut() {
-        let content = sys["content"].as_str().unwrap_or_default().to_string();
-        sys["content"] = serde_json::Value::String(format!("{content}\n{rule}"));
-    }
     if let Some(user) = messages.last_mut() {
         let content = user["content"].as_str().unwrap_or_default().to_string();
-        user["content"] = serde_json::Value::String(format!("{head}\n{list}\n\n{content}"));
+        user["content"] = serde_json::Value::String(format!("{head}\n{list}\n{rule}\n\n{content}"));
     }
     messages
 }
@@ -2429,13 +2544,50 @@ fn category_of_word(word: &str) -> Option<&'static str> {
     WORDS.iter().find(|(p, _)| starts_word(&[w.as_str()], p)).map(|(_, c)| *c)
 }
 
-/// The supplies, as the model sees them: items named in the question first,
-/// then items of a category it names ("lekovi"), then what expires, what
-/// runs low, and the rest, one line each with its category.
-pub fn supplies_context(items: &[Item], terms: &[String], question: &str, language: &str) -> String {
+/// Items in the supplies list given to the model.
+const LIST_ITEMS: usize = 80;
+/// Items named by a question, repeated next to it.
+const NAMED_ITEMS: usize = 30;
+
+/// A stored item as the model sees it, one line with its category.
+fn item_line(i: &Item, sr: bool) -> String {
+    let mut l = format!("- {}: {} {} ({})", i.name, qty_text(i.quantity), unit_text(&i.unit, sr), category_text(&i.category, sr));
+    if let Some(e) = &i.expiry {
+        l.push_str(&if sr { format!(", rok {e}") } else { format!(", expires {e}") });
+    }
+    if let Some(p) = &i.place {
+        l.push_str(&if sr { format!(", mesto: {p}") } else { format!(", place: {p}") });
+    }
+    if let Some(m) = i.min_quantity {
+        if i.quantity < m {
+            l.push_str(if sr { ", ponestaje" } else { ", running low" });
+        }
+    }
+    l
+}
+
+/// The whole supplies list, as the model sees it: what expires first comes
+/// first. It is the same for every question until the supplies change, so it
+/// goes with the fixed instructions, and the engine keeps what it has read
+/// of it from one question to the next (see `supplies_messages`).
+pub fn supplies_list(items: &[Item], language: &str) -> String {
     let sr = language == "sr";
     // Local date, like the supplies screen (UTC was a day behind after midnight in Serbia).
     let today = zaklon_core::supplies::today();
+    let mut ordered: Vec<&Item> = items.iter().collect();
+    ordered.sort_by(|a, b| a.expiry.as_deref().unwrap_or("9999").cmp(b.expiry.as_deref().unwrap_or("9999")));
+    let mut lines = vec![if sr { format!("Danas je {today}. Zalihe ({} stavki):", items.len()) } else { format!("Today is {today}. Supplies ({} items):", items.len()) }];
+    lines.extend(ordered.into_iter().take(LIST_ITEMS).map(|i| item_line(i, sr)));
+    if items.is_empty() {
+        lines.push(if sr { "(u zalihama još nema ničega)".into() } else { "(nothing in the supplies yet)".into() });
+    }
+    lines.join("\n")
+}
+
+/// The items a question is about, repeated next to it: those it names, then
+/// those of a category it names ("lekovi"). Empty when it names none.
+pub fn supplies_named(items: &[Item], terms: &[String], question: &str, language: &str) -> String {
+    let sr = language == "sr";
     let stems: Vec<String> = terms.iter().map(|t| stem(&plain(t))).filter(|t| t.chars().count() >= 2).collect();
     let categories: Vec<&str> = terms
         .iter()
@@ -2449,35 +2601,22 @@ pub fn supplies_context(items: &[Item], terms: &[String], question: &str, langua
         stems.iter().any(|s| n.contains(s.as_str()))
     };
     let by_category = |i: &Item| categories.contains(&i.category.as_str());
-    let mut ordered: Vec<&Item> = items.iter().filter(|i| by_name(i)).collect();
-    ordered.extend(items.iter().filter(|i| !by_name(i) && by_category(i)));
-    let mut rest: Vec<&Item> = items.iter().filter(|i| !by_name(i) && !by_category(i)).collect();
-    rest.sort_by(|a, b| a.expiry.clone().unwrap_or_else(|| "9999".into()).cmp(&b.expiry.clone().unwrap_or_else(|| "9999".into())));
-    ordered.extend(rest);
-    let mut lines = vec![if sr { format!("Danas je {today}. Zalihe ({} stavki):", items.len()) } else { format!("Today is {today}. Supplies ({} items):", items.len()) }];
-    for i in ordered.into_iter().take(80) {
-        let mut l = format!("- {}: {} {} ({})", i.name, qty_text(i.quantity), unit_text(&i.unit, sr), category_text(&i.category, sr));
-        if let Some(e) = &i.expiry {
-            l.push_str(&if sr { format!(", rok {e}") } else { format!(", expires {e}") });
-        }
-        if let Some(p) = &i.place {
-            l.push_str(&if sr { format!(", mesto: {p}") } else { format!(", place: {p}") });
-        }
-        if let Some(m) = i.min_quantity {
-            if i.quantity < m {
-                l.push_str(if sr { ", ponestaje" } else { ", running low" });
-            }
-        }
-        lines.push(l);
+    let mut named: Vec<&Item> = items.iter().filter(|i| by_name(i)).collect();
+    named.extend(items.iter().filter(|i| !by_name(i) && by_category(i)));
+    if named.is_empty() {
+        return String::new();
     }
-    if items.is_empty() {
-        lines.push(if sr { "(u zalihama još nema ničega)".into() } else { "(nothing in the supplies yet)".into() });
-    }
-    lines.join("\n")
+    let head = if sr { "Stavke iz zaliha koje pitanje pominje:" } else { "Items in the supplies the question mentions:" };
+    let lines: Vec<String> = named.into_iter().take(NAMED_ITEMS).map(|i| item_line(i, sr)).collect();
+    format!("{head}\n{}", lines.join("\n"))
 }
 
-fn supplies_messages(question: &str, language: &str, context: &str, history: &[Turn]) -> Vec<serde_json::Value> {
-    let system = if language == "sr" {
+/// The instructions and the supplies list first, the question last: the
+/// engine reads only what follows the part it still has from the last
+/// question (the start of the last message), so a list that changes with the
+/// question would be read again every time.
+fn supplies_messages(question: &str, language: &str, list: &str, named: &str, history: &[Turn]) -> Vec<serde_json::Value> {
+    let rules = if language == "sr" {
         "Ti si Zaklon, pomoćnik za domaćinstvo. Odgovaraj na srpskom, latinicom, kratko i jasno, i obraćaj se sa „ti“. \
 Koristi samo spisak zaliha ispod; ne izmišljaj stavke ni količine. U zagradi posle količine je vrsta stvari (hrana, lek...). \
 Ako nečega nema na spisku, reci da toga nema u zalihama. Ne daj savete o lekovima ni dozama."
@@ -2486,12 +2625,13 @@ Ako nečega nema na spisku, reci da toga nema u zalihama. Ne daj savete o lekovi
 Use only the supplies list below; do not invent items or amounts. The word in brackets after the amount is the kind of thing (food, medicine...). \
 If something is not on the list, say it is not in the supplies. Do not give advice on medicines or doses."
     };
-    let mut messages = vec![serde_json::json!({ "role": "system", "content": system })];
+    let mut messages = vec![serde_json::json!({ "role": "system", "content": format!("{rules}\n\n{list}") })];
     for t in history.iter().rev().take(HISTORY_TURNS).rev() {
         messages.push(serde_json::json!({ "role": "user", "content": t.question }));
         messages.push(serde_json::json!({ "role": "assistant", "content": t.answer }));
     }
-    messages.push(serde_json::json!({ "role": "user", "content": format!("{context}\n\n{question}") }));
+    let user = if named.is_empty() { question.to_string() } else { format!("{named}\n\n{question}") };
+    messages.push(serde_json::json!({ "role": "user", "content": user }));
     messages
 }
 
@@ -2674,6 +2814,211 @@ pub fn clean_history(history: &[Turn]) -> Vec<Turn> {
         .rev()
         .map(|t| Turn { question: clip(t.question.trim(), HISTORY_CHARS), answer: clip(keep_marks(&t.answer, &[]).trim(), HISTORY_CHARS) })
         .collect()
+}
+
+/// Engine options for this computer. The engine's store of earlier prompts
+/// in memory is off: each kind of prompt has its own slot (see `SLOT_PLAN`),
+/// and the store kept a copy of the model's state for each prompt (about
+/// 50 MiB each with the 9B model, several a prompt) up to 8 GiB. It grew by
+/// half a gigabyte a question until a 16 GB computer ran short of memory and
+/// Windows began to push the model itself out to disk. Prompts are read with
+/// every thread where that is faster (see `Cores::prompt_threads`); writing
+/// keeps the engine's own choice, one thread a core, as the speed of memory
+/// limits it anyway.
+fn engine_tuning(cores: Option<crate::machine::Cores>) -> Vec<String> {
+    let mut args = vec!["--cache-ram".to_string(), "0".to_string()];
+    if let Some(n) = cores.and_then(|c| c.prompt_threads()) {
+        args.extend(["-tb".to_string(), n.to_string()]);
+    }
+    args
+}
+
+/// Characters of source text for an answer when the engine reads `speed`
+/// tokens a second: what it reads in `READ_TIME`, at least
+/// `MIN_SOURCE_CHARS` and at most what the sources hold.
+fn source_budget(speed: f64) -> usize {
+    let chars = (READ_TIME.as_secs_f64() * speed.max(0.0) * CHARS_PER_TOKEN) as usize;
+    chars.clamp(MIN_SOURCE_CHARS, MAX_SOURCES * SOURCE_CHARS)
+}
+
+/// How fast a model reads a prompt on an ordinary computer (tokens a
+/// second), until it is measured on this one.
+fn guessed_read_speed(model: &str) -> f64 {
+    match model {
+        "qwen35-9b" => 15.0,
+        "qwen35-4b" => 30.0,
+        "qwen35-2b" => 60.0,
+        _ => 120.0,
+    }
+}
+
+/// Tokens a second the engine read a prompt at, from the `timings` of its
+/// reply, when it read at least `MEASURE_TOKENS` of it.
+fn prompt_speed(timings: &serde_json::Value) -> Option<f64> {
+    let (n, ms) = (timings["prompt_n"].as_f64()?, timings["prompt_ms"].as_f64()?);
+    (n >= MEASURE_TOKENS && ms > 0.0).then(|| n * 1000.0 / ms)
+}
+
+/// Stems that rank the paragraphs of a source when it is shortened, with
+/// their weight: the search terms' count twice as much as the question's
+/// other words.
+fn trim_stems(terms: &[String], terms_en: &[String], question: &str) -> Vec<(String, u32)> {
+    let mut out: Vec<(String, u32)> = Vec::new();
+    let mut add = |s: String, weight: u32| {
+        if s.chars().count() >= 3 && !out.iter().any(|(x, _)| *x == s) {
+            out.push((s, weight));
+        }
+    };
+    for t in prepare_terms(terms).into_iter().chain(prepare_terms(terms_en)) {
+        t.stems.into_iter().for_each(|s| add(s, 2));
+    }
+    for w in search_words(question) {
+        add(zaklon_core::translit::fold(&stem(&w)), 1);
+    }
+    out
+}
+
+/// The sentences of a line of source text. One ends at ".", "!" or "?"
+/// followed by a space and a capital letter, a digit or an opening quote,
+/// so "(lat. combustio)" and "npr. hladnom vodom" stay in one piece.
+fn line_sentences(line: &str) -> Vec<&str> {
+    let chars: Vec<(usize, char)> = line.char_indices().collect();
+    let mut out = Vec::new();
+    let mut start = 0;
+    for (k, &(i, c)) in chars.iter().enumerate() {
+        if !matches!(c, '.' | '!' | '?') || !chars.get(k + 1).is_some_and(|(_, n)| n.is_whitespace()) {
+            continue;
+        }
+        let Some(&(_, next)) = chars[k + 1..].iter().find(|(_, n)| !n.is_whitespace()) else { continue };
+        if next.is_uppercase() || next.is_ascii_digit() || matches!(next, '„' | '"' | '“' | '«' | '(') {
+            let end = i + c.len_utf8();
+            let s = line[start..end].trim();
+            if !s.is_empty() {
+                out.push(s);
+            }
+            start = end;
+        }
+    }
+    let s = line[start..].trim();
+    if !s.is_empty() {
+        out.push(s);
+    }
+    out
+}
+
+/// How much a piece of source text names of the search words.
+fn weight(text: &str, loose_stems: &[(String, u32)]) -> u32 {
+    let folded = zaklon_core::translit::fold_loose(text);
+    let w = words(&folded);
+    loose_stems.iter().filter(|(st, _)| starts_word(&w, st)).map(|(_, weight)| weight).sum()
+}
+
+/// A source's paragraphs in the order they are worth keeping: the first
+/// (what the article is about; in an encyclopedia often a summary of all of
+/// it), then those that name the most of the search words, then the rest,
+/// in the order of the article on a tie.
+fn ranked_paragraphs(paragraphs: &[&str], stems: &[(String, u32)]) -> Vec<usize> {
+    let loose: Vec<(String, u32)> = stems.iter().map(|(s, w)| (zaklon_core::translit::loosen(s), *w)).collect();
+    let weights: Vec<u32> = paragraphs.iter().map(|p| weight(p, &loose)).collect();
+    let mut rest: Vec<usize> = (1..paragraphs.len()).collect();
+    rest.sort_by(|a, b| weights[*b].cmp(&weights[*a]).then(a.cmp(b)));
+    (0..paragraphs.len().min(1)).chain(rest).collect()
+}
+
+/// The first whole sentences of a paragraph that fit in `max` characters
+/// ("" when not even the first does).
+fn first_sentences(paragraph: &str, max: usize) -> String {
+    let mut out = String::new();
+    let mut len = 0;
+    for s in line_sentences(paragraph) {
+        let add = s.chars().count() + usize::from(len > 0);
+        if len + add > max {
+            break;
+        }
+        if len > 0 {
+            out.push(' ');
+        }
+        out.push_str(s);
+        len += add;
+    }
+    out
+}
+
+/// Room left in a source worth the first sentences of a paragraph.
+const MIN_PIECE: usize = 120;
+
+/// What a source says about the question in at most `max` characters:
+/// whole paragraphs in the order of `ranked_paragraphs`, as many as fit, and
+/// where one does not fit but there is room, its first sentences; kept in
+/// the order of the article. Text stays in runs: sentences picked here and
+/// there by their words lose what they refer to (a list of symptoms rarely
+/// names the illness again), and the model then finds nothing to answer with.
+fn trim_passage(text: &str, stems: &[(String, u32)], max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let paragraphs: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let mut kept: Vec<(usize, String)> = Vec::new();
+    let mut len = 0;
+    for i in ranked_paragraphs(&paragraphs, stems) {
+        let gap = usize::from(!kept.is_empty());
+        let room = max.saturating_sub(len + gap);
+        let whole = paragraphs[i].chars().count();
+        let piece = if whole <= room {
+            paragraphs[i].to_string()
+        } else if room >= MIN_PIECE {
+            first_sentences(paragraphs[i], room)
+        } else {
+            continue;
+        };
+        if !piece.is_empty() {
+            len += gap + piece.chars().count();
+            kept.push((i, piece));
+        }
+    }
+    if kept.is_empty() {
+        // Not even the first sentence fits.
+        return clip(paragraphs.first().copied().unwrap_or(text), max);
+    }
+    kept.sort_by_key(|(i, _)| *i);
+    kept.into_iter().map(|(_, t)| t).collect::<Vec<_>>().join("\n")
+}
+
+/// Shares of the source text by a source's place (best first): the best
+/// found is most often the one that answers, and a third source rarely
+/// adds to the first two.
+const SHARES: [usize; 3] = [3, 2, 1];
+
+/// Shorten the sources to `budget` characters together, each to what it
+/// says about the question (see `trim_passage`). The best source gets the
+/// largest share (see `SHARES`), and what a short one does not need goes to
+/// the others.
+fn trim_sources(passages: &mut [Passage], stems: &[(String, u32)], budget: usize) {
+    let lens: Vec<usize> = passages.iter().map(|p| p.text.chars().count()).collect();
+    if lens.iter().sum::<usize>() <= budget {
+        return;
+    }
+    let weights: Vec<usize> = (0..passages.len()).map(|i| SHARES.get(i).copied().unwrap_or(1)).collect();
+    for (p, max) in passages.iter_mut().zip(share(budget, &lens, &weights)) {
+        p.text = trim_passage(&p.text, stems, max);
+    }
+}
+
+/// `budget` shared among `wants` in proportion to `weights`, as far as each
+/// wants it: what one does not need goes to the others.
+fn share(budget: usize, wants: &[usize], weights: &[usize]) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..wants.len()).collect();
+    // Those that want the least for their weight are settled first.
+    order.sort_by(|&a, &b| (wants[a] * weights[b]).cmp(&(wants[b] * weights[a])));
+    let mut out = vec![0; wants.len()];
+    let mut left = budget;
+    let mut weight_left: usize = weights.iter().sum();
+    for &i in &order {
+        out[i] = wants[i].min(left * weights[i] / weight_left.max(1));
+        left -= out[i];
+        weight_left -= weights[i];
+    }
+    out
 }
 
 /// Shorten the passages so that all of them fit in `room` characters.
@@ -3215,11 +3560,10 @@ mod tests {
         let r = relevant_notes(&many, "Da li Ana sme penicilin?", &[]);
         assert_eq!(r, vec!["Ana je alergična na penicilin."]);
         let m = with_notes(vec![serde_json::json!({"role":"system","content":"Base."}), serde_json::json!({"role":"user","content":"Pitanje?"})], &r, "sr", true);
-        assert!(m[0]["content"].as_str().unwrap().contains("Beleške domaćinstva su proverene"));
-        assert!(m[1]["content"].as_str().unwrap().starts_with("Beleške domaćinstva:
-- Ana je alergična na penicilin.
-
-Pitanje?"));
+        assert_eq!(m[0]["content"], "Base.", "the instructions stay the same, notes or not (the engine keeps them read)");
+        let user = m[1]["content"].as_str().unwrap();
+        assert!(user.starts_with("Beleške domaćinstva:\n- Ana je alergična na penicilin.\nBeleške domaćinstva su proverene"), "{user}");
+        assert!(user.ends_with("pomeni je na početku odgovora.\n\nPitanje?"), "{user}");
     }
 
     #[test]
@@ -3309,27 +3653,91 @@ Pitanje?"));
     }
 
     #[test]
-    fn supplies_context_lists_matches_first() {
-        let items = vec![item("Brašno", 5.0, "kg"), item("Mleko", 1.0, "l")];
-        let c = supplies_context(&items, &["mleko".into()], "Koliko imamo mleka?", "sr");
-        let lines: Vec<&str> = c.lines().collect();
-        assert!(lines[0].starts_with("Danas je 20"), "{c}");
-        assert_eq!(lines[1], "- Mleko: 1 l (hrana)");
+    fn supplies_are_listed_the_same_for_every_question() {
+        let mut mleko = item("Mleko", 1.0, "l");
+        mleko.expiry = Some("2026-10-01".into());
+        let items = vec![item("Brašno", 5.0, "kg"), mleko];
+        let list = supplies_list(&items, "sr");
+        let lines: Vec<&str> = list.lines().collect();
+        assert!(lines[0].starts_with("Danas je 20") && lines[0].ends_with("Zalihe (2 stavki):"), "{list}");
+        assert_eq!(lines[1], "- Mleko: 1 l (hrana), rok 2026-10-01", "what expires first comes first");
         assert_eq!(lines[2], "- Brašno: 5 kg (hrana)");
+        assert!(supplies_list(&[], "en").ends_with("(nothing in the supplies yet)"));
+        // The items a question names are repeated next to it.
+        let named = supplies_named(&items, &["mleko".into()], "Koliko imamo mleka?", "sr");
+        assert_eq!(named, "Stavke iz zaliha koje pitanje pominje:\n- Mleko: 1 l (hrana), rok 2026-10-01");
+        assert_eq!(supplies_named(&items, &["kafa".into()], "Imamo li kafe?", "sr"), "", "nothing named");
     }
 
     #[test]
-    fn supplies_context_puts_a_named_category_first() {
+    fn supplies_named_include_a_named_category() {
         let mut brufen = item("Brufen", 2.0, "pcs");
         brufen.category = "medicine".into();
         let mut sveca = item("Sveća", 10.0, "pcs");
         sveca.category = "other".into();
         let items = vec![item("Brašno", 5.0, "kg"), sveca, brufen];
-        let c = supplies_context(&items, &[], "Šta imam od lekova?", "sr");
-        let lines: Vec<&str> = c.lines().collect();
-        assert_eq!(lines[1], "- Brufen: 2 kom (lek)", "{c}");
-        let en = supplies_context(&items, &["medicines".into()], "What medicines do we have?", "en");
+        let c = supplies_named(&items, &[], "Šta imam od lekova?", "sr");
+        assert_eq!(c.lines().nth(1), Some("- Brufen: 2 kom (lek)"), "{c}");
+        assert_eq!(c.lines().count(), 2, "{c}");
+        let en = supplies_named(&items, &["medicines".into()], "What medicines do we have?", "en");
         assert_eq!(en.lines().nth(1), Some("- Brufen: 2 pcs (medicine)"), "{en}");
+    }
+
+    #[test]
+    fn the_supplies_list_stays_ahead_of_the_question() {
+        // The engine keeps what it read up to the last message: the list
+        // must not change from one question to the next.
+        let items = vec![item("Brašno", 5.0, "kg"), item("Baterije AA", 8.0, "pcs")];
+        let list = supplies_list(&items, "sr");
+        let ask = |q: &str, terms: &[&str]| {
+            let terms: Vec<String> = terms.iter().map(|t| t.to_string()).collect();
+            supplies_messages(q, "sr", &list, &supplies_named(&items, &terms, q, "sr"), &[])
+        };
+        let (a, b) = (ask("koliko imamo brasna", &["brasn"]), ask("jel imamo baterija za lampu", &["baterij"]));
+        assert_eq!(a[0], b[0], "the same instructions and list");
+        let system = a[0]["content"].as_str().unwrap();
+        assert!(system.contains("Koristi samo spisak zaliha ispod") && system.ends_with("- Baterije AA: 8 kom (hrana)"), "{system}");
+        assert_eq!(a.len(), 2);
+        let user = a[1]["content"].as_str().unwrap();
+        assert!(user.starts_with("Stavke iz zaliha koje pitanje pominje:\n- Brašno: 5 kg (hrana)") && user.ends_with("\n\nkoliko imamo brasna"), "{user}");
+        let history = [Turn { question: "q".into(), answer: "a".into() }];
+        let with_history = supplies_messages("Šta nam ističe?", "sr", &list, "", &history);
+        assert_eq!(with_history.len(), 4);
+        assert_eq!(with_history[3]["content"], "Šta nam ističe?", "nothing named: the question alone");
+    }
+
+    #[test]
+    fn plain_supplies_questions_need_no_plan() {
+        for q in [
+            "koliko imamo brasna",
+            "sta nam istice ovog meseca?",
+            "imamo li jos vode u flasama",
+            "Šta treba da kupim, šta nam ponestaje?",
+            "jel imamo baterija za lampu",
+            "Колико имамо шећера?",
+            "do we have enough rice for a week?",
+            "Šta je na listi za kupovinu?",
+        ] {
+            assert!(plain_supplies_question(q), "{q}");
+            let mut p = supplies_plan(q);
+            route(&mut p, q, &[]);
+            assert_eq!(p.kind, "supplies_question", "{q}");
+        }
+        for q in [
+            // Library questions, requests, and supplies questions that need the plan's judgement.
+            "koliko vode treba jednom coveku dnevno, pravim zalihe",
+            "Kako da napravim zalihe hrane za zimu?",
+            "stavi toalet papir na listu za kupovinu",
+            "Da li možeš da staviš hleb na listu za kupovinu?",
+            "treba da kupimo 2 kila brasna, zapisi na spisak",
+            "da li imam paracetamol u kuci",
+            "sta imam od lekova",
+            "zapamti da je Ana alergicna na ibuprofen",
+            "Da li imam upalu grla ako me boli kad gutam?",
+        ] {
+            assert!(!plain_supplies_question(q), "{q}");
+        }
+        assert_eq!(supplies_plan("koliko imamo brasna").terms, vec!["imam", "brasn"]);
     }
 
     #[test]
@@ -3413,6 +3821,106 @@ Pitanje?"));
         assert!(h[0].question.chars().count() <= HISTORY_CHARS + 1 && h[0].answer.chars().count() <= HISTORY_CHARS + 1);
         assert!(!h[0].answer.contains("[1]"), "old citation marks pointed to old sources");
         assert_eq!(h[1].answer, "Da.");
+    }
+
+    #[test]
+    fn sentences_end_before_a_capital_letter() {
+        assert_eq!(
+            line_sentences("Opekotina (lat. combustio) je povreda kože. Ohladi je, npr. mlakom vodom. Ustanak je počeo 1804. Vodio ga je Karađorđe!"),
+            vec!["Opekotina (lat. combustio) je povreda kože.", "Ohladi je, npr. mlakom vodom.", "Ustanak je počeo 1804.", "Vodio ga je Karađorđe!"]
+        );
+        assert_eq!(line_sentences("Počeo je 15. februara 1804. godine u Orašcu"), vec!["Počeo je 15. februara 1804. godine u Orašcu"]);
+        assert_eq!(line_sentences("Kraj. „Citat“ ide dalje. (Zagrada) kraj."), vec!["Kraj.", "„Citat“ ide dalje.", "(Zagrada) kraj."]);
+        assert!(line_sentences("  ").is_empty());
+    }
+
+    fn burn_stems() -> Vec<(String, u32)> {
+        trim_stems(&strings(&["lečenje opekotina", "opekotina"]), &strings(&["burn treatment"]), "sta da radim kad se neko opece, jel stavljam led?")
+    }
+
+    /// Paragraphs of 78, 74, 128 and 60 characters.
+    const BURN: &str = "Opekotina je povreda kože nastala dejstvom toplote. Deli se na četiri stepena.\n\
+Istorija medicine seže do starog Egipta, gde su lekari pisali na papirusu.\n\
+Opekotinu treba odmah hladiti mlakom vodom desetak minuta. Posle toga se pokrije čistom gazom. Ne stavljaj led direktno na kožu.\n\
+Crveni krst drži kurseve prve pomoći u svim većim gradovima.";
+
+    #[test]
+    fn a_source_keeps_what_it_says_about_the_question() {
+        let stems = burn_stems();
+        assert!(stems.contains(&(zaklon_core::translit::fold("opekotin"), 2)), "{stems:?}");
+        assert!(stems.contains(&(zaklon_core::translit::fold("led"), 1)), "the question's own words count too: {stems:?}");
+        let paragraphs: Vec<&str> = BURN.lines().collect();
+        assert_eq!(ranked_paragraphs(&paragraphs, &stems), vec![0, 2, 1, 3], "the first, then what names the question's words");
+        assert_eq!(trim_passage(BURN, &stems, 10_000), BURN, "enough room: nothing changes");
+        // Room for two paragraphs: the first and the one about the question, in the article's order.
+        let t = trim_passage(BURN, &stems, 220);
+        assert_eq!(t, format!("{}\n{}", paragraphs[0], paragraphs[2]));
+        // A paragraph that does not fit whole gives its first sentences.
+        let t = trim_passage(BURN, &stems, 205);
+        assert_eq!(t, format!("{}\nOpekotinu treba odmah hladiti mlakom vodom desetak minuta. Posle toga se pokrije čistom gazom.", paragraphs[0]));
+        for max in [30, 60, 150, 205, 220, 300] {
+            assert!(trim_passage(BURN, &stems, max).chars().count() <= max + 1, "{max}");
+        }
+        // Too little room for even the first sentence: it is cut.
+        assert!(trim_passage(BURN, &stems, 30).starts_with("Opekotina je povreda kože"));
+    }
+
+    #[test]
+    fn sources_share_the_budget() {
+        let stems = burn_stems();
+        let long = format!("Kuhinja je prostorija u kući. {}", ["Ovo je rečenica o nečem sasvim drugom."; 20].join(" "));
+        let mut ps = vec![passage(1, "Opekotina", BURN), passage(2, "Kuhinja", &long), passage(3, "Opekotina 2", BURN)];
+        let before: usize = ps.iter().map(|p| p.text.chars().count()).sum();
+        trim_sources(&mut ps, &stems, 10_000);
+        assert_eq!(ps.iter().map(|p| p.text.chars().count()).sum::<usize>(), before, "they fit: nothing changes");
+        trim_sources(&mut ps, &stems, 900);
+        let lens: Vec<usize> = ps.iter().map(|p| p.text.chars().count()).collect();
+        // Shares of 3, 2 and 1: 450 for the best (it needs only 343), and of
+        // the 557 left, two thirds for the second and one third for the third.
+        assert_eq!(ps[0].text, BURN, "the best source is whole: {lens:?}");
+        assert!(lens[1] <= 372 && lens[2] <= 185 && lens.iter().sum::<usize>() <= 900, "{lens:?}");
+        assert!(ps[1].text.starts_with("Kuhinja je prostorija u kući. Ovo je"), "whole sentences from the start: {}", ps[1].text);
+        assert!(ps[2].text.starts_with("Opekotina je povreda kože"), "{}", ps[2].text);
+        // A short source leaves its room to the others.
+        let mut ps = vec![passage(1, "Kratko", "Kratak tekst o opekotinama."), passage(2, "Kuhinja", &long)];
+        trim_sources(&mut ps, &stems, 600);
+        assert_eq!(ps[0].text, "Kratak tekst o opekotinama.");
+        assert!(ps[1].text.chars().count() > 500, "{}", ps[1].text.chars().count());
+    }
+
+    #[test]
+    fn budgets_are_shared_by_weight_as_far_as_wanted() {
+        assert_eq!(share(900, &[100, 1000, 1000], &[1, 1, 1]), vec![100, 400, 400]);
+        assert_eq!(share(900, &[1000, 1000, 1000], &[1, 1, 1]), vec![300, 300, 300]);
+        assert_eq!(share(900, &[100, 100], &[1, 1]), vec![100, 100]);
+        assert_eq!(share(2400, &[1400, 1400, 1400], &[3, 2, 1]), vec![1200, 800, 400]);
+        assert_eq!(share(2400, &[300, 1400, 1400], &[3, 2, 1]), vec![300, 1400, 700], "what the best does not need goes on");
+        assert_eq!(share(10, &[], &[]), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn slow_computers_give_answers_less_to_read() {
+        // Measured on the test computer: the 9B model reads 18 to 20 tokens a second.
+        let slow = source_budget(18.0);
+        assert!((2000..=2500).contains(&slow), "{slow}");
+        assert_eq!(source_budget(1.0), MIN_SOURCE_CHARS);
+        assert_eq!(source_budget(500.0), MAX_SOURCES * SOURCE_CHARS, "a fast computer reads everything found");
+        assert!(source_budget(guessed_read_speed("qwen35-9b")) < source_budget(guessed_read_speed("qwen35-2b")));
+        let t = serde_json::json!({ "cache_n": 317, "prompt_n": 850, "prompt_ms": 50_000.0 });
+        assert_eq!(prompt_speed(&t), Some(17.0));
+        assert_eq!(prompt_speed(&serde_json::json!({ "prompt_n": 20, "prompt_ms": 1000.0 })), None, "too few tokens to tell");
+        assert_eq!(prompt_speed(&serde_json::Value::Null), None);
+    }
+
+    #[test]
+    fn the_engine_reads_prompts_with_every_thread_where_that_is_faster() {
+        use crate::machine::Cores;
+        assert_eq!(engine_tuning(Some(Cores { physical: 6, logical: 12, uniform: true })), vec!["--cache-ram", "0", "-tb", "12"]);
+        assert_eq!(engine_tuning(Some(Cores { physical: 14, logical: 20, uniform: false })), vec!["--cache-ram", "0"]);
+        assert_eq!(engine_tuning(None), vec!["--cache-ram", "0"], "no store of old prompts growing in memory anywhere");
+        // Without that store, each kind of prompt keeps its own slot.
+        let slots = [SLOT_PLAN, SLOT_PLAN_EN, SLOT_ANSWER, SLOT_HEALTH, SLOT_SUPPLIES];
+        assert!(slots.iter().all(|s| *s < SLOTS) && (1..slots.len()).all(|i| !slots[..i].contains(&slots[i])), "{slots:?}");
     }
 
     #[test]
@@ -3984,6 +4492,42 @@ isisavanja otrova i hitnog transporta do lekara. Isisavanje otrova je veoma kori
             let found: Vec<Vec<SearchResult>> = futures_util::stream::iter(searches).buffered(4).collect().await;
             let results = found.iter().map(Vec::len).sum::<usize>();
             println!("{:>6} ms  {} searches, {requests} requests, {results} results  <- {q}", t.elapsed().as_millis(), jobs.len());
+        }
+    }
+
+    /// The sources of a few evaluation questions before and after they are
+    /// shortened, against a kiwix-serve that is already running with the
+    /// three books above (read only), to see what the model gets:
+    /// `ZAKLON_KIWIX_PORT=50509 ZAKLON_TRIM=1600 cargo test -p zaklon-hub --lib live_sources_trimmed -- --ignored --nocapture`
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore]
+    async fn live_sources_trimmed() {
+        let Some(port) = std::env::var("ZAKLON_KIWIX_PORT").ok().and_then(|p| p.parse().ok()) else { return };
+        let budget: usize = std::env::var("ZAKLON_TRIM").ok().and_then(|v| v.parse().ok()).unwrap_or(1600);
+        let ai = test_assistant();
+        ai.library.attach(port);
+        let books = three_books();
+        // Terms as the 9B model planned them in an evaluation run.
+        let cases: [(&str, &[&str], &[&str], bool); 5] = [
+            ("koji su znaci mozdanog udara, kako da prepoznam slog", &["znakovi moždanog udara", "prepoznavanje moždanog udara"], &["stroke symptoms", "recognizing stroke"], true),
+            ("kako se prepoznaje trovanje ugljen monoksidom od peci", &["trovanje ugljen-monoksidom", "ugljen-monoksid", "simptomi trovanja"], &["carbon monoxide poisoning", "carbon monoxide", "symptoms"], true),
+            ("kako se radi masaza srca, koliko pritisaka pa koliko udisaja", &["masaža srca", "prva pomoć srčani zastoj"], &["cardiac massage", "cardiac arrest first aid"], true),
+            ("kako se zaustavlja krvarenje iz nosa", &["zaustavljanje krvarenja iz nosa", "epistaksa"], &["nosebleed"], true),
+            ("kolika je normalna telesna temperatura a od koliko je groznica", &["telesna temperatura", "groznica"], &["body temperature", "fever"], true),
+        ];
+        let only = std::env::var("ZAKLON_LIVE_ONLY").unwrap_or_default();
+        for (q, terms, terms_en, safety) in cases.iter().filter(|c| c.0.contains(&only)) {
+            let (terms, terms_en) = (strings(terms), strings(terms_en));
+            let (mut found, _) = find_sources(&*ai.library, &books, &terms, &terms_en, q, "sr", *safety).await;
+            println!("=== {q}");
+            for p in &found {
+                println!("--- [{}] {} ({} chars)\n{}", p.source.n, p.source.title, p.text.chars().count(), p.text);
+            }
+            trim_sources(&mut found, &trim_stems(&terms, &terms_en, q), budget);
+            println!("=== trimmed to {budget}");
+            for p in &found {
+                println!("--- [{}] {} ({} chars)\n{}", p.source.n, p.source.title, p.text.chars().count(), p.text);
+            }
         }
     }
 
