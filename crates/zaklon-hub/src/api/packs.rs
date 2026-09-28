@@ -20,6 +20,8 @@ use crate::HubState;
 #[derive(Serialize)]
 pub(super) struct CatalogReply {
     packs: Vec<crate::downloads::PackView>,
+    /// What a household starts with, by app language.
+    starter_sets: Vec<zaklon_core::catalog::StarterSet>,
     system: crate::downloads::SystemInfo,
     /// The root of the drive the library is on ("D:\"), which the Add-ons
     /// screen shows as the hub's drive.
@@ -32,16 +34,39 @@ pub(super) async fn catalog(State(state): State<Arc<HubState>>, _caller: Caller)
     // endpoint; the Zaklon map's packs (the world map) are listed here.
     d.notice_placed_maps();
     let packs = d.snapshot().into_iter().filter(|v| !v.pack.id.starts_with(zaklon_core::maps::MAP_ID_PREFIX)).collect();
-    Ok(Json(CatalogReply { packs, system: crate::downloads::system_info(d.library_dir()), library_drive: crate::machine::drive_root(d.library_dir()) }))
+    Ok(Json(CatalogReply {
+        packs,
+        starter_sets: d.catalog().starter_sets.clone(),
+        system: crate::downloads::system_info(d.library_dir()),
+        library_drive: crate::machine::drive_root(d.library_dir()),
+    }))
 }
 
 pub(super) async fn system(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<crate::downloads::SystemInfo>, ApiError> {
     Ok(Json(crate::downloads::system_info(state.downloads.library_dir())))
 }
 
-pub(super) async fn pack_download(State(state): State<Arc<HubState>>, _caller: Caller, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
-    // Knowledge packs need the library engine; queue it first if it is missing.
+#[derive(Deserialize)]
+pub(super) struct DownloadQuery {
+    /// The person confirmed the license of a pack they download themselves.
+    #[serde(default)]
+    accept_license: bool,
+}
+
+pub(super) async fn pack_download(
+    State(state): State<Arc<HubState>>,
+    _caller: Caller,
+    Path(id): Path<String>,
+    axum::extract::Query(q): axum::extract::Query<DownloadQuery>,
+) -> Result<StatusCode, ApiError> {
     if let Some(pack) = state.downloads.catalog().pack(&id) {
+        // A pack under a non-commercial or mixed license is only ever
+        // downloaded by a person's own choice, once they confirmed its
+        // license: never by a starter set or anything else that asks for many.
+        if pack.offer == zaklon_core::catalog::Offer::User && !q.accept_license {
+            return Err(bad("confirm the license of this pack first"));
+        }
+        // Knowledge packs need the library engine; queue it first if it is missing.
         if pack.category == zaklon_core::catalog::Category::Knowledge && state.downloads.needs_download("kiwix-tools") {
             let _ = state.downloads.enqueue("kiwix-tools");
         }
@@ -74,7 +99,8 @@ pub(super) async fn pack_remove(State(state): State<Arc<HubState>>, _: Local, Pa
     // The library engine keeps knowledge packs (and its own files) open, the
     // AI engine its model and its own files; stop the one concerned so
     // Windows lets us delete them. It starts again by itself.
-    if let Some(pack) = state.downloads.catalog().pack(&id).cloned() {
+    // Also a pack the catalog no longer offers: deleting it is the person's choice.
+    if let Some(pack) = state.downloads.pack(&id).cloned() {
         state.downloads.release(&pack).await;
     }
     let d = state.downloads.clone();

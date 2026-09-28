@@ -22,7 +22,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tokio::sync::Notify;
 use tracing::{info, warn};
-use zaklon_core::catalog::{is_safe_relative, Catalog, InstalledFile, Pack, PackFile, PackState, PackStatus};
+use zaklon_core::catalog::{is_safe_relative, Catalog, Category, InstalledFile, Localized, Offer, Pack, PackFile, PackState, PackStatus};
 
 /// Downloads stop below this battery level unless the charger is connected (SPEC §6).
 pub const MIN_BATTERY_PERCENT: u8 = 50;
@@ -51,6 +51,10 @@ pub struct PackView {
     #[serde(flatten)]
     pub pack: Pack,
     pub state: PackState,
+    /// On this hub, but no longer offered by the catalog: it stays usable
+    /// and can be deleted, but is not downloaded or updated any more.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub withdrawn: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -78,6 +82,8 @@ enum Job {
 
 pub struct Downloads {
     catalog: Catalog,
+    /// Packs this hub has that the catalog no longer offers (see `retired`).
+    retired: Vec<Pack>,
     library: PathBuf,
     state_path: PathBuf,
     states: Mutex<HashMap<String, PackState>>,
@@ -129,6 +135,14 @@ impl Downloads {
                 let _ = std::fs::remove_file(import_path(&library.join(&f.path)));
             }
         }
+        let retired = retired(&catalog, &library, &mut states);
+        for p in &retired {
+            if states.get(&p.id).is_some_and(|s| s.status == PackStatus::Queued) {
+                // Its files were found without a record: checked, as for any pack.
+                queue.push_back(p.id.clone());
+                verify_only.insert(p.id.clone());
+            }
+        }
         let with_stale: Vec<String> = states.iter().filter(|(_, s)| !s.stale.is_empty()).map(|(id, _)| id.clone()).collect();
         let client = reqwest::Client::builder()
             .user_agent(format!("Zaklon/{}", env!("CARGO_PKG_VERSION")))
@@ -149,6 +163,7 @@ impl Downloads {
         let has_work = !queue.is_empty();
         let me = Arc::new(Self {
             catalog,
+            retired,
             library,
             state_path,
             states: Mutex::new(states),
@@ -176,6 +191,12 @@ impl Downloads {
 
     pub fn catalog(&self) -> &Catalog {
         &self.catalog
+    }
+
+    /// A pack by id: one the catalog offers, or one this hub has that the
+    /// catalog no longer offers.
+    pub fn pack(&self, id: &str) -> Option<&Pack> {
+        self.catalog.pack(id).or_else(|| self.retired.iter().find(|p| p.id == id))
     }
 
     /// Set what makes the engines let go of a pack's files. Call once, at startup.
@@ -206,14 +227,16 @@ impl Downloads {
         });
     }
 
+    /// Every pack the catalog offers, then the ones this hub has that it no
+    /// longer offers (until they are deleted).
     pub fn snapshot(&self) -> Vec<PackView> {
         let states = self.states.lock().unwrap_or_else(|p| p.into_inner());
-        self.catalog
-            .packs
-            .iter()
-            .map(|p| PackView {
-                pack: p.clone(),
-                state: states.get(&p.id).cloned().unwrap_or_else(|| PackState::not_installed(p.size)),
+        let offered = self.catalog.packs.iter().map(|p| (p, false));
+        offered
+            .chain(self.retired.iter().map(|p| (p, true)))
+            .filter_map(|(p, withdrawn)| {
+                let state = states.get(&p.id).cloned().unwrap_or_else(|| PackState::not_installed(p.size));
+                (!withdrawn || state.status != PackStatus::NotInstalled).then(|| PackView { pack: p.clone(), state, withdrawn })
             })
             .collect()
     }
@@ -242,7 +265,10 @@ impl Downloads {
     }
 
     pub fn enqueue(self: &Arc<Self>, id: &str) -> Result<(), String> {
-        let pack = self.catalog.pack(id).ok_or("unknown pack")?.clone();
+        let Some(pack) = self.catalog.pack(id).cloned() else {
+            let why = if self.pack(id).is_some() { "this pack is no longer offered" } else { "unknown pack" };
+            return Err(why.into());
+        };
         {
             let mut states = self.states.lock().unwrap_or_else(|p| p.into_inner());
             let st = states.entry(id.to_string()).or_insert_with(|| PackState::not_installed(pack.size));
@@ -290,8 +316,9 @@ impl Downloads {
 
     /// Delete a pack's files (finished or partial, of any version) and forget
     /// its state. Blocking. Stop the programs using the pack first (`release`).
+    /// Also for a pack the catalog no longer offers: only a person deletes it.
     pub fn remove(&self, id: &str) -> Result<(), String> {
-        let pack = self.catalog.pack(id).ok_or("unknown pack")?;
+        let pack = self.pack(id).ok_or("unknown pack")?;
         if let Some(st) = self.state_of(id) {
             if matches!(st.status, PackStatus::Downloading | PackStatus::Verifying) {
                 return Err("pause the download first".into());
@@ -312,7 +339,12 @@ impl Downloads {
         let mut targets: Vec<String> = Vec::new();
         let dirs = old.files.iter().filter_map(|f| f.unpack_to.clone()).chain(pack.files.iter().filter_map(|f| f.unpack_to.clone()));
         let files = old.files.iter().map(|f| f.path.clone()).chain(pack.files.iter().map(|f| f.path.clone()));
-        let temps = pack.files.iter().flat_map(|f| [format!("{}.part", f.path), format!("{}.import", f.path)]);
+        let temps = pack
+            .files
+            .iter()
+            .flat_map(|f| [format!("{}.part", f.path), format!("{}.import", f.path)])
+            // Partial downloads it has (for a pack no longer in the catalog, the only record of them).
+            .chain(old.synced.keys().map(|p| format!("{p}.part")));
         for t in dirs.chain(files).chain(old.stale.iter().cloned()).chain(temps) {
             if !targets.contains(&t) {
                 targets.push(t);
@@ -512,8 +544,18 @@ impl Downloads {
     }
 
     async fn run_pack(self: &Arc<Self>, id: &str) {
-        let Some(pack) = self.catalog.pack(id).cloned() else { return };
+        let Some(pack) = self.pack(id).cloned() else { return };
         let verify = self.verify_only.lock().unwrap_or_else(|p| p.into_inner()).remove(id);
+        if !verify && self.catalog.pack(id).is_none() {
+            // No longer offered: its files on disk may be checked, nothing more.
+            self.set(id, |s| {
+                if s.status == PackStatus::Queued {
+                    s.status = PackStatus::Paused;
+                }
+            });
+            self.save_soon();
+            return;
+        }
         let recorded = self.installed_files(id);
         // What is already in place, for progress and the disk space check.
         let (mut done_bytes, mut part_bytes) = (0, 0);
@@ -1152,6 +1194,83 @@ fn reconcile(library: &Path, p: &Pack, st: &mut PackState) -> bool {
     unknown_files
 }
 
+/// The packs this hub has that the catalog no longer offers, their states
+/// brought in line with the disk. Nothing of them is deleted: they stay
+/// installed and readable until a person deletes them. One the catalog lists
+/// as withdrawn is known as it was listed; any other (a newer catalog left it
+/// out) by what was recorded when its files were verified.
+fn retired(catalog: &Catalog, library: &Path, states: &mut HashMap<String, PackState>) -> Vec<Pack> {
+    let known: HashSet<String> = catalog.packs.iter().chain(&catalog.withdrawn).map(|p| p.id.clone()).collect();
+    let mut unknown: Vec<Pack> = states.iter().filter(|(id, st)| !known.contains(*id) && !st.files.is_empty()).map(|(id, st)| from_record(id, st)).collect();
+    unknown.sort_by(|a, b| a.id.cmp(&b.id));
+    let listed = catalog.withdrawn.iter().filter(|p| catalog.pack(&p.id).is_none()).cloned();
+    let mut out = Vec::new();
+    for p in listed.chain(unknown) {
+        let st = states.entry(p.id.clone()).or_insert_with(|| PackState::not_installed(p.size));
+        reconcile(library, &p, st);
+        // Nothing newer will come, and an update that was under way cannot
+        // continue: the verified files it has are what it is.
+        st.update_available = false;
+        if !st.files.is_empty() && matches!(st.status, PackStatus::Paused | PackStatus::Failed) {
+            st.status = PackStatus::Installed;
+            st.error = None;
+            st.bytes_total = st.files.iter().map(|f| f.size).sum();
+            st.bytes_done = st.bytes_total;
+        }
+        if st.status != PackStatus::NotInstalled {
+            out.push(p);
+        }
+    }
+    out
+}
+
+/// A pack known only by what was recorded when its files were verified,
+/// named after its first file.
+fn from_record(id: &str, st: &PackState) -> Pack {
+    let files: Vec<PackFile> = st
+        .files
+        .iter()
+        .map(|f| PackFile {
+            path: f.path.clone(),
+            urls: Vec::new(),
+            sha256: f.sha256.clone(),
+            sha1_base64: f.sha1_base64.clone(),
+            size: f.size,
+            unpack: f.unpack_to.as_ref().map(|_| "zip".to_string()),
+            unpack_to: f.unpack_to.clone(),
+        })
+        .collect();
+    let first = files.first().map(|f| f.path.clone()).unwrap_or_default();
+    let name = Path::new(&first).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| id.to_string());
+    // Only a ZIM goes to the library engine.
+    let category = if id.starts_with(zaklon_core::maps::MAP_ID_PREFIX) {
+        Category::Maps
+    } else if first.ends_with(".zim") {
+        Category::Knowledge
+    } else if first.starts_with("models/") {
+        Category::Model
+    } else {
+        Category::App
+    };
+    Pack {
+        id: id.to_string(),
+        title: Localized { en: name.clone(), sr: name },
+        description: Localized::default(),
+        category,
+        topics: Vec::new(),
+        version: st.installed_version.clone().unwrap_or_default(),
+        size: files.iter().map(|f| f.size).sum(),
+        files,
+        license: String::new(),
+        attribution: String::new(),
+        source: String::new(),
+        offer: Offer::Auto,
+        offer_reason: String::new(),
+        languages: Vec::new(),
+        recommended_for: Vec::new(),
+    }
+}
+
 /// A new download or import of `pack` writes its own paths again: a failed
 /// removal's leftovers there must not be swept away later.
 fn unstale(st: &mut PackState, pack: &Pack) {
@@ -1456,7 +1575,6 @@ fn battery() -> (Option<u8>, bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zaklon_core::catalog::{Category, Localized};
 
     fn temp(name: &str) -> PathBuf {
         static N: AtomicU64 = AtomicU64::new(0);
@@ -1500,13 +1618,15 @@ mod tests {
             license: String::new(),
             attribution: String::new(),
             source: String::new(),
+            offer: Offer::Auto,
+            offer_reason: String::new(),
             languages: vec![],
             recommended_for: vec![],
         }
     }
 
     fn catalog(packs: Vec<Pack>) -> Catalog {
-        Catalog { version: 1, generated: "2999-01-01".into(), packs }
+        Catalog { version: 1, generated: "2999-01-01".into(), starter_sets: Vec::new(), packs, withdrawn: Vec::new() }
     }
 
     /// A hub data folder with `state.json` (when given) and a library.
@@ -1757,6 +1877,80 @@ mod tests {
         // Blank states are not written out.
         let saved: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&state_path).unwrap()).unwrap();
         assert!(saved.get("x").is_none(), "{saved}");
+        let _ = std::fs::remove_dir_all(library.parent().unwrap());
+    }
+
+    /// A pack the catalog stops offering stays on the hub: installed, in the
+    /// library and listed (as no longer offered) until a person deletes it.
+    /// Nothing downloads it again and nothing deletes it by itself.
+    #[test]
+    fn a_pack_the_catalog_no_longer_offers_stays_installed() {
+        let (a, b, c) = (payload(11, 1000), payload(12, 1000), payload(13, 1000));
+        let fa = file("zim/a_2024-08.zim", &a, "http://127.0.0.1:9/");
+        let fb = file("zim/b_2025-01.zim", &b, "http://127.0.0.1:9/");
+        let fc = file("zim/c.zim", &c, "http://127.0.0.1:9/");
+        let state = serde_json::json!({
+            // Listed by the catalog as withdrawn.
+            "a": { "status": "installed", "bytes_done": 1000, "bytes_total": 1000, "installed_version": "2024-08", "files": [InstalledFile::from(&fa)] },
+            // Left out of a newer catalog without a word, while an update of it was paused.
+            "b": { "status": "paused", "bytes_done": 10, "bytes_total": 2000, "installed_version": "2025-01", "files": [InstalledFile::from(&fb)], "synced": { "zim/b_2026-01.zim": 10 } },
+            // Only a piece of a download of a pack no catalog knows: nothing usable.
+            "p": { "status": "paused", "bytes_done": 10, "bytes_total": 1000, "synced": { "zim/p.zim": 10 } },
+        });
+        let (library, state_path) = hub_dir(Some(state));
+        put(&library, "zim/a_2024-08.zim", &a);
+        put(&library, "zim/b_2025-01.zim", &b);
+        put(&library, "zim/b_2026-01.zim.part", &b[..10]);
+        put(&library, "zim/p.zim.part", &b[..10]);
+        let mut gone = pack("a", "2024-08", PackFile { urls: Vec::new(), ..fa.clone() });
+        gone.title = Localized { en: "Guides A".into(), sr: "Vodiči A".into() };
+        gone.topics = vec!["health".into()];
+        let mut cat = catalog(vec![pack("c", "1", fc)]);
+        cat.withdrawn = vec![gone];
+        let d = Downloads::new(cat, library.clone(), state_path.clone());
+
+        let views = d.snapshot();
+        let view = |id: &str| views.iter().find(|v| v.pack.id == id);
+        let va = view("a").expect("still listed");
+        assert!(va.withdrawn);
+        assert_eq!(va.state.status, PackStatus::Installed);
+        assert_eq!((va.pack.title.en.as_str(), va.pack.topics.clone()), ("Guides A", vec!["health".to_string()]), "as the catalog listed it");
+        let vb = view("b").expect("listed though the catalog does not know it");
+        assert!(vb.withdrawn);
+        assert_eq!(vb.state.status, PackStatus::Installed, "the update cannot continue; the verified file is what it is");
+        assert!(!vb.state.update_available);
+        assert_eq!(vb.pack.title.en, "b_2025-01", "named after its file");
+        assert_eq!(vb.pack.category, Category::Knowledge);
+        assert!(!view("c").unwrap().withdrawn);
+        assert!(view("p").is_none(), "nothing of it is usable");
+        // The library takes installed knowledge packs with their files from this list (kiwix.rs, `books`).
+        for v in [va, vb] {
+            assert!(v.pack.category == Category::Knowledge && !v.state.files.is_empty(), "{} is readable", v.pack.id);
+        }
+        assert!(d.is_installed("a") && d.is_installed("b"));
+        assert_eq!(d.installed_files("b"), vec![InstalledFile::from(&fb)]);
+        // What the app is told.
+        assert_eq!(serde_json::to_value(va).unwrap()["withdrawn"], true);
+        assert!(serde_json::to_value(view("c").unwrap()).unwrap().get("withdrawn").is_none());
+        // Nothing downloads it again.
+        assert!(d.enqueue("a").unwrap_err().contains("no longer offered"));
+        assert!(d.enqueue("b").unwrap_err().contains("no longer offered"));
+        assert!(d.enqueue("p").unwrap_err().contains("unknown pack"));
+        // Nothing was deleted, and all of it is remembered after a restart.
+        for f in ["zim/a_2024-08.zim", "zim/b_2025-01.zim", "zim/b_2026-01.zim.part", "zim/p.zim.part"] {
+            assert!(library.join(f).is_file(), "{f} is still there");
+        }
+        d.save();
+        let again = Downloads::new(d.catalog().clone(), library.clone(), state_path.clone());
+        assert!(again.is_installed("a") && again.is_installed("b"));
+        assert_eq!(again.snapshot().iter().filter(|v| v.withdrawn).count(), 2);
+        // A person deletes it on the laptop: gone from the disk and from the list.
+        again.remove("b").unwrap();
+        assert!(!library.join("zim/b_2025-01.zim").exists());
+        assert!(!library.join("zim/b_2026-01.zim.part").exists(), "its unfinished update too");
+        again.remove("a").unwrap();
+        assert!(!library.join("zim/a_2024-08.zim").exists());
+        assert!(again.snapshot().iter().all(|v| !v.withdrawn));
         let _ = std::fs::remove_dir_all(library.parent().unwrap());
     }
 

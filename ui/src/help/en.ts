@@ -786,6 +786,7 @@ const en: HelpContent = {
               "On the laptop, other drives, such as a USB drive, open with copying and importing set to that drive.",
               "**Folders** hold the add-ons by topic, the same topics as on the [Tools](#tools) screen: Health and first aid, Water, Food, Garden, Power, Build and install, Knowledge and Maps, then AI models and Programs. A guide about more than one topic is in the folder of each.",
               "The search box finds add-ons and countries in every folder. The buttons next to it switch between tiles and a details table.",
+              "**License and credit** on a pack shows its license, who made it and where it comes from.",
             ],
           },
         ],
@@ -794,7 +795,29 @@ const en: HelpContent = {
         id: "starter",
         title: "The starter set",
         body: [
-          { p: "On the laptop, the starter set (**Basic pack for Serbia** or **English essentials**, by the app's language) downloads what a household needs to start with one button, **Download all**: knowledge, first-aid and repair guides, the AI model that fits this computer and, in the Serbian set, the map of Serbia." },
+          { p: "On the laptop, the starter set (**Basic pack for Serbia** or **English essentials**, by the app's language) downloads what a household needs to start with one button, **Download all**: knowledge, first-aid, water, solar and repair guides, the AI model that fits this computer and, in the Serbian set, the map of Serbia. It holds only packs that are free for any use." },
+        ],
+      },
+      {
+        id: "yourself",
+        title: "Packs you download yourself",
+        body: [
+          { p: "Most add-ons are free for any use. A few, such as the iFixit repair guides, are free for non-commercial use only, or collect documents that each have their own license. Zaklon never downloads these for you: they are at the bottom of their folder, under **You download these yourself**, each with a line on why." },
+          {
+            steps: [
+              "Choose **Download** on the pack.",
+              "Read the question that opens: it names the pack's license and what it allows.",
+              "Choose **Accept and download**, or **Cancel**.",
+            ],
+          },
+          { note: "They are never part of the starter set and never marked as recommended. Use them for yourself and your household, and do not sell them or copies of them." },
+        ],
+      },
+      {
+        id: "withdrawn",
+        title: "Packs Zaklon no longer offers",
+        body: [
+          { p: "Zaklon stops offering a pack when the rights to some of its content turn out to be unclear. If you downloaded it before, nothing is taken away: it stays in the [Library](#library) and in its folder, marked **No longer offered by Zaklon**, until you remove it on the laptop. It is not updated any more." },
         ],
       },
       {

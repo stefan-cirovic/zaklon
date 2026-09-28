@@ -56,7 +56,23 @@ async fn start_hub() -> Hub {
     let catalog = json!({
         "version": 1,
         "generated": "2999-01-01",
+        // A starter set may only hold packs offered to everyone: the hub leaves the other out.
+        "starter_sets": [{ "lang": "en", "packs": ["test-pack", "nc-pack"] }],
         "packs": [{
+            "id": "nc-pack",
+            "title": { "en": "Non-commercial pack" },
+            "category": "knowledge",
+            "version": "1",
+            "size": payload.len(),
+            "offer": "user",
+            "offer_reason": "noncommercial",
+            "files": [{
+                "path": "zim/nc_test.zim",
+                "urls": [format!("{server}/tiny_test_2026-01.zim")],
+                "sha256": sha256_hex(&payload),
+                "size": payload.len()
+            }]
+        }, {
             "id": "test-pack",
             "title": { "en": "Test pack", "sr": "Test paket" },
             "category": "knowledge",
@@ -419,6 +435,20 @@ async fn full_hub_flow() {
     assert_eq!(pack["state"]["status"], "installed", "{pack}");
     let installed = hub.root.join("library/zim/tiny_test_2026-01.zim");
     assert_eq!(std::fs::metadata(&installed).unwrap().len(), 3_000_000);
+
+    // A pack under a non-commercial license: only downloaded once the person
+    // confirmed its license, and never part of a starter set.
+    let (_, cat) = hub.get("/api/catalog").await;
+    assert_eq!(cat["starter_sets"], json!([{ "lang": "en", "packs": ["test-pack"] }]));
+    let nc = cat["packs"].as_array().unwrap().iter().find(|p| p["id"] == "nc-pack").unwrap().clone();
+    assert_eq!((nc["offer"].as_str(), nc["offer_reason"].as_str()), (Some("user"), Some("noncommercial")));
+    assert_eq!(cat["packs"].as_array().unwrap().iter().find(|p| p["id"] == "test-pack").unwrap()["offer"], "auto");
+    let (st, err) = hub.post("/api/packs/nc-pack/download", json!({})).await;
+    assert_eq!((st, err["code"].as_str()), (400, Some("license_not_confirmed")), "{err}");
+    let (st, _) = hub.post("/api/packs/nc-pack/download?accept_license=true", json!({})).await;
+    assert_eq!(st, 202);
+    let pack = wait_pack(&hub, "nc-pack", &["installed", "failed"]).await;
+    assert_eq!(pack["state"]["status"], "installed", "{pack}");
 
     // 12. A pack whose checksum does not match is rejected and nothing is kept.
     hub.post("/api/packs/broken-pack/download", json!({})).await;

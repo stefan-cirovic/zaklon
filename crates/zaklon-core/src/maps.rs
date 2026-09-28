@@ -15,7 +15,7 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
-use crate::catalog::{Category, Localized, Pack, PackFile};
+use crate::catalog::{Category, Localized, Offer, Pack, PackFile};
 
 /// Region list from the CoMaps release whose app we serve (v2026.08.31-14).
 const COUNTRIES: &str = include_str!("../catalog/comaps-countries-260830.json");
@@ -227,6 +227,8 @@ pub fn packs() -> Vec<Pack> {
             license: "ODbL-1.0".into(),
             attribution: "© OpenStreetMap contributors, CoMaps".into(),
             source: "https://www.comaps.app".into(),
+            offer: Offer::Auto,
+            offer_reason: String::new(),
             languages: vec![],
             recommended_for: vec![],
         })
@@ -254,6 +256,8 @@ pub fn packs() -> Vec<Pack> {
         license: "Apache-2.0".into(),
         attribution: "CoMaps contributors".into(),
         source: "https://www.comaps.app".into(),
+        offer: Offer::Auto,
+        offer_reason: String::new(),
         languages: vec![],
         recommended_for: vec![],
     });

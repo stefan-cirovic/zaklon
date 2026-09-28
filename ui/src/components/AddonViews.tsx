@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import type { Key } from "../i18n";
 import { countWord, fmtBytes } from "../format";
 import { folderOf, type Entry, type FolderId, type FolderStat, type ViewMode } from "../addons";
@@ -17,6 +17,67 @@ function onHubLine(t: T, s: FolderStat): { text: string; tone: "ok" | "muted" } 
   if (s.busy) return { text: `${t("downloadingNow")}${s.progress !== null ? ` ${s.progress}%` : "…"}`, tone: "muted" };
   if (s.installed > 0) return { text: `${t("colOnHub")}: ${s.installed} · ${fmtBytes(s.installedBytes)}`, tone: "ok" };
   return null;
+}
+
+/** "https://www.appropedia.org/x" -> "appropedia.org". */
+function siteName(url: string) {
+  try {
+    return new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+/** A pack's license, its credit line and where it comes from, folded away until opened. */
+function Credit({ t, e }: { t: T; e: Entry }) {
+  if (!e.credit) return null;
+  return (
+    <details className="pack-credit small-text">
+      <summary>{t("packCredit")}</summary>
+      <p>
+        {t("colLicense")}: {e.license}
+      </p>
+      {e.credit.attribution && <p>{e.credit.attribution}</p>}
+      {e.credit.source && (
+        <p>
+          {t("packSource")}: {siteName(e.credit.source)}
+        </p>
+      )}
+    </details>
+  );
+}
+
+/**
+ * The question before downloading a pack people download themselves: its
+ * license, named, and a deliberate yes. Focus goes to the yes; Escape or
+ * Cancel closes it.
+ */
+export function LicenseAsk({ t, text, name, onYes, onNo }: { t: T; text: string; name: string; onYes: () => void; onNo: () => void }) {
+  const yes = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  useEffect(() => {
+    yes.current?.focus();
+  }, []);
+  return (
+    <div
+      className="license-ask"
+      role="group"
+      aria-labelledby={id}
+      onKeyDown={(ev) => {
+        if (ev.key === "Escape") onNo();
+      }}
+    >
+      <p id={id}>{text}</p>
+      <div className="row wrap">
+        <button ref={yes} className="btn" aria-label={`${t("offerAccept")}: ${name}`} onClick={onYes}>
+          {t("offerAccept")}
+        </button>
+        <button className="btn secondary" onClick={onNo}>
+          {t("cancel")}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function Bar({ pct, label }: { pct: number; label: string }) {
@@ -138,10 +199,16 @@ export function Entries({ t, entries, view, folder, label }: { t: T; entries: En
               <span className={e.tone}>{e.status}</span>
               {e.progress !== null && <Bar pct={e.progress} label={e.name} />}
               {e.detail && <span className="muted d-detail">{e.detail}</span>}
+              {e.note && <span className="offer-note d-detail">{e.note}</span>}
               {e.error && <span className="warn d-detail">{e.error}</span>}
             </div>
             <div className="d-license muted" role="cell">{e.license}</div>
             <div className="d-actions" role="cell">{e.actions(true)}</div>
+            {e.ask && (
+              <div className="d-ask" role="cell">
+                {e.ask}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -165,6 +232,8 @@ export function Entries({ t, entries, view, folder, label }: { t: T; entries: En
                 {e.meta && ` · ${e.meta}`}
                 {showFolder && ` · ${where(e)}`}
               </div>
+              {e.note && <div className="offer-note small-text">{e.note}</div>}
+              <Credit t={t} e={e} />
             </div>
           </div>
           {e.progress !== null && (
@@ -177,6 +246,7 @@ export function Entries({ t, entries, view, folder, label }: { t: T; entries: En
             <span className={e.tone}>{e.status}</span>
             <div className="row wrap entry-actions">{e.actions(false)}</div>
           </div>
+          {e.ask}
           {e.error && <div className="warn small-text">{e.error}</div>}
         </div>
       ))}

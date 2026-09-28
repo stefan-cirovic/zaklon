@@ -566,6 +566,20 @@ button.drive-tile:hover { background: var(--hover); border-color: var(--line-2);
 .d-open { display: flex; align-items: center; gap: 10px; min-height: 32px; min-width: 0; padding: 0; background: none; border: 0; color: #e7e7e7; font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
 .phone-only { display: none; }
 
+/* Why a pack is one people download themselves, or that it is no longer offered. */
+.offer-note { color: var(--soon); }
+/* A pack's license, credit line and source, folded away. */
+.pack-credit { margin-top: 2px; }
+.pack-credit summary { width: fit-content; color: var(--muted); cursor: pointer; }
+.pack-credit summary:hover { color: var(--text); }
+.pack-credit p { margin: 4px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+/* The question before downloading one: its license, named. */
+.license-ask { display: grid; gap: 10px; padding: 12px; background: var(--panel-2); border: 1px solid var(--soon); border-radius: var(--radius); }
+.license-ask p { margin: 0; }
+.d-ask { grid-column: 1 / -1; padding: 6px 0 4px; }
+/* The group of packs people download themselves, at the bottom of a folder. */
+.explorer-section.by-user { margin-top: 12px; }
+
 /* Copy to USB and import, side by side on a wide screen. */
 .transfer { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
 @media (min-width: 1100px) { .transfer { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -597,6 +611,7 @@ button.drive-tile:hover { background: var(--hover); border-color: var(--line-2);
   .entry-row .d-size { order: 3; margin-left: 40px; }
   .entry-row .d-license { order: 4; }
   .entry-row .d-status { order: 5; flex: 1 1 140px; }
+  .entry-row .d-ask { order: 6; flex: 1 1 100%; }
   .details.folders .d-size { display: none; }
   .phone-only { display: block; }
 }

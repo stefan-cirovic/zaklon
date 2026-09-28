@@ -3,45 +3,61 @@ import { api } from "../api";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
 import { fmtBytes } from "../format";
+import { downloadedByUser, type StarterSetDef } from "../addons";
 
 type T = (k: Key) => string;
-type Pack = { id: string; title: { en: string; sr: string }; size: number; state: { status: string } };
+type Pack = { id: string; title: { en: string; sr: string }; size: number; offer?: string; withdrawn?: boolean; state: { status: string } };
 type MapCountry = { id: string; name: string; name_sr: string; size: number; regions: { status: string }[] };
-
-/** The packs a household starts with, by language ("Basic pack for Serbia" / "English essentials"). */
-const KNOWLEDGE: Record<Lang, string[]> = {
-  sr: ["wikipedia-sr-maxi", "wiktionary-sr", "wikimed-en", "ifixit-en", "zimgit-water-en", "zimgit-medicine-en"],
-  en: ["wikipedia-en-mini", "wikimed-en", "ifixit-en", "zimgit-water-en", "zimgit-medicine-en"],
-};
-const MAP: Record<Lang, string | null> = { sr: "Serbia", en: null };
 
 /** done: installed or on its way (not started again); installed: ready to use; busy: downloading now. */
 type Line = { key: string; label: string; size: number; done: boolean; installed: boolean; busy: boolean; start: () => Promise<unknown> };
 const BUSY = ["queued", "downloading", "verifying"];
 
-/** One button for the recommended start: knowledge, the region's map and the AI model that fits. */
-export default function StarterSet({ t, lang, packs, freeBytes, onStarted }: { t: T; lang: Lang; packs: Pack[]; freeBytes: number; onStarted: () => void }) {
+/**
+ * One button for the recommended start ("Basic pack for Serbia" / "English
+ * essentials"): the catalog's starter set for the app's language, the map of
+ * its country and the AI model that fits. Only packs offered to everyone: a
+ * pack people download themselves is never part of it, whatever the catalog says.
+ */
+export default function StarterSet({
+  t,
+  lang,
+  packs,
+  sets,
+  freeBytes,
+  onStarted,
+}: {
+  t: T;
+  lang: Lang;
+  packs: Pack[];
+  sets: StarterSetDef[];
+  freeBytes: number;
+  onStarted: () => void;
+}) {
   const [model, setModel] = useState<string | null>(null);
   const [map, setMap] = useState<MapCountry | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const set = sets.find((s) => s.lang === lang) ?? null;
+  const country = set?.map ?? null;
 
   useEffect(() => {
     // No model when none fits this computer's memory (recommended is null).
     api<{ recommended: string | null }>("/api/assistant").then((a) => setModel(a.recommended ?? null)).catch(() => {});
-    const country = MAP[lang];
+  }, []);
+  useEffect(() => {
     if (country) {
       api<{ countries: MapCountry[] }>("/api/maps")
         .then((m) => setMap(m.countries.find((c) => c.id === country) ?? null))
         .catch(() => {});
     } else setMap(null);
-  }, [lang]);
+  }, [country]);
 
   const title = (p: Pack) => (lang === "sr" && p.title.sr ? p.title.sr : p.title.en);
   const lines: Line[] = [];
-  for (const id of [...KNOWLEDGE[lang], ...(model ? [model] : [])]) {
+  for (const id of [...(set?.packs ?? []), ...(model ? [model] : [])]) {
     const p = packs.find((x) => x.id === id);
-    if (!p) continue;
+    if (!p || downloadedByUser(p) || p.withdrawn) continue;
     lines.push({
       key: id,
       label: title(p),

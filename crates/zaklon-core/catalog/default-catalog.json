@@ -1,6 +1,96 @@
 {
   "version": 1,
   "generated": "2026-09-29",
+  "starter_sets": [
+    {
+      "lang": "sr",
+      "packs": [
+        "wikipedia-sr-maxi",
+        "wiktionary-sr",
+        "wikibooks-sr",
+        "wikimed-en",
+        "military-medicine-en",
+        "appropedia-en",
+        "usda-home-canning-en",
+        "restarters-en"
+      ],
+      "map": "Serbia"
+    },
+    {
+      "lang": "en",
+      "packs": [
+        "wikipedia-en-mini",
+        "wikibooks-en",
+        "wikimed-en",
+        "military-medicine-en",
+        "appropedia-en",
+        "usda-home-canning-en",
+        "restarters-en"
+      ]
+    }
+  ],
+  "withdrawn": [
+    {
+      "id": "zimgit-medicine-en",
+      "title": {
+        "en": "First aid and medicine guides (English)",
+        "sr": "Vodiči za prvu pomoć i medicinu (engleski)"
+      },
+      "description": {
+        "en": "Field manuals on first aid and medical care when no doctor is available.",
+        "sr": "Priručnici za prvu pomoć i lečenje kad lekar nije dostupan."
+      },
+      "category": "knowledge",
+      "topics": [
+        "health"
+      ],
+      "version": "2024-08",
+      "size": 70179585,
+      "languages": [
+        "eng"
+      ],
+      "license": "Various; see each document",
+      "attribution": "Various authors, collected by Kiwix; each document keeps its own author and terms",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/zimgit-medicine_en_2024-08.zim",
+          "sha256": "a86c31b93e9800aae2cd812ef18cbf9c087a7537784c62fbc259db7f9f9d18c0",
+          "size": 70179585
+        }
+      ]
+    },
+    {
+      "id": "zimgit-food-preparation-en",
+      "title": {
+        "en": "Food preparation and preserving guides (English)",
+        "sr": "Vodiči za pripremu i čuvanje hrane (engleski)"
+      },
+      "description": {
+        "en": "Guides on cooking, canning, drying and storing food safely.",
+        "sr": "Vodiči za kuvanje, zimnicu, sušenje i bezbedno čuvanje hrane."
+      },
+      "category": "knowledge",
+      "topics": [
+        "food"
+      ],
+      "version": "2025-04",
+      "size": 97822565,
+      "languages": [
+        "eng"
+      ],
+      "license": "Various; see each document",
+      "attribution": "Various authors, collected by Kiwix; each document keeps its own author and terms",
+      "source": "https://library.kiwix.org",
+      "files": [
+        {
+          "path": "zim/zimgit-food-preparation_en_2025-04.zim",
+          "sha256": "db92c6c9dac14ff30f1cbc15aa834a7c012c6e87d4ff0519f33a0902ab6e732b",
+          "size": 97822565
+        }
+      ]
+    }
+  ],
   "packs": [
     {
       "id": "wikipedia-sr-maxi",
@@ -27,6 +117,7 @@
       "license": "CC BY-SA 4.0",
       "attribution": "Wikipedia contributors, sr.wikipedia.org (images keep their own licenses); ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
+      "offer": "auto",
       "files": [
         {
           "path": "zim/wikipedia_sr_all_maxi_2026-09.zim",
@@ -63,6 +154,7 @@
       "license": "CC BY-SA 4.0",
       "attribution": "Wikipedia contributors, sr.wikipedia.org; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
+      "offer": "auto",
       "files": [
         {
           "path": "zim/wikipedia_sr_all_nopic_2026-09.zim",
@@ -99,6 +191,7 @@
       "license": "CC BY-SA 4.0",
       "attribution": "Wikipedia contributors, sr.wikipedia.org; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
+      "offer": "auto",
       "files": [
         {
           "path": "zim/wikipedia_sr_all_mini_2026-09.zim",
@@ -109,6 +202,80 @@
           ],
           "sha256": "3ff7fbae92c6eb911b0c1700eb589148d6ab2ed76e8225c3b7a5cf48081cc179",
           "size": 2029773550
+        }
+      ]
+    },
+    {
+      "id": "wikipedia-sr-top-nopic",
+      "title": {
+        "en": "Best of Serbian Wikipedia (text only)",
+        "sr": "Najbolje sa srpske Vikipedije (samo tekst)"
+      },
+      "description": {
+        "en": "The 50,000 most popular Serbian Wikipedia articles in full, without images. A tenth of the whole Wikipedia's size.",
+        "sr": "50.000 najpopularnijih članaka srpske Vikipedije u celosti, bez slika. Desetina veličine cele Vikipedije."
+      },
+      "category": "knowledge",
+      "topics": [
+        "knowledge"
+      ],
+      "version": "2026-07",
+      "size": 700593845,
+      "languages": [
+        "srp"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-SA 4.0",
+      "attribution": "Wikipedia contributors, sr.wikipedia.org; ZIM file by Kiwix",
+      "source": "https://sr.wikipedia.org",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/wikipedia_sr_top_nopic_2026-07.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_sr_top_nopic_2026-07.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/wikipedia/wikipedia_sr_top_nopic_2026-07.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_sr_top_nopic_2026-07.zim"
+          ],
+          "sha256": "7711d1a9557979745e33a50295d644edf8ab72be1c2e41a16f4206d2cba61d62",
+          "size": 700593845
+        }
+      ]
+    },
+    {
+      "id": "wikipedia-sr-top-mini",
+      "title": {
+        "en": "Best of Serbian Wikipedia (summaries)",
+        "sr": "Najbolje sa srpske Vikipedije (sažeci)"
+      },
+      "description": {
+        "en": "The introductions of the 50,000 most popular Serbian Wikipedia articles. The smallest Serbian Wikipedia.",
+        "sr": "Uvodi 50.000 najpopularnijih članaka srpske Vikipedije. Najmanja srpska Vikipedija."
+      },
+      "category": "knowledge",
+      "topics": [
+        "knowledge"
+      ],
+      "version": "2026-07",
+      "size": 157534147,
+      "languages": [
+        "srp"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-SA 4.0",
+      "attribution": "Wikipedia contributors, sr.wikipedia.org; ZIM file by Kiwix",
+      "source": "https://sr.wikipedia.org",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/wikipedia_sr_top_mini_2026-07.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/wikipedia/wikipedia_sr_top_mini_2026-07.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/wikipedia/wikipedia_sr_top_mini_2026-07.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/wikipedia/wikipedia_sr_top_mini_2026-07.zim"
+          ],
+          "sha256": "0191d3d99ab5ddcd878e83e325ecc9bc45be8c01a43ba7257c15ff9ea2aa5ca9",
+          "size": 157534147
         }
       ]
     },
@@ -137,6 +304,7 @@
       "license": "CC BY-SA 4.0",
       "attribution": "Wiktionary contributors, sr.wiktionary.org; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
+      "offer": "auto",
       "files": [
         {
           "path": "zim/wiktionary_sr_all_nopic_2026-07.zim",
@@ -147,6 +315,80 @@
           ],
           "sha256": "c34f0a957aaa8947e6ce20798d7bd216637688dee1ba8785c974804a217bd66e",
           "size": 332858392
+        }
+      ]
+    },
+    {
+      "id": "wikisource-sr",
+      "title": {
+        "en": "Wikisource in Serbian (text only)",
+        "sr": "Vikizvornik na srpskom (samo tekst)"
+      },
+      "description": {
+        "en": "A library of Serbian source texts: literature, folk poetry, laws and historical documents, most of them in the public domain.",
+        "sr": "Biblioteka izvornih tekstova na srpskom: književnost, narodna poezija, zakoni i istorijski dokumenti, većinom u javnom vlasništvu."
+      },
+      "category": "knowledge",
+      "topics": [
+        "knowledge"
+      ],
+      "version": "2026-07",
+      "size": 141724244,
+      "languages": [
+        "srp"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-SA 4.0 (most texts are in the public domain)",
+      "attribution": "Wikisource contributors, sr.wikisource.org; ZIM file by Kiwix",
+      "source": "https://sr.wikisource.org",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/wikisource_sr_all_nopic_2026-07.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/wikisource/wikisource_sr_all_nopic_2026-07.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/wikisource/wikisource_sr_all_nopic_2026-07.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/wikisource/wikisource_sr_all_nopic_2026-07.zim"
+          ],
+          "sha256": "1f77be87170771ca0aa16b02102888d769f6289c8d0723b91f378391016c7ad2",
+          "size": 141724244
+        }
+      ]
+    },
+    {
+      "id": "gutenberg-sr",
+      "title": {
+        "en": "Serbian books from Project Gutenberg",
+        "sr": "Knjige na srpskom sa Projekta Gutenberg"
+      },
+      "description": {
+        "en": "Free Serbian e-books from Project Gutenberg, whose copyright has run out.",
+        "sr": "Besplatne elektronske knjige na srpskom sa Projekta Gutenberg, kojima su autorska prava istekla."
+      },
+      "category": "knowledge",
+      "topics": [
+        "knowledge"
+      ],
+      "version": "2026-01",
+      "size": 3624747,
+      "languages": [
+        "srp"
+      ],
+      "recommended_for": [],
+      "license": "Public domain (Project Gutenberg)",
+      "attribution": "Project Gutenberg, gutenberg.org; ZIM file by Kiwix",
+      "source": "https://www.gutenberg.org",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/gutenberg_sr_all_2026-01.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/gutenberg/gutenberg_sr_all_2026-01.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/gutenberg/gutenberg_sr_all_2026-01.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/gutenberg/gutenberg_sr_all_2026-01.zim"
+          ],
+          "sha256": "311fd656cc78a756a1f7867a9db3630e9507beaedfee0ad37cf4f6b055adcf4d",
+          "size": 3624747
         }
       ]
     },
@@ -176,6 +418,7 @@
       "license": "CC BY-SA 4.0",
       "attribution": "Wikipedia contributors and WikiProject Medicine, en.wikipedia.org (images keep their own licenses); ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
+      "offer": "auto",
       "files": [
         {
           "path": "zim/wikipedia_en_medicine_maxi_2026-04.zim",
@@ -208,13 +451,12 @@
       "languages": [
         "eng"
       ],
-      "recommended_for": [
-        "sr",
-        "en"
-      ],
+      "recommended_for": [],
       "license": "CC BY-NC-SA 3.0",
       "attribution": "iFixit and its contributors, ifixit.com; non-commercial use only, copies must not be sold; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
+      "offer": "user",
+      "offer_reason": "noncommercial",
       "files": [
         {
           "path": "zim/ifixit_en_all_2025-12.zim",
@@ -253,6 +495,7 @@
       "license": "CC BY-SA 4.0",
       "attribution": "Wikipedia contributors, en.wikipedia.org; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
+      "offer": "auto",
       "files": [
         {
           "path": "zim/wikipedia_en_all_mini_2026-09.zim",
@@ -289,6 +532,7 @@
       "license": "CC BY-SA 4.0",
       "attribution": "Wikipedia contributors, en.wikipedia.org; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
+      "offer": "auto",
       "files": [
         {
           "path": "zim/wikipedia_en_all_nopic_2026-06.zim",
@@ -309,8 +553,8 @@
         "sr": "Vodič za bezbednu vodu (engleski)"
       },
       "description": {
-        "en": "Practical guides on finding, filtering and disinfecting drinking water.",
-        "sr": "Praktični vodiči kako da nađeš, filtriraš i dezinfikuješ vodu za piće."
+        "en": "Practical guides on finding, filtering and disinfecting drinking water: a collection of documents from different sources, each under its own terms.",
+        "sr": "Praktični vodiči kako da nađeš, filtriraš i dezinfikuješ vodu za piće: zbirka dokumenata iz različitih izvora, svaki pod svojim uslovima."
       },
       "category": "knowledge",
       "topics": [
@@ -322,13 +566,12 @@
       "languages": [
         "eng"
       ],
-      "recommended_for": [
-        "sr",
-        "en"
-      ],
+      "recommended_for": [],
       "license": "Various; see each document",
       "attribution": "Various authors, collected by Kiwix; each document keeps its own author and terms",
       "source": "https://library.kiwix.org",
+      "offer": "user",
+      "offer_reason": "mixed_licenses",
       "files": [
         {
           "path": "zim/zimgit-water_en_2024-08.zim",
@@ -343,21 +586,21 @@
       ]
     },
     {
-      "id": "zimgit-medicine-en",
+      "id": "military-medicine-en",
       "title": {
-        "en": "First aid and medicine guides (English)",
-        "sr": "Vodiči za prvu pomoć i medicinu (engleski)"
+        "en": "First aid and field medicine manuals (English)",
+        "sr": "Priručnici za prvu pomoć i terensku medicinu (engleski)"
       },
       "description": {
-        "en": "Field manuals on first aid and medical care when no doctor is available.",
-        "sr": "Priručnici za prvu pomoć i lečenje kad lekar nije dostupan."
+        "en": "26 U.S. military and Coast Guard manuals: First Aid (FM 4-25.11), bandaging and splinting, the Ship's Medicine Chest, emergency childbirth and a family guide to emergency health care. Official but partly dated: read them as a historical reference.",
+        "sr": "26 priručnika američke vojske i obalske straže: prva pomoć (FM 4-25.11), previjanje i imobilizacija, brodska apoteka (Ship's Medicine Chest), hitan porođaj i porodični vodič za hitnu pomoć. Zvanični, ali delom zastareli: čitaj ih kao istorijski izvor."
       },
       "category": "knowledge",
       "topics": [
         "health"
       ],
-      "version": "2024-08",
-      "size": 70179585,
+      "version": "2026-05",
+      "size": 75874415,
       "languages": [
         "eng"
       ],
@@ -365,58 +608,59 @@
         "sr",
         "en"
       ],
-      "license": "Various; see each document",
-      "attribution": "Various authors, collected by Kiwix; each document keeps its own author and terms",
-      "source": "https://library.kiwix.org",
+      "license": "Public domain (U.S. government works)",
+      "attribution": "U.S. Department of Defense and U.S. Coast Guard publications (public domain), collected by the Federation of American Scientists; ZIM file by Kiwix",
+      "source": "https://irp.fas.org/doddir/milmed/",
+      "offer": "auto",
       "files": [
         {
-          "path": "zim/zimgit-medicine_en_2024-08.zim",
+          "path": "zim/irp.fas.org_en_military-medicine_2026-05.zim",
           "urls": [
-            "https://lb.download.kiwix.org/zim/other/zimgit-medicine_en_2024-08.zim",
-            "https://mirrors.dotsrc.org/kiwix/zim/other/zimgit-medicine_en_2024-08.zim",
-            "https://mirror.accum.se/mirror/kiwix.org/zim/other/zimgit-medicine_en_2024-08.zim"
+            "https://lb.download.kiwix.org/zim/zimit/irp.fas.org_en_military-medicine_2026-05.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/zimit/irp.fas.org_en_military-medicine_2026-05.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/zimit/irp.fas.org_en_military-medicine_2026-05.zim"
           ],
-          "sha256": "a86c31b93e9800aae2cd812ef18cbf9c087a7537784c62fbc259db7f9f9d18c0",
-          "size": 70179585
+          "sha256": "51861e46ed9de76ae6a014bbe81ada999bc9a1bbe968e9217a8d53261561396e",
+          "size": 75874415
         }
       ]
     },
     {
-      "id": "zimgit-food-preparation-en",
+      "id": "ready-gov-en",
       "title": {
-        "en": "Food preparation and preserving guides (English)",
-        "sr": "Vodiči za pripremu i čuvanje hrane (engleski)"
+        "en": "Ready.gov emergency preparedness (English)",
+        "sr": "Ready.gov priprema za vanredne situacije (engleski)"
       },
       "description": {
-        "en": "Guides on cooking, canning, drying and storing food safely.",
-        "sr": "Vodiči za kuvanje, zimnicu, sušenje i bezbedno čuvanje hrane."
+        "en": "The U.S. government's guides to getting ready for emergencies: emergency kits, storing water and food, power outages, floods, winter storms and using a generator safely. Large (2.4 GB) because of its videos and pictures.",
+        "sr": "Vodiči američke vlade za pripremu za vanredne situacije: paketi za hitne slučajeve, zalihe vode i hrane, nestanak struje, poplave, zimske oluje i bezbedna upotreba agregata. Veliko (2,4 GB) zbog videa i slika."
       },
       "category": "knowledge",
       "topics": [
-        "food"
+        "health",
+        "water",
+        "power"
       ],
-      "version": "2025-04",
-      "size": 97822565,
+      "version": "2024-12",
+      "size": 2429921822,
       "languages": [
         "eng"
       ],
-      "recommended_for": [
-        "sr",
-        "en"
-      ],
-      "license": "Various; see each document",
-      "attribution": "Various authors, collected by Kiwix; each document keeps its own author and terms",
-      "source": "https://library.kiwix.org",
+      "recommended_for": [],
+      "license": "Public domain (U.S. government work)",
+      "attribution": "Source: FEMA / Ready.gov (public domain; third-party pictures keep their own terms). No endorsement by FEMA is implied. ZIM file by Kiwix",
+      "source": "https://www.ready.gov",
+      "offer": "auto",
       "files": [
         {
-          "path": "zim/zimgit-food-preparation_en_2025-04.zim",
+          "path": "zim/www.ready.gov_en_2024-12.zim",
           "urls": [
-            "https://lb.download.kiwix.org/zim/other/zimgit-food-preparation_en_2025-04.zim",
-            "https://mirrors.dotsrc.org/kiwix/zim/other/zimgit-food-preparation_en_2025-04.zim",
-            "https://mirror.accum.se/mirror/kiwix.org/zim/other/zimgit-food-preparation_en_2025-04.zim"
+            "https://lb.download.kiwix.org/zim/zimit/www.ready.gov_en_2024-12.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/zimit/www.ready.gov_en_2024-12.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/zimit/www.ready.gov_en_2024-12.zim"
           ],
-          "sha256": "db92c6c9dac14ff30f1cbc15aa834a7c012c6e87d4ff0519f33a0902ab6e732b",
-          "size": 97822565
+          "sha256": "5bb4cf0dc0aeeab4c28ba8b01a1284b95b36670c22c2a97ea570a01efaec0439",
+          "size": 2429921822
         }
       ]
     },
@@ -446,6 +690,7 @@
       "license": "CC BY-SA 4.0",
       "attribution": "Wikipedia contributors and WikiProject Medicine, en.wikipedia.org; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
+      "offer": "auto",
       "files": [
         {
           "path": "zim/wikipedia_en_medicine_mini_2026-04.zim",
@@ -485,6 +730,7 @@
       "license": "Open Government Licence v3.0",
       "attribution": "Contains public sector information licensed under the Open Government Licence v3.0 (NHS website, nhs.uk)",
       "source": "https://library.kiwix.org",
+      "offer": "auto",
       "files": [
         {
           "path": "zim/nhs.uk_en_medicines_2026-09b.zim",
@@ -499,18 +745,56 @@
       ]
     },
     {
+      "id": "wikem-en",
+      "title": {
+        "en": "WikEM emergency medicine, for professionals (English)",
+        "sr": "WikEM hitna medicina, za stručnjake (engleski)"
+      },
+      "description": {
+        "en": "For professionals: the emergency medicine reference that physicians write for clinicians, not for patients. Text only.",
+        "sr": "Za stručnjake: priručnik hitne medicine koji lekari pišu za lekare, ne za pacijente. Samo tekst."
+      },
+      "category": "knowledge",
+      "topics": [
+        "health"
+      ],
+      "version": "2026-07",
+      "size": 346946448,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-SA 4.0",
+      "attribution": "WikEM contributors, wikem.org; ZIM file by Kiwix",
+      "source": "https://www.wikem.org",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/wikem_en_all_nopic_2026-07.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/other/wikem_en_all_nopic_2026-07.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/other/wikem_en_all_nopic_2026-07.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/other/wikem_en_all_nopic_2026-07.zim"
+          ],
+          "sha256": "831c6cad5dac7c51fe3cc12d226d8bd411b3883c8c83643f2c167d12928f5dd5",
+          "size": 346946448
+        }
+      ]
+    },
+    {
       "id": "wikibooks-sr",
       "title": {
         "en": "Wikibooks in Serbian (text only)",
         "sr": "Vikiknjige na srpskom (samo tekst)"
       },
       "description": {
-        "en": "Free Serbian textbooks and manuals from Wikibooks, without images.",
-        "sr": "Besplatni udžbenici i priručnici na srpskom sa Vikiknjiga, bez slika."
+        "en": "Free Serbian textbooks and manuals from Wikibooks, without images, including a cookbook (Kuvar) of about 1,100 pages with a section on preserves (zimnica).",
+        "sr": "Besplatni udžbenici i priručnici na srpskom sa Vikiknjiga, bez slika, među njima i Kuvar od oko 1.100 strana sa odeljkom o zimnici."
       },
       "category": "knowledge",
       "topics": [
-        "knowledge"
+        "knowledge",
+        "food"
       ],
       "version": "2026-07",
       "size": 7578861,
@@ -523,6 +807,7 @@
       "license": "CC BY-SA 4.0",
       "attribution": "Wikibooks contributors, sr.wikibooks.org; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
+      "offer": "auto",
       "files": [
         {
           "path": "zim/wikibooks_sr_all_nopic_2026-07.zim",
@@ -533,6 +818,654 @@
           ],
           "sha256": "9b8c31f50bc4ac64f5b8cfe90bca0cf8196037d018a54d2baaaacbf76ed6881b",
           "size": 7578861
+        }
+      ]
+    },
+    {
+      "id": "wikibooks-en",
+      "title": {
+        "en": "Wikibooks in English (text only)",
+        "sr": "Vikiknjige na engleskom (samo tekst)"
+      },
+      "description": {
+        "en": "Free textbooks and manuals from English Wikibooks, without images, including a complete First Aid course and a Cookbook with about 3,800 recipes. Large (3.5 GB).",
+        "sr": "Besplatni udžbenici i priručnici sa engleskih Vikiknjiga, bez slika, među njima ceo kurs prve pomoći (First Aid) i kuvar (Cookbook) sa oko 3.800 recepata. Veliko (3,5 GB)."
+      },
+      "category": "knowledge",
+      "topics": [
+        "knowledge",
+        "health",
+        "food"
+      ],
+      "version": "2026-04",
+      "size": 3507893616,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [
+        "en"
+      ],
+      "license": "CC BY-SA 4.0",
+      "attribution": "Wikibooks contributors, en.wikibooks.org; ZIM file by Kiwix",
+      "source": "https://en.wikibooks.org",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/wikibooks_en_all_nopic_2026-04.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/wikibooks/wikibooks_en_all_nopic_2026-04.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/wikibooks/wikibooks_en_all_nopic_2026-04.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/wikibooks/wikibooks_en_all_nopic_2026-04.zim"
+          ],
+          "sha256": "2f4a1dfbd07683377baef38fe76a31e194f41e8c57ba7dfb47a674d238e06b80",
+          "size": 3507893616
+        }
+      ]
+    },
+    {
+      "id": "stackexchange-cooking-en",
+      "title": {
+        "en": "Cooking Q&A, Seasoned Advice (English)",
+        "sr": "Pitanja i odgovori o kuvanju, Seasoned Advice (engleski)"
+      },
+      "description": {
+        "en": "Questions and answers from Seasoned Advice (Cooking Stack Exchange): why a recipe works or fails, techniques, substitutions and food safety.",
+        "sr": "Pitanja i odgovori sa Seasoned Advice (Cooking Stack Exchange): zašto recept uspe ili ne uspe, tehnike, zamene za sastojke i bezbednost hrane."
+      },
+      "category": "knowledge",
+      "topics": [
+        "food"
+      ],
+      "version": "2026-07",
+      "size": 237005541,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-SA (2.5, 3.0 or 4.0, by post date)",
+      "attribution": "Stack Exchange contributors, cooking.stackexchange.com; ZIM file by Kiwix",
+      "source": "https://cooking.stackexchange.com",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/cooking.stackexchange.com_en_all_2026-07.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/stack_exchange/cooking.stackexchange.com_en_all_2026-07.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/stack_exchange/cooking.stackexchange.com_en_all_2026-07.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/stack_exchange/cooking.stackexchange.com_en_all_2026-07.zim"
+          ],
+          "sha256": "b0529b24e964e2552e6a1fc41ca7573ed269635802c01fb4cb082b25b7099ae1",
+          "size": 237005541
+        }
+      ]
+    },
+    {
+      "id": "publicdomainrecipes-en",
+      "title": {
+        "en": "Public Domain Recipes (English)",
+        "sr": "Recepti sa sajta Public Domain Recipes (engleski)"
+      },
+      "description": {
+        "en": "About 580 recipes shared by their community, with short and simple steps. They were not tested in a test kitchen.",
+        "sr": "Oko 580 recepata koje je podelila zajednica sajta, sa kratkim i jednostavnim koracima. Nisu isprobani u probnoj kuhinji."
+      },
+      "category": "knowledge",
+      "topics": [
+        "food"
+      ],
+      "version": "2026-08",
+      "size": 16971822,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "Public domain (Unlicense)",
+      "attribution": "publicdomainrecipes.com contributors (public domain); ZIM file by Kiwix",
+      "source": "https://publicdomainrecipes.com",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/publicdomainrecipes.com_en_all_2026-08.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/zimit/publicdomainrecipes.com_en_all_2026-08.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/zimit/publicdomainrecipes.com_en_all_2026-08.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/zimit/publicdomainrecipes.com_en_all_2026-08.zim"
+          ],
+          "sha256": "023c9e302b65030a3c6f38defd7249507053363eae014b7aa2e08a81442c4a84",
+          "size": 16971822
+        }
+      ]
+    },
+    {
+      "id": "stackexchange-homebrew-en",
+      "title": {
+        "en": "Homebrewing Q&A (English)",
+        "sr": "Pitanja i odgovori o domaćem pivu i vinu (engleski)"
+      },
+      "description": {
+        "en": "Questions and answers from Homebrewing Stack Exchange on making beer, wine, cider and mead at home, and on fermenting.",
+        "sr": "Pitanja i odgovori sa Homebrewing Stack Exchange-a o pravljenju piva, vina, jabukovače i medovine kod kuće, i o fermentaciji."
+      },
+      "category": "knowledge",
+      "topics": [
+        "food"
+      ],
+      "version": "2026-08",
+      "size": 37375088,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-SA (2.5, 3.0 or 4.0, by post date)",
+      "attribution": "Stack Exchange contributors, homebrew.stackexchange.com; ZIM file by Kiwix",
+      "source": "https://homebrew.stackexchange.com",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/homebrew.stackexchange.com_en_all_2026-08.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/stack_exchange/homebrew.stackexchange.com_en_all_2026-08.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/stack_exchange/homebrew.stackexchange.com_en_all_2026-08.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/stack_exchange/homebrew.stackexchange.com_en_all_2026-08.zim"
+          ],
+          "sha256": "54e509a15c60f355d2755d5e8ac2388a7dd953c59e5b16ec001f100782aafea7",
+          "size": 37375088
+        }
+      ]
+    },
+    {
+      "id": "grimgrains-en",
+      "title": {
+        "en": "GrimGrains plant-based recipes (English)",
+        "sr": "GrimGrains biljni recepti (engleski)"
+      },
+      "description": {
+        "en": "About 290 plant-based recipes and notes on ingredients from Hundred Rabbits, two people who cook on a small sailboat. Written by cooks, not by health professionals.",
+        "sr": "Oko 290 biljnih recepata i beleški o namirnicama od Hundred Rabbits, dvoje ljudi koji kuvaju na maloj jedrilici. Pišu ih kuvari, ne zdravstveni stručnjaci."
+      },
+      "category": "knowledge",
+      "topics": [
+        "food"
+      ],
+      "version": "2026-08",
+      "size": 26029459,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-NC-SA 4.0",
+      "attribution": "GrimGrains by Hundred Rabbits, grimgrains.com; non-commercial use only; ZIM file by Kiwix",
+      "source": "https://grimgrains.com",
+      "offer": "user",
+      "offer_reason": "noncommercial",
+      "files": [
+        {
+          "path": "zim/grimgrains_en_all_2026-08.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/zimit/grimgrains_en_all_2026-08.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/zimit/grimgrains_en_all_2026-08.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/zimit/grimgrains_en_all_2026-08.zim"
+          ],
+          "sha256": "cd6f169b06193f661f95dda24d563a06992f9d2a21d2eb92614add7dc4bcbcce",
+          "size": 26029459
+        }
+      ]
+    },
+    {
+      "id": "appropedia-en",
+      "title": {
+        "en": "Appropedia: water, solar and garden projects (English)",
+        "sr": "Appropedia: projekti za vodu, solarnu struju i baštu (engleski)"
+      },
+      "description": {
+        "en": "A wiki of practical, low-cost projects with pictures: collecting rainwater, treating water, drip irrigation, compost, a small solar kit step by step, charge controllers and more. Written by its community and not peer reviewed.",
+        "sr": "Wiki praktičnih i jeftinih projekata, sa slikama: sakupljanje kišnice, prečišćavanje vode, navodnjavanje kap po kap, kompost, mali solarni sistem korak po korak, solarni regulatori punjenja i drugo. Piše ga zajednica i stručno nije recenziran."
+      },
+      "category": "knowledge",
+      "topics": [
+        "water",
+        "garden",
+        "power",
+        "build"
+      ],
+      "version": "2026-02",
+      "size": 581641351,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [
+        "sr",
+        "en"
+      ],
+      "license": "CC BY-SA 4.0 (older pages CC BY-SA 3.0)",
+      "attribution": "Appropedia contributors, appropedia.org; ZIM file by Kiwix",
+      "source": "https://www.appropedia.org",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/appropedia_en_all_maxi_2026-02.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/other/appropedia_en_all_maxi_2026-02.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/other/appropedia_en_all_maxi_2026-02.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/other/appropedia_en_all_maxi_2026-02.zim"
+          ],
+          "sha256": "dcf200ba723c27397e1c9a2e4891ff91fa13993df1fa285315190d8525a53469",
+          "size": 581641351
+        }
+      ]
+    },
+    {
+      "id": "energypedia-en",
+      "title": {
+        "en": "Energypedia: solar and off-grid power (English)",
+        "sr": "Energypedia: solarna struja i struja van mreže (engleski)"
+      },
+      "description": {
+        "en": "An expert wiki on renewable energy, with diagrams: off-grid solar, sizing batteries (with worked examples), solar water pumps and saving energy.",
+        "sr": "Stručni wiki o obnovljivoj energiji, sa dijagramima: solarni sistemi van mreže, računanje veličine baterija (sa urađenim primerima), solarne pumpe za vodu i štednja energije."
+      },
+      "category": "knowledge",
+      "topics": [
+        "power",
+        "build"
+      ],
+      "version": "2026-06",
+      "size": 799712780,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-SA 3.0 and 4.0",
+      "attribution": "energypedia contributors, energypedia.info (documents it links to keep their own terms); ZIM file by Kiwix",
+      "source": "https://energypedia.info",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/energypedia_en_all_maxi_2026-06.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/other/energypedia_en_all_maxi_2026-06.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/other/energypedia_en_all_maxi_2026-06.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/other/energypedia_en_all_maxi_2026-06.zim"
+          ],
+          "sha256": "c328df321497003e30f96af67340c04bff52e2831e09cf2b0c0fde52bba23bd0",
+          "size": 799712780
+        }
+      ]
+    },
+    {
+      "id": "hundred-rabbits-en",
+      "title": {
+        "en": "Hundred Rabbits off-grid notes (English)",
+        "sr": "Hundred Rabbits beleške o životu van mreže (engleski)"
+      },
+      "description": {
+        "en": "Notes from two people who live off-grid on a sailboat: small solar power, batteries, water, repairs and making do with little.",
+        "sr": "Beleške dvoje ljudi koji žive van mreže na jedrilici: mali solarni sistem, baterije, voda, popravke i snalaženje sa malo."
+      },
+      "category": "knowledge",
+      "topics": [
+        "power",
+        "build"
+      ],
+      "version": "2026-08",
+      "size": 177187648,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-NC-SA 4.0",
+      "attribution": "Hundred Rabbits, 100r.co; non-commercial use only; ZIM file by Kiwix",
+      "source": "https://100r.co",
+      "offer": "user",
+      "offer_reason": "noncommercial",
+      "files": [
+        {
+          "path": "zim/100r.co_en_all_2026-08.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/zimit/100r.co_en_all_2026-08.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/zimit/100r.co_en_all_2026-08.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/zimit/100r.co_en_all_2026-08.zim"
+          ],
+          "sha256": "4520e5e0b308c5c357f3707acaaff82aaa5b7ff3b788731a271522f5b9712083",
+          "size": 177187648
+        }
+      ]
+    },
+    {
+      "id": "restarters-en",
+      "title": {
+        "en": "Restarters repair wiki (English)",
+        "sr": "Restarters wiki za popravke (engleski)"
+      },
+      "description": {
+        "en": "How things work and how to fix them: small appliances, electronics and what repair cafés have learned, from The Restart Project.",
+        "sr": "Kako stvari rade i kako se popravljaju: mali kućni aparati, elektronika i iskustva radionica za popravke (repair café), od organizacije The Restart Project."
+      },
+      "category": "knowledge",
+      "topics": [
+        "build"
+      ],
+      "version": "2026-04",
+      "size": 17343764,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [
+        "sr",
+        "en"
+      ],
+      "license": "CC BY-SA 4.0",
+      "attribution": "Restarters Wiki contributors (The Restart Project), wiki.restarters.net; ZIM file by Kiwix",
+      "source": "https://wiki.restarters.net",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/restarters_en_all_maxi_2026-04.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/other/restarters_en_all_maxi_2026-04.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/other/restarters_en_all_maxi_2026-04.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/other/restarters_en_all_maxi_2026-04.zim"
+          ],
+          "sha256": "f667292f297712d1fe8662450caa27010d91f04b3d1ca36aa8d1285e83044cee",
+          "size": 17343764
+        }
+      ]
+    },
+    {
+      "id": "stackexchange-diy-en",
+      "title": {
+        "en": "Home Improvement Q&A (English)",
+        "sr": "Pitanja i odgovori o radovima u kući (engleski)"
+      },
+      "description": {
+        "en": "Questions and answers from Home Improvement Stack Exchange on plumbing, wiring, building, pumps and water heaters. The answers follow U.S. building codes. Large (2.1 GB).",
+        "sr": "Pitanja i odgovori sa Home Improvement Stack Exchange-a o vodovodu, električnim instalacijama, gradnji, pumpama i bojlerima. Odgovori prate američke građevinske propise. Veliko (2,1 GB)."
+      },
+      "category": "knowledge",
+      "topics": [
+        "build"
+      ],
+      "version": "2026-08",
+      "size": 2062547155,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-SA (2.5, 3.0 or 4.0, by post date)",
+      "attribution": "Stack Exchange contributors, diy.stackexchange.com; ZIM file by Kiwix",
+      "source": "https://diy.stackexchange.com",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/diy.stackexchange.com_en_all_2026-08.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/stack_exchange/diy.stackexchange.com_en_all_2026-08.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/stack_exchange/diy.stackexchange.com_en_all_2026-08.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/stack_exchange/diy.stackexchange.com_en_all_2026-08.zim"
+          ],
+          "sha256": "94cbd4daeebe180bb8908b767d3c1477753049a29c2c092f6a752b6f691863da",
+          "size": 2062547155
+        }
+      ]
+    },
+    {
+      "id": "stackexchange-woodworking-en",
+      "title": {
+        "en": "Woodworking Q&A (English)",
+        "sr": "Pitanja i odgovori o obradi drveta (engleski)"
+      },
+      "description": {
+        "en": "Questions and answers from Woodworking Stack Exchange on tools, joints, finishes and making furniture.",
+        "sr": "Pitanja i odgovori sa Woodworking Stack Exchange-a o alatu, spojevima, završnoj obradi i izradi nameštaja."
+      },
+      "category": "knowledge",
+      "topics": [
+        "build"
+      ],
+      "version": "2026-08",
+      "size": 105570459,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-SA (2.5, 3.0 or 4.0, by post date)",
+      "attribution": "Stack Exchange contributors, woodworking.stackexchange.com; ZIM file by Kiwix",
+      "source": "https://woodworking.stackexchange.com",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/woodworking.stackexchange.com_en_all_2026-08.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/stack_exchange/woodworking.stackexchange.com_en_all_2026-08.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/stack_exchange/woodworking.stackexchange.com_en_all_2026-08.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/stack_exchange/woodworking.stackexchange.com_en_all_2026-08.zim"
+          ],
+          "sha256": "a41140515d25c9906ceed8a818dd4a0645b7c040a9dc4a8419a2d729af7c3ccb",
+          "size": 105570459
+        }
+      ]
+    },
+    {
+      "id": "stackexchange-mechanics-en",
+      "title": {
+        "en": "Car and motorcycle repair Q&A (English)",
+        "sr": "Pitanja i odgovori o popravci automobila i motora (engleski)"
+      },
+      "description": {
+        "en": "Questions and answers from Motor Vehicle Maintenance & Repair Stack Exchange: finding faults, servicing and repairs.",
+        "sr": "Pitanja i odgovori sa Motor Vehicle Maintenance & Repair Stack Exchange-a: pronalaženje kvarova, servisiranje i popravke."
+      },
+      "category": "knowledge",
+      "topics": [
+        "build"
+      ],
+      "version": "2026-08",
+      "size": 339833641,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-SA (2.5, 3.0 or 4.0, by post date)",
+      "attribution": "Stack Exchange contributors, mechanics.stackexchange.com; ZIM file by Kiwix",
+      "source": "https://mechanics.stackexchange.com",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/mechanics.stackexchange.com_en_all_2026-08.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/stack_exchange/mechanics.stackexchange.com_en_all_2026-08.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/stack_exchange/mechanics.stackexchange.com_en_all_2026-08.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/stack_exchange/mechanics.stackexchange.com_en_all_2026-08.zim"
+          ],
+          "sha256": "20f1547c29c621b3d44ccdc46ac9047cfa99df75227cc68c5284ce7850eac864",
+          "size": 339833641
+        }
+      ]
+    },
+    {
+      "id": "stackexchange-bicycles-en",
+      "title": {
+        "en": "Bicycles Q&A (English)",
+        "sr": "Pitanja i odgovori o biciklima (engleski)"
+      },
+      "description": {
+        "en": "Questions and answers from Bicycles Stack Exchange on repairing, servicing and riding bicycles.",
+        "sr": "Pitanja i odgovori sa Bicycles Stack Exchange-a o popravci, održavanju i vožnji bicikla."
+      },
+      "category": "knowledge",
+      "topics": [
+        "build"
+      ],
+      "version": "2026-08",
+      "size": 490983811,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "CC BY-SA (2.5, 3.0 or 4.0, by post date)",
+      "attribution": "Stack Exchange contributors, bicycles.stackexchange.com; ZIM file by Kiwix",
+      "source": "https://bicycles.stackexchange.com",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/bicycles.stackexchange.com_en_all_2026-08.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/stack_exchange/bicycles.stackexchange.com_en_all_2026-08.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/stack_exchange/bicycles.stackexchange.com_en_all_2026-08.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/stack_exchange/bicycles.stackexchange.com_en_all_2026-08.zim"
+          ],
+          "sha256": "3fdbf378347ecf02d7c5233cf266bdb18b67a18cdb288c6aa115aefd8e8d9ed4",
+          "size": 490983811
+        }
+      ]
+    },
+    {
+      "id": "kiwix-map-serbia",
+      "title": {
+        "en": "Map of Serbia with place search (Library)",
+        "sr": "Mapa Srbije sa pretragom mesta (Biblioteka)"
+      },
+      "description": {
+        "en": "A map of Serbia that opens in the Library, on the laptop and on phones: roads and landmarks, and finding a place by its name. It gives no directions; for navigation, use CoMaps on a phone.",
+        "sr": "Mapa Srbije koja se otvara u Biblioteci, na laptopu i na telefonima: putevi i znamenitosti, i traženje mesta po imenu. Ne vodi do cilja; za navigaciju koristi CoMaps na telefonu."
+      },
+      "category": "knowledge",
+      "topics": [
+        "maps"
+      ],
+      "version": "2026-06",
+      "size": 462267717,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [
+        "sr"
+      ],
+      "license": "ODbL 1.0 (map data), CC BY 4.0 (place search)",
+      "attribution": "© OpenStreetMap contributors (ODbL); tiles by OpenFreeMap, © OpenMapTiles; place search © GeoNames (CC BY 4.0); ZIM file by Kiwix",
+      "source": "https://www.openstreetmap.org",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/maps_en_serbia_2026-06.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/maps/maps_en_serbia_2026-06.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/maps/maps_en_serbia_2026-06.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/maps/maps_en_serbia_2026-06.zim"
+          ],
+          "sha256": "a39a61af9c7773743b9f8c806ff95bfb1f2424573cff5d3a7053651cdac96f32",
+          "size": 462267717
+        }
+      ]
+    },
+    {
+      "id": "kiwix-map-balkans",
+      "title": {
+        "en": "Map of the Balkans with place search (Library)",
+        "sr": "Mapa Balkana sa pretragom mesta (Biblioteka)"
+      },
+      "description": {
+        "en": "A map of the Balkans (Serbia, its neighbors and the rest of the peninsula) that opens in the Library, on the laptop and on phones: roads and landmarks, and finding a place by its name. It gives no directions. Large (1.5 GB).",
+        "sr": "Mapa Balkana (Srbija, susedne zemlje i ostatak poluostrva) koja se otvara u Biblioteci, na laptopu i na telefonima: putevi i znamenitosti, i traženje mesta po imenu. Ne vodi do cilja. Veliko (1,5 GB)."
+      },
+      "category": "knowledge",
+      "topics": [
+        "maps"
+      ],
+      "version": "2026-08",
+      "size": 1541283658,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "ODbL 1.0 (map data), CC BY 4.0 (place search)",
+      "attribution": "© OpenStreetMap contributors (ODbL); tiles by OpenFreeMap, © OpenMapTiles; place search © GeoNames (CC BY 4.0); ZIM file by Kiwix",
+      "source": "https://www.openstreetmap.org",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/maps_en_balkans_2026-08.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/maps/maps_en_balkans_2026-08.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/maps/maps_en_balkans_2026-08.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/maps/maps_en_balkans_2026-08.zim"
+          ],
+          "sha256": "498380c6b6e5147bfc824bd0058def8fe7b4cb702c8599c1ce8fd8086152f32a",
+          "size": 1541283658
+        }
+      ]
+    },
+    {
+      "id": "kiwix-map-montenegro",
+      "title": {
+        "en": "Map of Montenegro with place search (Library)",
+        "sr": "Mapa Crne Gore sa pretragom mesta (Biblioteka)"
+      },
+      "description": {
+        "en": "A map of Montenegro that opens in the Library, on the laptop and on phones: roads and landmarks, and finding a place by its name. It gives no directions.",
+        "sr": "Mapa Crne Gore koja se otvara u Biblioteci, na laptopu i na telefonima: putevi i znamenitosti, i traženje mesta po imenu. Ne vodi do cilja."
+      },
+      "category": "knowledge",
+      "topics": [
+        "maps"
+      ],
+      "version": "2026-06",
+      "size": 198341170,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "ODbL 1.0 (map data), CC BY 4.0 (place search)",
+      "attribution": "© OpenStreetMap contributors (ODbL); tiles by OpenFreeMap, © OpenMapTiles; place search © GeoNames (CC BY 4.0); ZIM file by Kiwix",
+      "source": "https://www.openstreetmap.org",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/maps_en_montenegro_2026-06.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/maps/maps_en_montenegro_2026-06.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/maps/maps_en_montenegro_2026-06.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/maps/maps_en_montenegro_2026-06.zim"
+          ],
+          "sha256": "98b09ae36d42eb7c073792e02268f24cb0b4b0f32424f4501caef740e1981ba2",
+          "size": 198341170
+        }
+      ]
+    },
+    {
+      "id": "kiwix-map-bosnia-herzegovina",
+      "title": {
+        "en": "Map of Bosnia and Herzegovina with place search (Library)",
+        "sr": "Mapa Bosne i Hercegovine sa pretragom mesta (Biblioteka)"
+      },
+      "description": {
+        "en": "A map of Bosnia and Herzegovina that opens in the Library, on the laptop and on phones: roads and landmarks, and finding a place by its name. It gives no directions.",
+        "sr": "Mapa Bosne i Hercegovine koja se otvara u Biblioteci, na laptopu i na telefonima: putevi i znamenitosti, i traženje mesta po imenu. Ne vodi do cilja."
+      },
+      "category": "knowledge",
+      "topics": [
+        "maps"
+      ],
+      "version": "2026-06",
+      "size": 367521252,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "ODbL 1.0 (map data), CC BY 4.0 (place search)",
+      "attribution": "© OpenStreetMap contributors (ODbL); tiles by OpenFreeMap, © OpenMapTiles; place search © GeoNames (CC BY 4.0); ZIM file by Kiwix",
+      "source": "https://www.openstreetmap.org",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/maps_en_bosnia-herzegovina_2026-06.zim",
+          "urls": [
+            "https://lb.download.kiwix.org/zim/maps/maps_en_bosnia-herzegovina_2026-06.zim",
+            "https://mirrors.dotsrc.org/kiwix/zim/maps/maps_en_bosnia-herzegovina_2026-06.zim",
+            "https://mirror.accum.se/mirror/kiwix.org/zim/maps/maps_en_bosnia-herzegovina_2026-06.zim"
+          ],
+          "sha256": "9c5c0d1eb6f7e7977e036033d31a6b713c1b5a30a0bb1aca15ef2f97ecaf37d3",
+          "size": 367521252
         }
       ]
     },
@@ -559,6 +1492,7 @@
       "license": "CC BY-SA (2.5, 3.0 or 4.0, by post date)",
       "attribution": "Stack Exchange contributors, gardening.stackexchange.com; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
+      "offer": "auto",
       "files": [
         {
           "path": "zim/gardening.stackexchange.com_en_all_2026-08.zim",
@@ -598,6 +1532,7 @@
       "license": "CC BY-SA (2.5, 3.0 or 4.0, by post date)",
       "attribution": "Stack Exchange contributors, sustainability.stackexchange.com; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
+      "offer": "auto",
       "files": [
         {
           "path": "zim/sustainability.stackexchange.com_en_all_2026-08.zim",
@@ -634,6 +1569,7 @@
       "license": "CC BY-SA 3.0",
       "attribution": "Gardenology.org contributors, gardenology.org; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
+      "offer": "auto",
       "files": [
         {
           "path": "zim/gardenology.org_en_all_2026-09.zim",
@@ -670,6 +1606,7 @@
       "license": "Public domain (U.S. government work)",
       "attribution": "U.S. Department of Agriculture, Complete Guide to Home Canning; ZIM file by Kiwix",
       "source": "https://library.kiwix.org",
+      "offer": "auto",
       "files": [
         {
           "path": "zim/usda-2015_en_2025-04.zim",
@@ -701,6 +1638,7 @@
       "license": "GPL-3.0-or-later",
       "attribution": "Kiwix (kiwix.org)",
       "source": "https://kiwix.org",
+      "offer": "auto",
       "files": [
         {
           "path": "bin/kiwix-tools_win-x86_64-3.8.1.zip",
@@ -732,6 +1670,7 @@
       "license": "MIT",
       "attribution": "llama.cpp contributors (ggml-org)",
       "source": "https://github.com/ggml-org/llama.cpp",
+      "offer": "auto",
       "files": [
         {
           "path": "bin/llama-b11202-bin-win-cpu-x64.zip",
@@ -763,6 +1702,7 @@
       "license": "Apache-2.0",
       "attribution": "Qwen team, Alibaba Cloud (model); GGUF conversion by ggml-org",
       "source": "https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF",
+      "offer": "auto",
       "files": [
         {
           "path": "models/Qwen3.5-0.8B-Q8_0.gguf",
@@ -792,6 +1732,7 @@
       "license": "Apache-2.0",
       "attribution": "Qwen team, Alibaba Cloud (model); GGUF conversion by Unsloth",
       "source": "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF",
+      "offer": "auto",
       "files": [
         {
           "path": "models/Qwen3.5-2B-Q4_K_M.gguf",
@@ -821,6 +1762,7 @@
       "license": "Apache-2.0",
       "attribution": "Qwen team, Alibaba Cloud (model); GGUF conversion by Unsloth",
       "source": "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF",
+      "offer": "auto",
       "files": [
         {
           "path": "models/Qwen3.5-4B-Q4_K_M.gguf",
@@ -850,6 +1792,7 @@
       "license": "Apache-2.0",
       "attribution": "Qwen team, Alibaba Cloud (model); GGUF conversion by Unsloth",
       "source": "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF",
+      "offer": "auto",
       "files": [
         {
           "path": "models/Qwen3.5-9B-Q4_K_M.gguf",

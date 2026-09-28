@@ -114,6 +114,15 @@ test("shots", async ({ page }, info) => {
       if (p.id === "zimgit-water-en") p.state = { ...p.state, status: "failed", error: "checksum mismatch" };
       if (p.id === "qwen35-9b") p.state = { ...p.state, status: "paused", bytes_done: Math.round(p.size * 0.2), bytes_total: p.size };
     }
+    // A pack the hub has that the catalog no longer offers.
+    json.packs.push({
+      id: "zimgit-medicine-en",
+      title: { en: "First aid and medicine guides (English)", sr: "Vodiči za prvu pomoć i medicinu (engleski)" },
+      description: { en: "Field manuals on first aid and medical care when no doctor is available.", sr: "Priručnici za prvu pomoć i lečenje kad lekar nije dostupan." },
+      category: "knowledge", topics: ["health"], version: "2024-08", size: 70179585, license: "Various; see each document",
+      attribution: "Various authors, collected by Kiwix", source: "https://library.kiwix.org", offer: "auto", languages: ["eng"], recommended_for: [],
+      withdrawn: true, state: { status: "installed", bytes_done: 70179585, bytes_total: 70179585, speed: 0 },
+    });
     return r.fulfill({ json });
   });
   await page.route("**/api/maps", async (r) => {
@@ -144,6 +153,28 @@ test("shots", async ({ page }, info) => {
   await page.waitForTimeout(400);
   await page.screenshot({ path: file("addons-x-search"), fullPage: true });
   await page.getByRole("searchbox").fill("");
+  // The packs people download themselves, and the question before one downloads
+  // (nothing is asked of the hub: the question is only opened).
+  for (const [name, url, view] of [
+    ["addons-x-health", "/#addons/health", "tiles"],
+    ["addons-x-food", "/#addons/food", "tiles"],
+    ["addons-x-build-details", "/#addons/build", "details"],
+  ]) {
+    await page.evaluate((v) => localStorage.setItem("zaklon.addonsView", v), view);
+    await page.goto(url);
+    await page.reload();
+    await page.waitForTimeout(1200);
+    await page.screenshot({ path: file(name), fullPage: true });
+  }
+  await page.evaluate(() => localStorage.setItem("zaklon.addonsView", "tiles"));
+  await page.goto("/#addons/food");
+  await page.reload();
+  await page.waitForTimeout(1200);
+  const grim = page.locator('[data-entry="grimgrains-en"]');
+  await grim.getByRole("button").first().click();
+  await page.waitForTimeout(400);
+  await grim.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: file("addons-x-food-ask"), fullPage: false });
   if (info.project.name === "laptop") {
     // A USB drive, when the machine has another drive.
     await page.goto("/#addons");

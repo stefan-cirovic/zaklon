@@ -788,6 +788,147 @@ test("add-ons: the addresses of the folders from before the topics lead to the n
   await expect(page).toHaveURL(/#addons$/);
 });
 
+test("add-ons: packs people download themselves are apart, say why, and ask to confirm their license (requests intercepted)", async ({ page }) => {
+  await ensureSetUp(page);
+  // The hub itself refuses one without the confirmation (nothing is downloaded).
+  const refused = await page.request.post("/api/packs/ifixit-en/download");
+  expect(refused.status()).toBe(400);
+  expect((await refused.json()).code).toBe("license_not_confirmed");
+  const asked: string[] = [];
+  await page.route("**/api/packs/*/download*", (r) => {
+    asked.push(new URL(r.request().url()).pathname + new URL(r.request().url()).search);
+    return r.fulfill({ status: 202, body: "" });
+  });
+  await page.goto("/#addons/build");
+  await expect(page.getByRole("heading", { name: "Build and install", level: 1 })).toBeVisible();
+  // Offered to everyone first; iFixit (non-commercial) at the bottom, in a group of its own, with the reason.
+  const group = page.getByRole("region", { name: "You download these yourself" });
+  await expect(group).toContainText("Zaklon never downloads them for you");
+  const ifixit = group.locator('[data-entry="ifixit-en"]');
+  await expect(ifixit).toContainText("Free for non-commercial use only (CC BY-NC-SA 3.0)");
+  await expect(ifixit.getByText("recommended")).toHaveCount(0);
+  await expect(group.locator('[data-entry="restarters-en"]')).toHaveCount(0);
+  await expect(page.locator('[data-entry="restarters-en"]')).toBeVisible();
+  const order = await page.locator("[data-entry]").evaluateAll((els) => els.map((e) => e.getAttribute("data-entry")));
+  expect(order.indexOf("restarters-en")).toBeLessThan(order.indexOf("ifixit-en"));
+  // Its license and where it comes from, in its details.
+  await ifixit.getByText("License and credit").click();
+  await expect(ifixit).toContainText("iFixit and its contributors");
+
+  // Download asks first, naming the license; Cancel asks nothing of the hub.
+  await ifixit.getByRole("button", { name: "Download: iFixit repair guides (English)" }).click();
+  const question = ifixit.getByRole("group").filter({ hasText: "CC BY-NC-SA 3.0" });
+  await expect(question).toContainText("free for non-commercial use only");
+  await expect(question.getByRole("button", { name: "Accept and download: iFixit repair guides (English)" })).toBeFocused();
+  await noHorizontalScroll(page);
+  await question.getByRole("button", { name: "Cancel" }).click();
+  await expect(question).toHaveCount(0);
+  await expect(ifixit.getByRole("button", { name: /^Download/ })).toBeFocused();
+  await page.waitForTimeout(300);
+  expect(asked).toEqual([]);
+  // Accepted: downloaded, with the confirmation.
+  await ifixit.getByRole("button", { name: /^Download/ }).click();
+  await ifixit.getByRole("button", { name: /^Accept and download/ }).click();
+  await expect.poll(() => asked).toEqual(["/api/packs/ifixit-en/download?accept_license=true"]);
+  // A pack offered to everyone downloads straight away.
+  await page.locator('[data-entry="restarters-en"]').getByRole("button", { name: /^Download/ }).click();
+  await expect.poll(() => asked.length).toBe(2);
+  expect(asked[1]).toBe("/api/packs/restarters-en/download");
+
+  // The same in the details table, and in Serbian.
+  await page.getByRole("group", { name: "View" }).getByRole("button", { name: "Details" }).click();
+  const table = page.getByRole("table", { name: "You download these yourself" });
+  await table.getByRole("button", { name: /^Download: iFixit/ }).click();
+  await expect(table.getByRole("group").filter({ hasText: "CC BY-NC-SA 3.0" })).toBeVisible();
+  await noHorizontalScroll(page);
+  await page.getByRole("group", { name: "View" }).getByRole("button", { name: "Tiles" }).click();
+  await setLanguage(page, "sr");
+  await page.goto("/#addons/food");
+  const grupa = page.getByRole("region", { name: "Ove preuzimaš sam" });
+  await expect(grupa.locator('[data-entry="grimgrains-en"]')).toContainText("Besplatno samo za nekomercijalnu upotrebu (CC BY-NC-SA 4.0)");
+  await page.goto("/#addons/water");
+  await expect(page.getByRole("region", { name: "Ove preuzimaš sam" }).locator('[data-entry="zimgit-water-en"]')).toContainText("Mešovite licence");
+  await setLanguage(page, "en");
+});
+
+test("add-ons: the starter set holds only packs offered to everyone", async ({ page }) => {
+  await ensureSetUp(page);
+  const catalog = await (await page.request.get("/api/catalog")).json();
+  const offer = new Map<string, string>(catalog.packs.map((p: { id: string; offer: string }) => [p.id, p.offer]));
+  expect(catalog.starter_sets.map((s: { lang: string }) => s.lang)).toEqual(["sr", "en"]);
+  for (const set of catalog.starter_sets) for (const id of set.packs) expect(offer.get(id), id).toBe("auto");
+  // Even when a catalog tries to put others in, the set leaves them out.
+  await page.route("**/api/catalog", async (r) => {
+    const json = await (await r.fetch()).json();
+    json.system.disk_free = 1e12;
+    json.starter_sets = [{ lang: "en", packs: ["ifixit-en", "zimgit-water-en", "military-medicine-en"] }];
+    return r.fulfill({ json });
+  });
+  const asked: string[] = [];
+  await page.route("**/api/packs/*/download*", (r) => {
+    asked.push(new URL(r.request().url()).pathname);
+    return r.fulfill({ status: 202, body: "" });
+  });
+  await page.goto("/#addons");
+  const panel = page.locator(".starter");
+  await expect(panel.getByRole("heading", { name: "English essentials" })).toBeVisible();
+  await expect(panel).toContainText("First aid and field medicine manuals (English)");
+  await expect(panel).not.toContainText("iFixit");
+  await expect(panel).not.toContainText("Safe water");
+  await panel.getByRole("button", { name: "Download all" }).click();
+  await expect.poll(() => asked).toContain("/api/packs/military-medicine-en/download");
+  expect(asked.filter((p) => /ifixit|zimgit/.test(p))).toEqual([]);
+});
+
+test("add-ons: a pack Zaklon no longer offers stays listed, usable and removable (states simulated)", async ({ page }) => {
+  await ensureSetUp(page);
+  // As the hub lists a pack it has that the catalog withdrew.
+  await page.route("**/api/catalog", async (r) => {
+    const json = await (await r.fetch()).json();
+    json.packs.push({
+      id: "zimgit-medicine-en",
+      title: { en: "First aid and medicine guides (English)", sr: "Vodiči za prvu pomoć i medicinu (engleski)" },
+      description: { en: "Field manuals on first aid and medical care when no doctor is available.", sr: "Priručnici za prvu pomoć i lečenje kad lekar nije dostupan." },
+      category: "knowledge",
+      topics: ["health"],
+      version: "2024-08",
+      size: 70179585,
+      license: "Various; see each document",
+      attribution: "Various authors, collected by Kiwix",
+      source: "https://library.kiwix.org",
+      offer: "auto",
+      languages: ["eng"],
+      recommended_for: [],
+      withdrawn: true,
+      state: { status: "installed", bytes_done: 70179585, bytes_total: 70179585, speed: 0 },
+    });
+    return r.fulfill({ json });
+  });
+  let removed = false;
+  await page.route("**/api/packs/zimgit-medicine-en", (r) => {
+    removed = r.request().method() === "DELETE";
+    return r.fulfill({ status: 204, body: "" });
+  });
+  await page.goto("/#addons/health");
+  const pack = page.locator('[data-entry="zimgit-medicine-en"]');
+  await expect(pack).toContainText("No longer offered by Zaklon");
+  await expect(pack).toContainText("Installed");
+  // Nothing to download or update; it can be removed on the laptop.
+  await expect(pack.getByRole("button", { name: /^(Download|Update|Resume|Retry)/ })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "You download these yourself" }).locator('[data-entry="zimgit-medicine-en"]')).toHaveCount(0);
+  // On the library's drive, with what else is there; not among what can be copied to USB.
+  await page.goto("/#addons/library");
+  await expect(page.locator('[data-entry="zimgit-medicine-en"]')).toContainText("No longer offered by Zaklon");
+  await page.goto("/#addons");
+  await expect(page.getByRole("heading", { name: "Copy to USB" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /First aid and medicine guides/ })).toHaveCount(0);
+  await page.goto("/#addons/health");
+  await pack.getByRole("button", { name: "Remove: First aid and medicine guides (English)" }).click();
+  await pack.getByRole("button", { name: "Yes, remove" }).click();
+  await expect.poll(() => removed).toBe(true);
+  await noHorizontalScroll(page);
+});
+
 test("a download that the hub accepts without a body is not reported as an error", async ({ page }) => {
   await ensureSetUp(page);
   // The hub answers 202 with an empty body; answer the same way without going online.

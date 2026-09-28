@@ -39,19 +39,38 @@ The knowledge packs are ZIM files published by Kiwix (openZIM).
 
 | Pack | License | Attribution |
 |---|---|---|
-| Wikipedia in Serbian and English, Medical Wikipedia (ZIM) | CC BY-SA 4.0 | Wikipedia contributors; each article links to its source. Images in the "with pictures" packs keep their own licenses. |
+| Wikipedia in Serbian and English (including "Best of Serbian Wikipedia"), Medical Wikipedia (ZIM) | CC BY-SA 4.0 | Wikipedia contributors; each article links to its source. Images in the "with pictures" packs keep their own licenses. |
 | Wiktionary in Serbian (ZIM) | CC BY-SA 4.0 | Wiktionary contributors |
-| Wikibooks in Serbian (ZIM) | CC BY-SA 4.0 | Wikibooks contributors |
-| iFixit repair guides (ZIM) | CC BY-NC-SA 3.0 | iFixit and its contributors. Non-commercial: copies, including packs copied to a USB stick, must not be sold. |
-| Stack Exchange sites: Gardening & Landscaping, Sustainable Living (ZIM) | CC BY-SA (2.5, 3.0 or 4.0, by post date) | Stack Exchange contributors |
+| Wikibooks in Serbian and English (ZIM) | CC BY-SA 4.0 | Wikibooks contributors |
+| Wikisource in Serbian (ZIM) | CC BY-SA 4.0 (most texts are in the public domain) | Wikisource contributors |
+| Project Gutenberg books in Serbian (ZIM) | Public domain | Project Gutenberg |
+| Stack Exchange sites: Gardening & Landscaping, Sustainable Living, Seasoned Advice (cooking), Homebrewing, Home Improvement, Woodworking, Motor Vehicle Maintenance & Repair, Bicycles (ZIM) | CC BY-SA (2.5, 3.0 or 4.0, by post date) | Stack Exchange contributors |
 | NHS Medicines A to Z (ZIM) | Open Government Licence v3.0 | Contains public sector information licensed under the Open Government Licence v3.0 (NHS website, nhs.uk) |
 | USDA Complete Guide to Home Canning (ZIM) | Public domain (U.S. government work) | U.S. Department of Agriculture |
+| First aid and field medicine manuals (irp.fas.org military medicine, ZIM) | Public domain (U.S. government works) | U.S. Department of Defense and U.S. Coast Guard, collected by the Federation of American Scientists |
+| Ready.gov emergency preparedness (ZIM) | Public domain (U.S. government work) | FEMA / Ready.gov; third-party pictures keep their own terms; no endorsement by FEMA is implied |
+| WikEM emergency medicine (ZIM) | CC BY-SA 4.0 | WikEM contributors |
+| Appropedia (ZIM) | CC BY-SA 4.0 (older pages CC BY-SA 3.0) | Appropedia contributors |
+| Energypedia (ZIM) | CC BY-SA 3.0 and 4.0 | energypedia contributors; documents it links to keep their own terms |
+| Restarters repair wiki (ZIM) | CC BY-SA 4.0 | Restarters Wiki contributors (The Restart Project) |
+| Public Domain Recipes (ZIM) | Public domain (Unlicense) | publicdomainrecipes.com contributors |
 | Gardenology plant encyclopedia (ZIM) | CC BY-SA 3.0 | Gardenology.org contributors |
-| Kiwix guide collections: safe water, first aid and medicine, food preparation (ZIM) | Various; see each document | Various authors, collected by Kiwix |
+| Kiwix maps of Serbia, the Balkans, Montenegro, and Bosnia and Herzegovina (ZIM) | ODbL 1.0 (map data), CC BY 4.0 (place search) | © OpenStreetMap contributors; tiles by OpenFreeMap, © OpenMapTiles; place search © GeoNames |
 | Map data | ODbL 1.0 | © OpenStreetMap contributors |
 | World map for the Zaklon map (Protomaps basemap build, PMTiles) | ODbL 1.0 | © OpenStreetMap contributors; tiles built by Protomaps (https://protomaps.com) |
 | Map region list and region names (bundled in `crates/zaklon-core/catalog/comaps-*.json`, Serbian names converted to Latin script) | Apache-2.0 | CoMaps contributors |
 | AI models (Qwen3.5 0.8B, 2B, 4B, 9B) | Apache-2.0 | Qwen team, Alibaba Cloud; GGUF conversions by ggml-org (0.8B) and Unsloth (2B, 4B, 9B) |
+
+Packs people download themselves (listed apart and downloaded only after the person confirms the license; never in a starter set):
+
+| Pack | License | Attribution |
+|---|---|---|
+| iFixit repair guides (ZIM) | CC BY-NC-SA 3.0 | iFixit and its contributors. Non-commercial: copies, including packs copied to a USB stick, must not be sold. |
+| GrimGrains plant-based recipes (ZIM) | CC BY-NC-SA 4.0 | GrimGrains by Hundred Rabbits. Non-commercial. |
+| Hundred Rabbits off-grid notes (ZIM) | CC BY-NC-SA 4.0 | Hundred Rabbits. Non-commercial. |
+| Kiwix guide collection: safe water (ZIM) | Various; see each document | Various authors, collected by Kiwix |
+
+No longer offered (a household that has them keeps them): the Kiwix guide collections on first aid and medicine and on food preparation, which contain commercially published books and titles that need their publisher's permission for digital use.
 
 ## Figures the tools calculate with
 

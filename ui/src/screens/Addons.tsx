@@ -8,10 +8,11 @@ import ConfirmButton from "../components/ConfirmButton";
 import { CopyToUsb, DrivePicker, type CopyItem, type Drive } from "../components/Usb";
 import StarterSet from "../components/StarterSet";
 import HelpLink from "../components/HelpLink";
-import { BatteryTile, DriveTile, Entries, Folders } from "../components/AddonViews";
+import { BatteryTile, DriveTile, Entries, Folders, LicenseAsk } from "../components/AddonViews";
 import { ToolIcon } from "../components/ExplorerIcons";
 import {
   BUSY,
+  downloadedByUser,
   FOLDERS,
   folderOf,
   folderStat,
@@ -84,9 +85,12 @@ export default function Addons({ t, lang, isHub }: Props) {
   const [loc, setLoc] = useState<Loc>(locFromHash);
   const [query, setQuery] = useState("");
   const [view, setViewState] = useState<ViewMode>(readView);
+  // The pack whose license question is open (a pack people download themselves).
+  const [asking, setAsking] = useState<string | null>(null);
   const headRef = useRef<HTMLHeadingElement>(null);
   const drivesId = useId();
   const foldersId = useId();
+  const byUserId = useId();
 
   useEffect(() => {
     const onHash = () => setLoc(locFromHash());
@@ -196,13 +200,38 @@ export default function Addons({ t, lang, isHub }: Props) {
   // In the details view every button is a quiet one: a column of accent buttons would shout.
   const btn = (small: boolean, primary: boolean) => (primary && !small ? "btn" : "btn secondary") + (small ? " small" : "");
 
+  /**
+   * Why a pack is one people download themselves, in one line ("note") or as
+   * the question before its download ("ask"), naming its license.
+   */
+  const offerText = (p: Pack, kind: "note" | "ask") => {
+    const license = p.license || "?";
+    const [note, ask]: [Key, Key] =
+      p.offer_reason === "noncommercial"
+        ? ["offerReasonNc", "offerAskNc"]
+        : p.offer_reason === "mixed_licenses"
+          ? ["offerReasonMixed", "offerAskMixed"]
+          : ["offerReasonOther", "offerAskOther"];
+    return t(kind === "note" ? note : ask).replace("{license}", license);
+  };
+
   const packEntry = (p: Pack): Entry => {
     const s = p.state;
     const name = title(p.title);
     const pct = s.bytes_total ? Math.min(100, Math.round((s.bytes_done / s.bytes_total) * 100)) : 0;
     const url = `/api/packs/${encodeURIComponent(p.id)}`;
-    const download = () => act(`${url}/download`, "POST", load);
+    const byUser = downloadedByUser(p);
+    const withdrawn = !!p.withdrawn;
+    // A pack people download themselves starts only after its license was
+    // confirmed, which also covers resuming, retrying and updating it.
+    const download = () => act(`${url}/download${byUser ? "?accept_license=true" : ""}`, "POST", load);
     const pause = () => act(`${url}/pause`, "POST", load);
+    const ask = () => setAsking(p.id);
+    const unask = () => {
+      setAsking(null);
+      // Back to the button that opened the question.
+      requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-entry="${CSS.escape(p.id)}"] [data-asks-license]`)?.focus());
+    };
     let status = t("notDownloaded");
     let tone: Entry["tone"] = "muted";
     if (s.status === "queued") status = t("queued");
@@ -240,7 +269,24 @@ export default function Addons({ t, lang, isHub }: Props) {
       size: p.size,
       meta: `${p.version} · ${p.license}`,
       license: p.license,
-      recommended: p.recommended_for.includes(lang),
+      note: withdrawn ? t("packWithdrawn") : byUser ? offerText(p, "note") : null,
+      byUser,
+      credit: p.attribution || p.source ? { attribution: p.attribution, source: p.source ?? "" } : null,
+      ask:
+        asking === p.id && byUser && s.status === "not_installed" && !withdrawn ? (
+          <LicenseAsk
+            t={t}
+            text={offerText(p, "ask")}
+            name={name}
+            onYes={() => {
+              setAsking(null);
+              download();
+            }}
+            onNo={unask}
+          />
+        ) : null,
+      // Nothing people download themselves is ever suggested.
+      recommended: p.recommended_for.includes(lang) && !byUser && !withdrawn,
       status,
       tone,
       progress: WITH_BAR.includes(s.status) ? pct : null,
@@ -249,16 +295,29 @@ export default function Addons({ t, lang, isHub }: Props) {
           ? `${fmtBytes(s.bytes_done)} / ${fmtBytes(s.bytes_total)}${s.status === "downloading" && s.speed > 0 ? ` · ${fmtBytes(s.speed)}/s` : ""}`
           : null,
       error: s.status === "failed" && s.error ? errText(t, new Error(s.error)) : tooBig.has(p.id) ? t("aiModelTooBig") : null,
-      actions: (small) => (
-        <>
-          {s.status === "not_installed" && button(small, true, t("download"), download)}
-          {s.status === "queued" && button(small, false, t("cancel"), pause)}
-          {(s.status === "downloading" || s.status === "verifying") && button(small, false, t("pause"), pause)}
-          {(s.status === "paused" || s.status === "failed") && button(small, true, s.status === "paused" ? t("resume") : t("retry"), download)}
-          {s.status === "installed" && s.update_available && button(small, true, t("packUpdate"), download)}
-          {(s.status === "paused" || s.status === "failed" || s.status === "installed") && remove(small)}
-        </>
-      ),
+      // No longer offered: nothing to download or update, only to delete (on the laptop).
+      actions: (small) =>
+        withdrawn ? (
+          (s.status === "paused" || s.status === "failed" || s.status === "installed") && remove(small)
+        ) : (
+          <>
+            {s.status === "not_installed" &&
+              (byUser ? (
+                asking !== p.id && (
+                  <button className={btn(small, true)} aria-label={`${t("download")}: ${name}`} data-asks-license="" onClick={ask}>
+                    {t("download")}
+                  </button>
+                )
+              ) : (
+                button(small, true, t("download"), download)
+              ))}
+            {s.status === "queued" && button(small, false, t("cancel"), pause)}
+            {(s.status === "downloading" || s.status === "verifying") && button(small, false, t("pause"), pause)}
+            {(s.status === "paused" || s.status === "failed") && button(small, true, s.status === "paused" ? t("resume") : t("retry"), download)}
+            {s.status === "installed" && s.update_available && button(small, true, t("packUpdate"), download)}
+            {(s.status === "paused" || s.status === "failed" || s.status === "installed") && remove(small)}
+          </>
+        ),
       onDisk: s.status === "installed" || s.bytes_done > 0 || BUSY.includes(s.status),
       installed: s.status === "installed",
       installedBytes: p.size,
@@ -295,6 +354,10 @@ export default function Addons({ t, lang, isHub }: Props) {
       size: c.size,
       meta: "ODbL-1.0",
       license: "ODbL-1.0",
+      note: null,
+      byUser: false,
+      credit: null,
+      ask: null,
       recommended: false,
       status,
       tone,
@@ -349,8 +412,9 @@ export default function Addons({ t, lang, isHub }: Props) {
 
   // Apps (library engine, CoMaps) come along automatically with what needs them.
   const copyItems: CopyItem[] = [
+    // (Not a pack Zaklon no longer offers: it is not passed on.)
     ...(data?.packs ?? [])
-      .filter((p) => p.state.status === "installed" && p.category !== "app")
+      .filter((p) => p.state.status === "installed" && p.category !== "app" && !p.withdrawn)
       .map((p) => ({ key: p.id, label: title(p.title), ids: [p.id], size: p.size })),
     ...(maps?.countries ?? [])
       .filter((c) => c.regions.some((r) => r.status === "installed"))
@@ -422,8 +486,11 @@ export default function Addons({ t, lang, isHub }: Props) {
       </section>
     );
   } else if (here.kind === "folder") {
-    // A pack about several topics is in the folder of each.
+    // A pack about several topics is in the folder of each; the ones people
+    // download themselves are apart, at the bottom.
     const entries = all.filter((e) => e.folders.includes(here.id));
+    const offered = entries.filter((e) => !e.byUser);
+    const byUser = entries.filter((e) => e.byUser);
     content = (
       <>
         {here.id === "maps" && (
@@ -434,7 +501,14 @@ export default function Addons({ t, lang, isHub }: Props) {
         {entries.length === 0 ? (
           <p className="muted">{here.id === "maps" && !maps ? t("aiLoading") : t("emptyFolder")}</p>
         ) : (
-          <Entries t={t} entries={entries} view={view} folder={here.id} label={heading} />
+          offered.length > 0 && <Entries t={t} entries={offered} view={view} folder={here.id} label={heading} />
+        )}
+        {byUser.length > 0 && (
+          <section className="stack explorer-section by-user" aria-labelledby={byUserId}>
+            <h2 id={byUserId} className="section-title">{t("offerUserGroup")}</h2>
+            <p className="muted folder-note">{t("offerUserGroupIntro")}</p>
+            <Entries t={t} entries={byUser} view={view} folder={here.id} label={t("offerUserGroup")} />
+          </section>
         )}
       </>
     );
@@ -511,7 +585,7 @@ export default function Addons({ t, lang, isHub }: Props) {
           <Folders t={t} stats={stats} view={view} open={(id) => go({ kind: "folder", id })} />
         </section>
         {/* Like Explorer: drives and folders first, then the one-click starter set. */}
-        {isHub && <StarterSet t={t} lang={lang} packs={data.packs} freeBytes={data.system.disk_free} onStarted={load} />}
+        {isHub && <StarterSet t={t} lang={lang} packs={data.packs} sets={data.starter_sets ?? []} freeBytes={data.system.disk_free} onStarted={load} />}
         {isHub && (
           <div className="transfer">
             <CopyToUsb t={t} lang={lang} items={copyItems} />

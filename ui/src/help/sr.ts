@@ -786,6 +786,7 @@ const sr: HelpContent = {
               "Na laptopu se drugi diskovi, na primer USB, otvaraju sa kopiranjem i uvozom podešenim na taj disk.",
               "U **Folderima** su dodaci po temama, istim kao na ekranu [Alati](#tools): Zdravlje i prva pomoć, Voda, Hrana, Bašta, Struja, Ugradnja, Znanje i Mape, a zatim AI modeli i Programi. Vodič koji se tiče više tema nalazi se u folderu svake od njih.",
               "Polje za pretragu nalazi dodatke i države u svim folderima. Dugmad pored njega menjaju prikaz između pločica i tabele sa detaljima.",
+              "**Licenca i zasluge** na paketu pokazuje njegovu licencu, ko ga je napravio i odakle potiče.",
             ],
           },
         ],
@@ -794,7 +795,29 @@ const sr: HelpContent = {
         id: "starter",
         title: "Osnovni paket",
         body: [
-          { p: "Na laptopu osnovni paket (**Osnovni paket za Srbiju** ili **Osnovni paket (engleski)**, prema jeziku aplikacije) jednim dugmetom, **Preuzmi sve**, preuzima ono što domaćinstvu treba za početak: znanje, uputstva za prvu pomoć i popravke, AI model koji odgovara ovom računaru i, u srpskom paketu, mapu Srbije." },
+          { p: "Na laptopu osnovni paket (**Osnovni paket za Srbiju** ili **Osnovni paket (engleski)**, prema jeziku aplikacije) jednim dugmetom, **Preuzmi sve**, preuzima ono što domaćinstvu treba za početak: znanje, uputstva za prvu pomoć, vodu, solarnu struju i popravke, AI model koji odgovara ovom računaru i, u srpskom paketu, mapu Srbije. U njemu su samo paketi slobodni za svaku upotrebu." },
+        ],
+      },
+      {
+        id: "yourself",
+        title: "Paketi koje preuzimaš sam",
+        body: [
+          { p: "Većina dodataka je slobodna za svaku upotrebu. Nekoliko njih, na primer iFixit uputstva za popravke, besplatno je samo za nekomercijalnu upotrebu, ili skuplja dokumente od kojih svaki ima svoju licencu. Zaklon njih nikad ne preuzima umesto tebe: nalaze se na dnu svog foldera, pod **Ove preuzimaš sam**, i uz svaki piše zašto." },
+          {
+            steps: [
+              "Izaberi **Preuzmi** na paketu.",
+              "Pročitaj pitanje koje se otvori: u njemu piše licenca paketa i šta ona dozvoljava.",
+              "Izaberi **Prihvati i preuzmi** ili **Otkaži**.",
+            ],
+          },
+          { note: "Nikad nisu deo osnovnog paketa i nikad nisu označeni kao preporučeni. Koristi ih za sebe i svoje domaćinstvo, i ne prodaj ni njih ni njihove kopije." },
+        ],
+      },
+      {
+        id: "withdrawn",
+        title: "Paketi koje Zaklon više ne nudi",
+        body: [
+          { p: "Zaklon prestaje da nudi paket kad se pokaže da prava na deo njegovog sadržaja nisu jasna. Ako si ga ranije preuzeo, ništa ti se ne oduzima: ostaje u [Biblioteci](#library) i u svom folderu, sa oznakom **Zaklon ga više ne nudi**, dok ga ne ukloniš na laptopu. Više se ne ažurira." },
         ],
       },
       {

@@ -34,7 +34,52 @@ fn legacy_topics(topic: &str) -> Vec<&str> {
 pub struct Catalog {
     pub version: u32,
     pub generated: String,
+    /// What a household starts with, by app language (see [`StarterSet`]).
+    #[serde(default)]
+    pub starter_sets: Vec<StarterSet>,
     pub packs: Vec<Pack>,
+    /// Packs the catalog offered once and no longer offers (the rights to
+    /// their content turned out to be unclear, say), as they were listed.
+    /// Nothing downloads them any more; a household that has one keeps it,
+    /// sees it by name and can delete it. A pack that leaves `packs` moves
+    /// here. Their files have no download addresses.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub withdrawn: Vec<Pack>,
+}
+
+/// The add-ons a household starts with, downloaded with one button together
+/// with the AI model that fits the computer. Only packs offered as
+/// [`Offer::Auto`] can be in one.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StarterSet {
+    /// The app language it is for ("sr", "en").
+    pub lang: String,
+    /// The packs, in the order they are listed and downloaded.
+    pub packs: Vec<String>,
+    /// The country whose map comes along, as the maps name it ("Serbia").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub map: Option<String>,
+}
+
+/// How a pack may be offered, decided by its license.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Offer {
+    /// Free for any use (public domain, CC0, CC BY, CC BY-SA, ODbL, OGL and
+    /// the like): offered like any add-on, and may be in a starter set.
+    #[default]
+    Auto,
+    /// Non-commercial or mixed licenses: listed apart, as a pack people
+    /// download themselves once they confirmed its license. Never
+    /// preselected and never in a starter set.
+    User,
+}
+
+/// `offer` as a catalog names it. A kind this version does not know (from a
+/// newer catalog) is treated as [`Offer::User`], the careful one.
+fn offer_of<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Offer, D::Error> {
+    let kind = String::deserialize(d)?;
+    Ok(if kind == "auto" { Offer::Auto } else { Offer::User })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -57,7 +102,8 @@ pub struct Localized {
 pub struct PackFile {
     /// Where the file lives, relative to `<root>/library/`.
     pub path: String,
-    /// Download locations, tried in order.
+    /// Download locations, tried in order. None for a withdrawn pack.
+    #[serde(default)]
     pub urls: Vec<String>,
     /// Lower-case hex SHA-256 of the complete file (empty when only SHA-1 is published).
     #[serde(default)]
@@ -92,12 +138,25 @@ pub struct Pack {
     pub version: String,
     pub size: u64,
     pub files: Vec<PackFile>,
+    /// The license, as short as its name ("CC BY-SA 4.0").
     #[serde(default)]
     pub license: String,
+    /// The credit line its license asks for.
     #[serde(default)]
     pub attribution: String,
+    /// Where it comes from: the publisher's site, or the library it is
+    /// downloaded from.
     #[serde(default)]
     pub source: String,
+    /// How it may be offered: like any add-on, or only as one people
+    /// download themselves (see [`Offer`]).
+    #[serde(default, deserialize_with = "offer_of")]
+    pub offer: Offer,
+    /// Why a pack is [`Offer::User`]: "noncommercial" (free for
+    /// non-commercial use only) or "mixed_licenses" (each part keeps its own
+    /// terms). The app explains it next to the license.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub offer_reason: String,
     #[serde(default)]
     pub languages: Vec<String>,
     /// UI languages for which this pack is recommended ("en", "sr").
@@ -293,11 +352,36 @@ impl Catalog {
             }
             ok
         });
+        c.tidy();
         c
     }
 
+    /// Keep the rules whatever a catalog file says: a withdrawn pack is one
+    /// the catalog does not offer (and its paths stay inside the library),
+    /// and a starter set holds only packs offered to everyone.
+    fn tidy(&mut self) {
+        let offered: std::collections::HashSet<String> = self.packs.iter().map(|p| p.id.clone()).collect();
+        self.withdrawn.retain(|p| p.is_safe() && !offered.contains(&p.id));
+        let auto: std::collections::HashSet<String> = self.packs.iter().filter(|p| p.offer == Offer::Auto).map(|p| p.id.clone()).collect();
+        for set in &mut self.starter_sets {
+            set.packs.retain(|id| {
+                let ok = auto.contains(id);
+                if !ok {
+                    tracing::warn!(pack = %id, "a starter set may only hold packs offered to everyone; left out");
+                }
+                ok
+            });
+        }
+    }
+
+    /// A pack the catalog offers.
     pub fn pack(&self, id: &str) -> Option<&Pack> {
         self.packs.iter().find(|p| p.id == id)
+    }
+
+    /// A pack the catalog no longer offers, as it was listed.
+    pub fn withdrawn_pack(&self, id: &str) -> Option<&Pack> {
+        self.withdrawn.iter().find(|p| p.id == id)
     }
 
     pub fn by_id(&self) -> HashMap<&str, &Pack> {
@@ -356,6 +440,126 @@ mod tests {
                         "mirror URL must point at the file: {u}");
                 }
             }
+        }
+    }
+
+    /// The bundled catalog as written, before any defaults are filled in.
+    fn bundled_json() -> serde_json::Value {
+        serde_json::from_str(BUNDLED).unwrap()
+    }
+
+    #[test]
+    fn every_pack_says_what_it_is_and_how_it_may_be_offered() {
+        let c = Catalog::bundled();
+        let json = bundled_json();
+        let raw = json["packs"].as_array().unwrap();
+        assert_eq!(raw.len(), c.packs.len());
+        for (p, r) in c.packs.iter().zip(raw) {
+            // Size, SHA-256 and topics, checked above for every file; here every
+            // pack in the file names its size and hash, not only some.
+            assert!(p.size > 0, "no size for {}", p.id);
+            assert!(p.files.iter().all(|f| f.size > 0 && f.sha256.len() == 64), "size and SHA-256 for every file of {}", p.id);
+            // How it may be offered is a decision about its license, made for
+            // each pack: never left to the default.
+            assert!(matches!(r["offer"].as_str(), Some("auto" | "user")), "{} must say \"offer\": \"auto\" or \"user\"", p.id);
+            match p.offer {
+                Offer::Auto => assert!(p.offer_reason.is_empty(), "{} is offered to everyone; no reason needed", p.id),
+                Offer::User => assert!(
+                    ["noncommercial", "mixed_licenses"].contains(&p.offer_reason.as_str()),
+                    "{}: a pack people download themselves says why (the app explains the reason)",
+                    p.id
+                ),
+            }
+            // What the app shows in a pack's details and the credit its license asks for.
+            if p.category == Category::Knowledge {
+                assert!(!p.license.is_empty() && !p.attribution.is_empty(), "license and attribution for {}", p.id);
+                assert!(p.source.starts_with("https://"), "source for {}", p.id);
+                assert!(!p.title.sr.is_empty() && !p.description.en.is_empty() && !p.description.sr.is_empty(), "texts in both languages for {}", p.id);
+            }
+        }
+        // The research of 2026-09-29: iFixit is non-commercial, the safe water
+        // guides are a collection of documents under their own terms.
+        let pack = |id: &str| c.pack(id).unwrap_or_else(|| panic!("{id} in the catalog"));
+        assert_eq!((pack("ifixit-en").offer, pack("ifixit-en").offer_reason.as_str()), (Offer::User, "noncommercial"));
+        assert_eq!((pack("zimgit-water-en").offer, pack("zimgit-water-en").offer_reason.as_str()), (Offer::User, "mixed_licenses"));
+        assert_eq!(pack("wikimed-en").offer, Offer::Auto);
+        // Written back with the field, so older and newer hubs read it the same.
+        let back = serde_json::to_value(pack("ifixit-en")).unwrap();
+        assert_eq!((back["offer"].as_str(), back["offer_reason"].as_str()), (Some("user"), Some("noncommercial")));
+    }
+
+    #[test]
+    fn starter_sets_hold_only_packs_offered_to_everyone() {
+        let c = Catalog::bundled();
+        let langs: Vec<&str> = c.starter_sets.iter().map(|s| s.lang.as_str()).collect();
+        assert_eq!(langs, ["sr", "en"], "one starter set per app language");
+        for set in &c.starter_sets {
+            assert!(!set.packs.is_empty());
+            for id in &set.packs {
+                let p = c.pack(id).unwrap_or_else(|| panic!("starter set {}: {id} is not in the catalog", set.lang));
+                assert_eq!(p.offer, Offer::Auto, "starter set {}: {id} is a pack people download themselves", set.lang);
+                assert_eq!(p.category, Category::Knowledge, "starter set {}: the AI model is chosen by the computer, not listed", set.lang);
+            }
+            let mut ids = set.packs.clone();
+            ids.sort();
+            ids.dedup();
+            assert_eq!(ids.len(), set.packs.len(), "starter set {}: a pack twice", set.lang);
+            // A sensible size: a household downloads it in one go.
+            let bytes: u64 = set.packs.iter().map(|id| c.pack(id).unwrap().size).sum();
+            assert!(bytes < 25_000_000_000, "starter set {} is {bytes} bytes", set.lang);
+        }
+        assert_eq!(c.starter_sets[0].map.as_deref(), Some("Serbia"));
+        // Loading keeps them as the file has them: nothing had to be left out.
+        let loaded = Catalog::load(&std::env::temp_dir().join(format!("zaklon-catalog-none-{}", std::process::id())));
+        assert_eq!(loaded.starter_sets, c.starter_sets);
+    }
+
+    #[test]
+    fn a_catalog_file_cannot_put_other_packs_in_a_starter_set() {
+        let dir = std::env::temp_dir().join(format!("zaklon-catalog-starter-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = |id: &str| format!(r#"[{{"path":"zim/{id}.zim","urls":["https://example.org/{id}.zim"],"sha256":"{}","size":1}}]"#, "0".repeat(64));
+        let pack = |id: &str, extra: &str| {
+            format!(r#"{{"id":"{id}","title":{{"en":"{id}"}},"category":"knowledge","topics":["build"],"version":"1","size":1{extra},"files":{}}}"#, file(id))
+        };
+        let text = format!(
+            r#"{{"version":1,"generated":"2999-01-01",
+                "starter_sets":[{{"lang":"en","packs":["free","nc","odd","gone","nowhere"]}}],
+                "packs":[{},{},{}],
+                "withdrawn":[{},{}]}}"#,
+            pack("free", r#","offer":"auto""#),
+            pack("nc", r#","offer":"user","offer_reason":"noncommercial""#),
+            // A kind of offer this version does not know yet: the careful one.
+            pack("odd", r#","offer":"sponsored""#),
+            pack("gone", ""),
+            // Listed as offered too: it is offered.
+            pack("free", ""),
+        );
+        std::fs::write(dir.join("catalog.json"), text).unwrap();
+        let c = Catalog::load(&dir);
+        assert_eq!(c.pack("free").unwrap().offer, Offer::Auto);
+        assert_eq!(c.pack("nc").unwrap().offer, Offer::User);
+        assert_eq!(c.pack("odd").unwrap().offer, Offer::User);
+        assert_eq!(c.starter_sets[0].packs, ["free"], "only packs offered to everyone");
+        assert!(c.withdrawn_pack("gone").is_some() && c.pack("gone").is_none());
+        assert!(c.withdrawn_pack("free").is_none(), "a pack is offered or withdrawn, not both");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn withdrawn_packs_are_known_by_name_but_never_downloaded() {
+        let c = Catalog::bundled();
+        // The research of 2026-09-29: commercially published books and
+        // Hesperian titles, which need permission for any digital use.
+        for id in ["zimgit-medicine-en", "zimgit-food-preparation-en"] {
+            assert!(c.pack(id).is_none(), "{id} is not offered");
+            let p = c.withdrawn_pack(id).unwrap_or_else(|| panic!("{id} is known by name"));
+            assert!(!p.title.en.is_empty() && !p.title.sr.is_empty() && !p.topics.is_empty());
+            assert!(p.is_safe());
+        }
+        for p in &c.withdrawn {
+            assert!(p.files.iter().all(|f| f.urls.is_empty()), "{} has nowhere to be downloaded from", p.id);
+            assert!(c.starter_sets.iter().all(|s| !s.packs.contains(&p.id)));
         }
     }
 

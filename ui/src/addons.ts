@@ -21,15 +21,35 @@ export type Pack = {
   size: number;
   license: string;
   attribution: string;
+  /** Where it comes from (the publisher's site, or the library it is downloaded from). */
+  source?: string;
+  /**
+   * How it may be offered: "auto" like any add-on, "user" only as one people
+   * download themselves after confirming its license (never preselected, never
+   * in a starter set). Anything else is treated as "user".
+   */
+  offer?: string;
+  /** Why it is "user": "noncommercial" or "mixed_licenses". */
+  offer_reason?: string;
+  /** On the hub, but no longer offered by the catalog: usable until deleted, never downloaded again. */
+  withdrawn?: boolean;
   recommended_for: string[];
   state: { status: PackStatus; bytes_done: number; bytes_total: number; error?: string; speed: number; update_available?: boolean };
 };
+/** What a household starts with in one app language (the catalog's `starter_sets`). */
+export type StarterSetDef = { lang: string; packs: string[]; map?: string | null };
 export type CatalogReply = {
   packs: Pack[];
+  starter_sets?: StarterSetDef[];
   system: { disk_free: number; disk_total: number; battery_percent: number | null; plugged_in: boolean };
   /** The root of the drive the library is on, like "D:\". */
   library_drive?: string;
 };
+
+/** A pack people download themselves: its license has conditions (see `offer`). */
+export function downloadedByUser(p: { offer?: string }) {
+  return (p.offer ?? "auto") !== "auto";
+}
 
 /** A download under way (the hub works on it now or next). */
 export const BUSY: PackStatus[] = ["queued", "downloading", "verifying"];
@@ -102,6 +122,14 @@ export type Entry = {
   /** Version and license, for the tile. */
   meta: string;
   license: string;
+  /** One line under it: why people download it themselves, or that it is no longer offered. */
+  note: string | null;
+  /** People download it themselves: listed apart, at the bottom of its folder. */
+  byUser: boolean;
+  /** Its credit line and where it comes from, for its details. */
+  credit: { attribution: string; source: string } | null;
+  /** The question before a download (the license, named), while it is asked. */
+  ask: ReactNode;
   recommended: boolean;
   status: string;
   tone: "ok" | "warn" | "muted";

@@ -27,7 +27,7 @@ pub(super) fn strings(list: &[&str]) -> Vec<String> {
 }
 
 pub(super) fn test_assistant() -> Arc<Assistant> {
-    assistant_with(zaklon_core::catalog::Catalog { version: 1, generated: String::new(), packs: Vec::new() })
+    assistant_with(zaklon_core::catalog::Catalog { version: 1, generated: String::new(), starter_sets: Vec::new(), packs: Vec::new(), withdrawn: Vec::new() })
 }
 
 /// An assistant whose catalog is the bundled one, with the AI models (none
