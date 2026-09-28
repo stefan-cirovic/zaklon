@@ -22,7 +22,7 @@ const sr: HelpContent = {
           {
             list: [
               "Zaklon se pokreće sa Windowsom i radi i kad zatvoriš njegov prozor, pa telefoni ostaju povezani. Njegova ikonica je dole desno, pored sata.",
-              "U meniju te ikonice Zaklon se otvara, **Pokreni sa Windowsom** se uključuje ili isključuje, a tu je i **Ugasi Zaklon**.",
+              "Iz menija te ikonice možeš da otvoriš Zaklon, da uključiš ili isključiš **Pokreni sa Windowsom** i da ugasiš Zaklon (**Ugasi Zaklon**).",
               "Program i svi podaci domaćinstva su u jednom folderu koji si izabrao pri instalaciji. Kad se Zaklon deinstalira, podaci ostaju.",
             ],
           },
@@ -36,7 +36,7 @@ const sr: HelpContent = {
           {
             list: [
               "Kod kuće telefon koristi sve što hub ima: zalihe, biblioteku, asistenta i mape.",
-              "Van kuće telefon i dalje prikazuje poslednje stanje zaliha, a lista za kupovinu radi. Vidi [Rad bez interneta](#help/offline).",
+              "Van kuće telefon i dalje prikazuje poslednje stanje zaliha, a lista za kupovinu i dalje radi. Vidi [Rad bez interneta](#help/offline).",
               "Kad nema rutera (nestanak struje, vikendica), laptop može da napravi [sopstvenu WiFi mrežu](#help/household/network).",
             ],
           },
@@ -338,7 +338,7 @@ const sr: HelpContent = {
         title: "AI model",
         body: [
           { p: "Asistentu treba AI model, koji se jednom preuzme na laptopu. Kad ga nema, asistent nudi model preporučen za ovaj računar. Veći modeli bolje odgovaraju, ali su sporiji i traže više memorije. Model menjaš u samom Asistentu (polje **Model**) ili u [Domaćinstvo › AI asistent](#household/assistant)." },
-          { p: "AI se pokreće uz prvo pitanje i sam se gasi posle 20 minuta bez pitanja. Na laptopu ga **oslobodi memoriju sada** gasi odmah." },
+          { p: "AI se pokreće uz prvo pitanje i sam se gasi posle 20 minuta bez pitanja. Na laptopu možeš da ga ugasiš odmah, vezom **oslobodi memoriju sada**." },
         ],
       },
       {
@@ -377,7 +377,7 @@ const sr: HelpContent = {
               "Izaberi **Sačuvaj**.",
             ],
           },
-          { p: "Dugmad **−** i **+** troše ili dodaju jedan komad. Pritisni stavku da je izmeniš ili obrišeš; obrisana stavka ostaje zabeležena u istoriji." },
+          { p: "Dugmad **−** i **+** troše ili dodaju po jedan. Pritisni stavku da je izmeniš ili obrišeš; obrisana stavka ostaje zabeležena u istoriji." },
         ],
       },
       {
@@ -525,7 +525,7 @@ const sr: HelpContent = {
           {
             steps: [
               "Instaliraj CoMaps sa huba: na telefonu otvori [Mape](#maps) i pritisni **Instaliraj CoMaps**, ili skeniraj QR kod sa ekrana Mape na laptopu. Aplikacija stiže na hub zajedno sa prvom mapom koju preuzmeš.",
-              "U aplikaciji CoMaps otvori Settings (gore desno), pod **Custom Map Server** upiši adresu sa ekrana Mape i pritisni **Save**. Na telefonu je **Kopiraj adresu** kopira umesto tebe.",
+              "U aplikaciji CoMaps otvori Settings (gore desno), pod **Custom Map Server** upiši adresu sa ekrana Mape i pritisni **Save**. Na telefonu je možeš kopirati dugmetom **Kopiraj adresu**.",
               "Preuzimaj mape u CoMaps kao i obično, prvo osnovnu mapu sveta (oko 60 MB). Sada stižu sa huba, i bez interneta.",
             ],
           },
@@ -771,7 +771,7 @@ const sr: HelpContent = {
         title: "Kad je laptop ugašen",
         body: [
           { p: "Hub radi dok je laptop uključen i Zaklon pokrenut (ikonica mu je pored sata). Zatvaranje prozora ga ne gasi; **Ugasi Zaklon** u meniju ikonice ga gasi. Zaklon se ponovo pokreće sa Windowsom." },
-          { p: "Dok je laptop ugašen ništa se ne gubi: telefoni sustignu sve kad se vrati." },
+          { p: "Dok je laptop ugašen ništa se ne gubi: telefoni se usklade čim se laptop ponovo uključi." },
         ],
       },
     ],
