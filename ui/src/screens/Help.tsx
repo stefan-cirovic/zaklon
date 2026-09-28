@@ -101,7 +101,7 @@ function Block({ t, block }: { t: T; block: HelpBlock }) {
   const warn = "warn" in block;
   const text = "warn" in block ? block.warn : block.note;
   return (
-    <div className={"help-callout" + (warn ? " warn" : "")} role="note">
+    <div className={"help-callout" + (warn ? " important" : "")} role="note">
       <span className="help-callout-label">{t(warn ? "helpWarn" : "helpNote")}</span>
       <p><Rich text={text} /></p>
     </div>
