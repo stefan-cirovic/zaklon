@@ -254,3 +254,11 @@ pub(super) async fn firewall_allow(State(state): State<Arc<HubState>>, _: Local)
     let state = blocking(move || crate::firewall::allow(&ports)).await?;
     Ok(Json(FirewallReply { ok: state.ok(), state }))
 }
+
+/// Laptop only: for a home network Windows treats as public, tells Windows to
+/// treat it as private, so phones on it are let in (Windows asks for consent).
+pub(super) async fn firewall_private(_: Local) -> Result<Json<FirewallReply>, ApiError> {
+    tracing::info!("asking Windows to treat this network as private");
+    let state = blocking(crate::firewall::make_private).await?;
+    Ok(Json(FirewallReply { ok: state.ok(), state }))
+}

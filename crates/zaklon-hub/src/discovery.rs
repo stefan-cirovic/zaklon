@@ -35,7 +35,7 @@ struct BeaconReply<'a> {
 
 /// Interface names that belong to virtual machines, WSL or containers; phones
 /// can never reach those addresses, so they are listed last.
-const VIRTUAL_HINTS: &[&str] = &["vethernet", "wsl", "hyper-v", "vmware", "virtualbox", "vbox", "docker", "loopback", "tailscale", "zerotier"];
+pub(crate) const VIRTUAL_HINTS: &[&str] = &["vethernet", "wsl", "hyper-v", "vmware", "virtualbox", "vbox", "docker", "loopback", "tailscale", "zerotier"];
 
 pub fn lan_ipv4_addresses() -> Vec<Ipv4Addr> {
     let (mut real, virtual_) = split_ipv4_addresses();

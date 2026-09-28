@@ -33,7 +33,7 @@ pub use pairing::Paired;
 
 use admin::{
     backups_create, backups_encryption, backups_list, backups_restore, export_cancel, export_start, export_status, firewall_allow,
-    firewall_status, hotspot_start, hotspot_status, hotspot_stop, updates_check, updates_settings, updates_state,
+    firewall_private, firewall_status, hotspot_start, hotspot_status, hotspot_stop, updates_check, updates_settings, updates_state,
 };
 use assistant::{
     assistant_answer, assistant_ask, assistant_cancel, assistant_overview, assistant_select, assistant_stop, assistant_warm,
@@ -98,6 +98,7 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/drives", get(drives))
         .route("/api/firewall", get(firewall_status))
         .route("/api/firewall/allow", post(firewall_allow))
+        .route("/api/firewall/private", post(firewall_private))
         .route("/api/hotspot", get(hotspot_status))
         .route("/api/hotspot/start", post(hotspot_start))
         .route("/api/hotspot/stop", post(hotspot_stop))

@@ -1,7 +1,7 @@
 //! Windows Firewall: phones must be let in. The installer runs without
 //! administrator rights, so it cannot add a rule; Windows asks on first
 //! start instead, and a dismissed question leaves "block" rules behind.
-//! Household checks this and offers to fix it (Windows asks for consent).
+//! Settings (and Home) check this and offer to fix it (Windows asks for consent).
 //!
 //! The rules Zaklon adds let in only what phones use, and only for this
 //! program: the hub's TLS port and the install page (TCP), the discovery
@@ -15,7 +15,10 @@
 //!
 //! A home Wi-Fi that Windows treats as Public (the default for a new network
 //! on Windows 11) therefore keeps phones out. The check reports that
-//! (`public_network`), and Household says how to change it.
+//! (`public_network`), and Settings offers to make that network Private
+//! ([`make_private`], again with Windows' consent): only the real network
+//! adapters Windows files as Public, never the laptop's own hotspot or a
+//! virtual adapter, and never a Domain network.
 
 use serde::{Deserialize, Serialize};
 
@@ -116,6 +119,79 @@ New-NetFirewallRule -DisplayName 'Zaklon app (program UDP, Wi-Fi from this lapto
     )
 }
 
+/// Reads (changes nothing): the interfaces of the connected networks Windows
+/// files as Public, leaving out this laptop's own hotspot and the adapters of
+/// virtual machines, WSL, containers and VPNs (see
+/// [`crate::discovery::VIRTUAL_HINTS`]): those are never where phones come from.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn public_interfaces_script() -> String {
+    let virtual_ = crate::discovery::VIRTUAL_HINTS.iter().map(|h| format!("'{h}'")).collect::<Vec<_>>().join(",");
+    format!(
+        r#"$ErrorActionPreference = 'SilentlyContinue'
+$hot = @(Get-NetIPAddress -AddressFamily IPv4 | Where-Object {{ $_.IPAddress -like '192.168.137.*' }} | ForEach-Object {{ $_.InterfaceIndex }})
+$virtual = @({virtual_})
+$public = @(Get-NetConnectionProfile | Where-Object {{
+  $alias = ([string]$_.InterfaceAlias).ToLower()
+  ($hot -notcontains $_.InterfaceIndex) -and ([string]$_.NetworkCategory -eq 'Public') -and -not ($virtual | Where-Object {{ $alias.Contains($_) }})
+}} | ForEach-Object {{ [int]$_.InterfaceIndex }})
+[pscustomobject]@{{ interfaces = $public }} | ConvertTo-Json -Compress
+"#
+    )
+}
+
+/// The interface numbers in the answer of [`public_interfaces_script`]
+/// (PowerShell may write a single one without the brackets); anything else
+/// is left out, so only whole numbers can reach the elevated script.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn parse_interfaces(json: &str) -> Vec<u32> {
+    let value: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
+    let list = match value.get("interfaces") {
+        Some(serde_json::Value::Array(a)) => a.clone(),
+        Some(one) => vec![one.clone()],
+        None => Vec::new(),
+    };
+    let mut out: Vec<u32> = list.iter().filter_map(|v| v.as_u64()).filter_map(|n| u32::try_from(n).ok()).collect();
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// Runs elevated: each of the given interfaces that Windows still files as
+/// Public becomes Private. Only numbers go in; nothing else is changed (not
+/// the firewall's rules, not a Domain network).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn private_script(interfaces: &[u32]) -> String {
+    let list = interfaces.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
+    format!(
+        r#"foreach ($i in @({list})) {{
+  if (@(Get-NetConnectionProfile -InterfaceIndex $i -ErrorAction SilentlyContinue | Where-Object {{ [string]$_.NetworkCategory -eq 'Public' }}).Count -gt 0) {{
+    Set-NetConnectionProfile -InterfaceIndex $i -NetworkCategory Private -ErrorAction SilentlyContinue
+  }}
+}}
+"#
+    )
+}
+
+/// A normal PowerShell that starts `script` in an elevated one (Windows
+/// shows its consent prompt) and waits for it. The script goes in encoded.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn elevated(script: &str) -> String {
+    format!(
+        "try {{ Start-Process powershell.exe -Verb RunAs -WindowStyle Hidden -Wait -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand','{}' }} catch {{ exit 1 }}",
+        crate::powershell::encode(script)
+    )
+}
+
+/// Run `script` elevated; returns when the person has answered Windows'
+/// question (and the script has run, or not).
+#[cfg(windows)]
+fn run_elevated(script: &str, what: &str) {
+    // The person may take a while to answer Windows' question.
+    if let Err(e) = crate::powershell::run(&elevated(script), std::time::Duration::from_secs(10 * 60)) {
+        tracing::warn!("{what}: {e}");
+    }
+}
+
 #[cfg(windows)]
 fn exe() -> Result<String, String> {
     std::env::current_exe().map(|p| p.display().to_string()).map_err(|e| e.to_string())
@@ -147,14 +223,34 @@ pub fn allow(ports: &Ports) -> FirewallState {
         Ok(e) => e,
         Err(e) => return FirewallState { error: Some(e), ..Default::default() },
     };
-    // A normal PowerShell starts an elevated one (UAC prompt) and waits for it.
-    let outer = format!(
-        "try {{ Start-Process powershell.exe -Verb RunAs -WindowStyle Hidden -Wait -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand','{}' }} catch {{ exit 1 }}",
-        crate::powershell::encode(&allow_script(&exe, ports))
-    );
-    // The person may take a while to answer Windows' question.
-    if let Err(e) = crate::powershell::run(&outer, std::time::Duration::from_secs(10 * 60)) {
-        tracing::warn!("changing the firewall: {e}");
+    run_elevated(&allow_script(&exe, ports), "changing the firewall");
+    read_status(&exe)
+}
+
+/// The connected networks Windows files as Public (see [`public_interfaces_script`]).
+#[cfg(windows)]
+fn public_interfaces() -> Result<Vec<u32>, String> {
+    let out = crate::powershell::run(&public_interfaces_script(), std::time::Duration::from_secs(60))?;
+    Ok(parse_interfaces(crate::powershell::last_json_line(&out)))
+}
+
+/// Treat the network(s) this laptop is on as private, for a home network
+/// Windows files as Public (see the top of this file). Windows shows its
+/// administrator consent prompt; this returns the firewall's state after the
+/// person has answered. With no such network there is nothing to ask.
+#[cfg(windows)]
+pub fn make_private() -> FirewallState {
+    let exe = match exe() {
+        Ok(e) => e,
+        Err(e) => return FirewallState { error: Some(e), ..Default::default() },
+    };
+    match public_interfaces() {
+        Ok(interfaces) if !interfaces.is_empty() => {
+            tracing::info!(?interfaces, "making the network private");
+            run_elevated(&private_script(&interfaces), "making the network private");
+        }
+        Ok(_) => tracing::info!("no network Windows treats as public"),
+        Err(e) => tracing::warn!("finding the public networks: {e}"),
     }
     read_status(&exe)
 }
@@ -166,6 +262,11 @@ pub fn status() -> FirewallState {
 
 #[cfg(not(windows))]
 pub fn allow(_ports: &Ports) -> FirewallState {
+    FirewallState::default()
+}
+
+#[cfg(not(windows))]
+pub fn make_private() -> FirewallState {
     FirewallState::default()
 }
 
@@ -211,6 +312,53 @@ mod tests {
         for script in [status_script(exe), allow_script(exe, &ports)] {
             assert!(!script.contains('\u{2019}') && !script.contains("Ana"), "{script}");
         }
+    }
+
+    /// Building the scripts only: making a network private is never run in a test.
+    #[test]
+    fn making_private_changes_only_the_public_networks_found() {
+        let script = private_script(&[12, 5]);
+        assert!(script.contains("foreach ($i in @(12,5))"), "{script}");
+        assert_eq!(script.matches("Set-NetConnectionProfile").count(), 1, "one change, for each network in turn");
+        assert!(script.contains("Set-NetConnectionProfile -InterfaceIndex $i -NetworkCategory Private"), "{script}");
+        assert!(script.contains("NetworkCategory -eq 'Public' }).Count -gt 0"), "only a network Windows still files as Public");
+        assert!(!script.contains("Domain"), "an employer's network is never touched");
+        assert!(!script.contains("Firewall"), "the firewall's rules stay as they are");
+        assert!(!script.contains("Remove-") && !script.contains("New-"), "{script}");
+
+        let elevated = elevated(&script);
+        assert!(elevated.contains("-Verb RunAs"), "Windows asks for consent");
+        assert!(!elevated.contains("Set-NetConnectionProfile"), "the script goes in encoded");
+        assert!(elevated.contains(&crate::powershell::encode(&script)));
+    }
+
+    #[test]
+    fn the_networks_to_change_are_read_safely() {
+        let script = public_interfaces_script();
+        assert!(!script.contains("Set-") && !script.contains("Remove-") && !script.contains("New-"), "reading only: {script}");
+        assert!(script.contains("-eq 'Public'"));
+        assert!(script.contains("'192.168.137.*'"), "the laptop's own hotspot is left out");
+        for hint in crate::discovery::VIRTUAL_HINTS {
+            assert!(hint.chars().all(|c| c.is_ascii_lowercase() || c == '-'), "{hint} stays a plain word in the script");
+            assert!(script.contains(&format!("'{hint}'")), "{hint} adapters are left out");
+        }
+
+        assert_eq!(parse_interfaces(r#"{"interfaces":[12,5]}"#), vec![5, 12]);
+        assert_eq!(parse_interfaces(r#"{"interfaces":7}"#), vec![7], "PowerShell may write one number without brackets");
+        assert_eq!(parse_interfaces(r#"{"interfaces":[3,3]}"#), vec![3]);
+        assert!(parse_interfaces(r#"{"interfaces":[]}"#).is_empty());
+        assert!(parse_interfaces(r#"{"interfaces":null}"#).is_empty());
+        assert!(parse_interfaces("").is_empty());
+        assert!(parse_interfaces("WARNING: not JSON").is_empty());
+        // Only whole numbers reach the elevated script.
+        assert_eq!(parse_interfaces(r#"{"interfaces":[-1, 3.5, "4); calc", 4294967296, 9]}"#), vec![9]);
+    }
+
+    /// Reading changes nothing; safe anywhere.
+    #[test]
+    #[cfg(windows)]
+    fn public_networks_can_be_listed() {
+        assert!(public_interfaces().is_ok());
     }
 
     /// Reading changes nothing; safe anywhere.

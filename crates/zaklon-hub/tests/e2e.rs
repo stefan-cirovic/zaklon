@@ -233,6 +233,7 @@ async fn full_hub_flow() {
         (reqwest::Method::POST, "/api/hotspot/stop", json!({})),
         (reqwest::Method::GET, "/api/firewall", Value::Null),
         (reqwest::Method::POST, "/api/firewall/allow", json!({})),
+        (reqwest::Method::POST, "/api/firewall/private", json!({})),
         (reqwest::Method::POST, "/api/export/cancel", json!({})),
         (reqwest::Method::POST, "/api/packs/import", json!({ "dir": hub.root.display().to_string() })),
         (reqwest::Method::DELETE, "/api/packs/kiwix-tools", Value::Null),
