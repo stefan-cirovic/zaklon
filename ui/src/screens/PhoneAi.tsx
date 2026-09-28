@@ -20,6 +20,8 @@ type Status = {
   starting: boolean;
   copy: { model: string; model_id: string; verifying: boolean; done: number; total: number; error: string | null; finished: boolean } | null;
   cpu_cores: number;
+  /** The largest model file this phone has the memory for (not known: null, or missing in an older app). */
+  max_model_size?: number | null;
 };
 type HubModel = { id: string; title_en: string; title_sr: string; file: string; size: number; sha256: string };
 type Answer = { text: string; tokens: number; tokens_per_second: number; prompt_ms: number; total_ms: number };
@@ -146,6 +148,8 @@ export default function PhoneAi({ t, lang, question }: { t: T; lang: Lang; quest
   const copyingPart = st.copy && !st.copy.finished ? `${st.copy.model}.part` : null;
   const parts = (st.parts ?? []).filter((p) => p.file !== copyingPart);
   const title = (m: HubModel) => (lang === "sr" && m.title_sr ? m.title_sr : m.title_en);
+  /** This phone does not have the memory for a model of this size. */
+  const tooBig = (size: number) => st.max_model_size != null && size > st.max_model_size;
   /** A model copied from the hub by the hub's name for it; otherwise its file name. */
   const nameOf = (file: string) => {
     const known = hubModels?.find((h) => h.file === file);
@@ -172,12 +176,13 @@ export default function PhoneAi({ t, lang, question }: { t: T; lang: Lang; quest
                     {st.running === m.file && <span className="ok"> · {t("aiRunning")}</span>}
                     {st.loading === m.file && <span className="muted"> · {t("aiLoading")}</span>}
                   </div>
+                  {tooBig(m.size) && <div className="warn" style={{ fontSize: 13 }}>{t("aiModelTooBigPhone")}</div>}
                 </div>
                 <div className="row">
                   {st.running === m.file || st.loading === m.file ? (
                     <button className="btn secondary" onClick={() => invoke("local_ai_stop").then(load)}>{t("aiStop")}</button>
                   ) : (
-                    <button className="btn" onClick={() => start(m.file)} disabled={busy || st.starting}>
+                    <button className="btn" onClick={() => start(m.file)} disabled={busy || st.starting || tooBig(m.size)}>
                       {st.starting ? t("aiLoading") : t("aiStart")}
                     </button>
                   )}
@@ -239,11 +244,12 @@ export default function PhoneAi({ t, lang, question }: { t: T; lang: Lang; quest
                 <div>
                   <div>{title(m)}</div>
                   <div className="muted" style={{ fontSize: 13 }}>{fmtBytes(m.size)}</div>
+                  {tooBig(m.size) && <div className="warn" style={{ fontSize: 13 }}>{t("aiModelTooBigPhone")}</div>}
                 </div>
                 {onPhone.has(m.file) ? (
                   <span className="ok">{t("onThisPhone")}</span>
                 ) : (
-                  <button className="btn secondary" onClick={() => copy(m)} disabled={active}>{t("copyToPhone")}</button>
+                  <button className="btn secondary" onClick={() => copy(m)} disabled={active || tooBig(m.size)}>{t("copyToPhone")}</button>
                 )}
               </div>
             ))}

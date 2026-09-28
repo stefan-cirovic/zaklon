@@ -22,6 +22,16 @@ const IDLE_STOP: Duration = Duration::from_secs(10 * 60);
 /// A copy that was left unfinished this long is deleted when the app starts.
 const PART_KEEP: Duration = Duration::from_secs(30 * 24 * 3600);
 
+const MIB: u64 = 1 << 20;
+/// Memory kept for Android itself and for this app (its window is a web
+/// view). With less left beside the AI engine, Android closes apps and
+/// moves memory around, and the phone crawls.
+const RESERVE: u64 = 2 << 30;
+/// Why the engine does not start: the model can never run well on this
+/// phone, or it could, but not with the memory free right now.
+const TOO_BIG: &str = "this AI model needs more memory than this phone has; choose a smaller model";
+const LOW_MEMORY: &str = "not enough free memory on this phone for the AI right now; close some apps and try again";
+
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct CopyProgress {
     pub model: String,
@@ -56,6 +66,9 @@ pub struct Status {
     pub starting: bool,
     pub copy: Option<CopyProgress>,
     pub cpu_cores: usize,
+    /// The largest model file this phone has the memory for (see
+    /// `engine_memory`); None when its memory cannot be read.
+    pub max_model_size: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -177,6 +190,54 @@ fn prune_parts(dir: &Path) {
     }
 }
 
+/// The phone's memory in bytes: all of it, and what is available now
+/// without closing apps (free, or holding copies of files). None when it
+/// cannot be read.
+fn phone_ram() -> Option<(u64, u64)> {
+    parse_meminfo(&std::fs::read_to_string("/proc/meminfo").ok()?)
+}
+
+fn parse_meminfo(text: &str) -> Option<(u64, u64)> {
+    let field = |name: &str| {
+        text.lines()
+            .find(|l| l.starts_with(name))
+            .and_then(|l| l.split_whitespace().nth(1))
+            .and_then(|kb| kb.parse::<u64>().ok())
+            .map(|kb| kb * 1024)
+    };
+    Some((field("MemTotal:")?, field("MemAvailable:")?))
+}
+
+/// Memory the engine takes with a model file of `size` bytes and one slot
+/// of `CONTEXT` tokens: the file (mapped into memory, and all of it read for
+/// every word), and about an eighth of that again for the context, the
+/// model's running state with its checkpoints and the engine's buffers,
+/// plus the program itself. Measured with the Qwen3.5 models on a computer
+/// (the hub's `engine_memory`): 0.8B 1.0 GiB, 2B 1.5 GiB, 4B 3.0 GiB with
+/// this context; this errs a little on the safe side for each.
+fn engine_memory(size: u64) -> u64 {
+    size + size / 8 + 192 * MIB
+}
+
+/// Whether the engine may start with a model file of `size` bytes, on a
+/// phone with `ram_total` bytes of memory of which `ram_available` are free.
+fn start_check(size: u64, ram_total: u64, ram_available: u64) -> Result<(), &'static str> {
+    let needs = engine_memory(size);
+    if ram_total < needs + RESERVE {
+        return Err(TOO_BIG);
+    }
+    if ram_available < needs {
+        return Err(LOW_MEMORY);
+    }
+    Ok(())
+}
+
+/// The largest model file a phone with `ram_total` bytes of memory can run
+/// (`start_check` lets it start when enough of it is free).
+fn max_model_size(ram_total: u64) -> u64 {
+    ram_total.saturating_sub(RESERVE + 192 * MIB) / 9 * 8
+}
+
 fn free_port() -> std::io::Result<u16> {
     Ok(std::net::TcpListener::bind(("127.0.0.1", 0))?.local_addr()?.port())
 }
@@ -281,6 +342,7 @@ impl LocalAi {
             starting: self.starting.lock().unwrap_or_else(|p| p.into_inner()).is_some(),
             copy: self.copy.lock().unwrap_or_else(|p| p.into_inner()).clone(),
             cpu_cores: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4),
+            max_model_size: phone_ram().map(|(total, _)| max_model_size(total)),
         }
     }
 
@@ -386,6 +448,16 @@ impl LocalAi {
         let _starting = StartingGuard { starting: &self.starting, id };
         kill_leftover(&self.pid_file);
         self.stop();
+        // Only with the memory for it (an engine that ran before has given
+        // its memory back by now): too big a model makes the phone crawl, or
+        // Android stops the engine halfway through loading it.
+        if let Some((total, available)) = phone_ram() {
+            let size = std::fs::metadata(&model).map(|m| m.len()).unwrap_or(0);
+            start_check(size, total, available).map_err(|e| {
+                tracing::warn!(size, needs = engine_memory(size), total, available, "AI engine not started: {e}");
+                e.to_string()
+            })?;
+        }
         let port = free_port().map_err(|e| e.to_string())?;
         let lib_dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
         // Big cores only: phones have 4 fast cores and 4 efficient ones.
@@ -403,7 +475,8 @@ impl LocalAi {
         let child = std::process::Command::new(&exe)
             .arg("-m")
             .arg(&model)
-            .args(["--host", "127.0.0.1", "--port", &port.to_string(), "-c", CONTEXT, "-t", &threads.to_string()])
+            // One slot: one question at a time, and each slot costs memory.
+            .args(["--host", "127.0.0.1", "--port", &port.to_string(), "-c", CONTEXT, "-np", "1", "-t", &threads.to_string()])
             .args(["-ngl", "0"])
             .env("LD_LIBRARY_PATH", &lib_dir)
             .current_dir(&lib_dir)
@@ -617,6 +690,54 @@ mod file_tests {
         assert!(ai.delete_model("llama.log").is_err());
         drop(ai);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod memory_tests {
+    use super::*;
+
+    const GIB: u64 = 1 << 30;
+    /// The models' files as the hub's catalog has them.
+    const Q08B: u64 = 833_592_096;
+    const Q2B: u64 = 1_280_835_840;
+    const Q4B: u64 = 2_740_937_888;
+    const Q9B: u64 = 5_680_522_464;
+
+    #[test]
+    fn a_model_starts_only_on_a_phone_with_the_memory_for_it() {
+        // A 4 GB phone reports about 3.6 GiB, a 6 GB one 5.5, an 8 GB one 7.4.
+        let four = 36 * GIB / 10;
+        assert_eq!(start_check(Q08B, four, 2 * GIB), Ok(()));
+        assert_eq!(start_check(Q4B, four, 3 * GIB), Err(TOO_BIG), "4B on a 4 GB phone");
+        assert_eq!(start_check(Q2B, 55 * GIB / 10, 2 * GIB), Ok(()));
+        assert_eq!(start_check(Q9B, 55 * GIB / 10, 5 * GIB), Err(TOO_BIG), "9B on a 6 GB phone");
+        assert_eq!(start_check(Q9B, 74 * GIB / 10, 7 * GIB), Err(TOO_BIG), "9B on an 8 GB phone");
+        assert_eq!(start_check(Q4B, 74 * GIB / 10, 4 * GIB), Ok(()));
+        // Enough memory in all, not enough free right now.
+        assert_eq!(start_check(Q2B, 74 * GIB / 10, GIB), Err(LOW_MEMORY));
+        assert_eq!(start_check(Q4B, 74 * GIB / 10, 3 * GIB), Err(LOW_MEMORY));
+        assert!(TOO_BIG.contains("needs more memory than this phone has"), "the app translates it by these words");
+        assert!(LOW_MEMORY.contains("not enough free memory on this phone"), "the app translates it by these words");
+    }
+
+    #[test]
+    fn the_largest_model_a_phone_can_run() {
+        for total in [3 * GIB, 36 * GIB / 10, 55 * GIB / 10, 74 * GIB / 10, 12 * GIB] {
+            let max = max_model_size(total);
+            assert_eq!(start_check(max, total, total), Ok(()), "{total}");
+            assert_eq!(start_check(max + MIB, total, total), Err(TOO_BIG), "{total}");
+        }
+        assert_eq!(max_model_size(GIB), 0);
+        assert!(max_model_size(36 * GIB / 10) > Q08B && max_model_size(36 * GIB / 10) < Q4B);
+    }
+
+    #[test]
+    fn memory_is_read_from_meminfo() {
+        let text = "MemTotal:        3742000 kB\nMemFree:          200000 kB\nMemAvailable:    1500000 kB\nBuffers:            1000 kB\n";
+        assert_eq!(parse_meminfo(text), Some((3_742_000 * 1024, 1_500_000 * 1024)));
+        assert_eq!(parse_meminfo("MemTotal: 1 kB\n"), None, "an old kernel without MemAvailable");
+        assert_eq!(parse_meminfo(""), None);
     }
 }
 
