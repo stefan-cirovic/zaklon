@@ -251,7 +251,7 @@ const PLACES: &[(&str, &str, f64)] = &[
 ];
 
 fn place(toks: &[Tok]) -> Option<Place> {
-    (0..toks.len()).find_map(|i| PLACES.iter().find(|(p, _, _)| phrase_at(toks, i, p).is_some()).map(|(_, region, lat)| Place { region: *region, lat: *lat }))
+    (0..toks.len()).find_map(|i| PLACES.iter().find(|(p, _, _)| phrase_at(toks, i, p).is_some()).map(|(_, region, lat)| Place { region, lat: *lat }))
 }
 
 // ---- The power calculator (ui/src/power.ts) ----------------------------------------
