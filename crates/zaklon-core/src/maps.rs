@@ -45,11 +45,10 @@ const WORLD_MAP_URL: &str = "https://build.protomaps.com/20260928.pmtiles";
 /// size) is shown at once and checked in the background.
 pub const WORLD_MAP_PATH: &str = "maps/protomaps-world-20260928.pmtiles";
 const WORLD_MAP_SIZE: u64 = 138_415_942_566;
-/// TODO: the SHA-256 of the world map file (lower-case hex), from
-/// E:\ZaklonDev\maps\protomaps-world-20260928.sha256 on the build machine,
-/// where it is being computed. Until it is filled in, the world map is not
-/// offered: a pack is never downloaded or trusted without its checksum.
-pub const WORLD_MAP_SHA256: &str = "";
+/// The SHA-256 of the world map file (lower-case hex). Without one the world
+/// map would not be offered: a pack is never downloaded or trusted without
+/// its checksum.
+pub const WORLD_MAP_SHA256: &str = "7561013a401aa44db88c80fad1fc3f1f9e41fff7bf0ae5986fa9c7b87725f8ec";
 
 /// The world map pack, once its checksum is known (see `WORLD_MAP_SHA256`).
 pub fn world_map_pack() -> Option<Pack> {
