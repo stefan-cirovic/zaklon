@@ -1031,6 +1031,14 @@ select.lang-pick { width: auto; margin-top: 4px; }
 .sup-state { color: var(--muted); font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .sup-row.expired .sup-state, .sup-row.out .sup-state { color: var(--warn); }
 .sup-listed { display: inline-flex; align-self: center; color: var(--ok); }
+/* Something expired onto the shopping list: a small cart button beside its state. */
+.sup-add {
+  display: inline-grid; place-items: center; align-self: center; width: 26px; height: 26px; padding: 0; cursor: pointer;
+  background: transparent; border: 1px solid var(--line-2); border-radius: var(--radius); color: var(--muted);
+}
+@media (hover: hover) { .sup-add:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); } }
+.sup-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sup-add:disabled { opacity: 0.5; cursor: default; }
 /* An empty column: a calm "Nothing", so it reads as all is well there. */
 .sup-nothing { display: flex; align-items: center; gap: 8px; margin: 0; padding: 4px 0; color: var(--muted); font-size: 14px; line-height: 20px; }
 .sup-nothing .icon { flex: 0 0 auto; color: var(--ok); }
@@ -1116,6 +1124,7 @@ select.lang-pick { width: auto; margin-top: 4px; }
   .home-add-phone-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .sup-row { padding: 8px 0; }
   .sup-tick { min-height: 44px; padding: 12px 0; }
+  .sup-add { width: 44px; height: 44px; margin: -12px 0; }
   .home-ask-box input[type="text"] { min-height: 44px; font-size: 16px; }
   .home-tool-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
   .home-tool { min-height: 56px; padding: 8px 12px; }

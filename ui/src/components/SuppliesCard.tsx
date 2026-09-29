@@ -15,6 +15,8 @@ export type ShoppingEntry = { id: string; item_id?: string | null; text: string;
 
 /** How many lines a column shows; the rest is a link away. */
 const LINES = 5;
+/** Something added to the shopping list from here counts as on it this long, until the list itself shows it. */
+const ADDED_KEEP = 60_000;
 
 /** "2 days" / "2 dana". */
 function dayCount(n: number): string {
@@ -82,6 +84,31 @@ export default function SuppliesCard({
     });
   }, [shop]);
 
+  // Expired things put on the shopping list from here: on it at once, before the list from the hub (or the phone's copy) shows it.
+  const [added, setAdded] = useState<string[]>([]);
+  const [adding, setAdding] = useState<string | null>(null);
+  const waiting = added.filter((x) => !shop?.some((e) => e.status === "open" && e.item_id === x));
+  const listed = (item: Item) => waiting.includes(item.id) || (shop !== null && onShoppingList(shop, item));
+
+  /** Something expired onto the shopping list, as much as there was (at least enough to be back at "Warn below"). */
+  const addToList = async (item: Item) => {
+    setAdding(item.id);
+    setErr(null);
+    const quantity = Math.max(item.quantity, (item.min_quantity ?? 0) - item.quantity);
+    try {
+      await api("/api/shopping", {
+        json: { text: item.name, quantity: quantity > 0 ? Math.round(quantity * 1000) / 1000 : null, unit: item.unit, item_id: item.id },
+      });
+      setAdded((list) => [...list.filter((x) => x !== item.id), item.id]);
+      setTimeout(() => setAdded((list) => list.filter((x) => x !== item.id)), ADDED_KEEP);
+      reload();
+    } catch (ex) {
+      setErr(errText(t, ex));
+    } finally {
+      setAdding(null);
+    }
+  };
+
   const tick = async (e: ShoppingEntry) => {
     if (ticked.includes(e.id)) return;
     setTicked((list) => [...list, e.id]);
@@ -116,11 +143,25 @@ export default function SuppliesCard({
           <Column t={t} title={t("expiring")} count={expiring.length} more="#supplies/expiring">
             {expiring.slice(0, LINES).map((item) => {
               const days = item.expiry ? daysUntil(item.expiry) : 0;
+              const on = days < 0 && listed(item);
               return (
                 <li key={item.id} className={"sup-row " + (days < 0 ? "expired" : "soon")}>
                   <span className="sup-text">
                     <span className="sup-name" title={item.name}>{item.name}</span>
                     <span className="sup-state">{whenText(t, days, item.expiry ?? "")}</span>
+                    {on && <Listed t={t} />}
+                    {days < 0 && !on && (
+                      <button
+                        type="button"
+                        className="sup-add"
+                        onClick={() => addToList(item)}
+                        disabled={adding !== null}
+                        aria-label={`${t("addToShopping")}: ${item.name}`}
+                        title={t("addToShopping")}
+                      >
+                        <Icon name="cart" size={14} />
+                      </button>
+                    )}
                   </span>
                 </li>
               );
@@ -129,7 +170,7 @@ export default function SuppliesCard({
           <Column t={t} title={t("runningLow")} count={low.length} more="#supplies/low">
             {low.slice(0, LINES).map((item) => {
               const min = item.min_quantity ?? 0;
-              const listed = shop !== null && onShoppingList(shop, item);
+              const on = listed(item);
               return (
                 <li key={item.id} className={"sup-row low" + (item.quantity <= 0 ? " out" : "")}>
                   <span className="sup-text">
@@ -137,12 +178,7 @@ export default function SuppliesCard({
                     <span className="sup-state">
                       {fmtQty(item.quantity)} {t("of")} {fmtQty(min)} {unitName(t, item.unit, min)}
                     </span>
-                    {listed && (
-                      <span className="sup-listed" title={t("onShoppingList")}>
-                        <Icon name="cart" size={14} />
-                        <span className="sr-only">{t("onShoppingList")}</span>
-                      </span>
-                    )}
+                    {on && <Listed t={t} />}
                   </span>
                 </li>
               );
@@ -222,6 +258,16 @@ export default function SuppliesCard({
         </div>
       )}
     </section>
+  );
+}
+
+/** The mark of something already on the shopping list. */
+function Listed({ t }: { t: T }) {
+  return (
+    <span className="sup-listed" title={t("onShoppingList")}>
+      <Icon name="cart" size={14} />
+      <span className="sr-only">{t("onShoppingList")}</span>
+    </span>
   );
 }
 

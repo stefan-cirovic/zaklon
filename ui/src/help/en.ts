@@ -248,7 +248,7 @@ const en: HelpContent = {
           { p: "The supplies card has three columns, side by side (one under the other on a phone), the most urgent first in each:" },
           {
             list: [
-              "**Expiring**: what has expired (in red, with how long ago) and what expires within 30 days, with when: “today”, “in 3 days”;",
+              "**Expiring**: what has expired (in red, with how long ago) and what expires within 30 days, with when: “today”, “in 3 days”; the cart beside something expired puts it on the shopping list;",
               "**Running low**: less than its **Warn below** amount, such as “2 of 3 kg”, the emptiest first; a cart means it is on the shopping list already;",
               "**To buy**: the shopping list. Tick what you bought; it moves to **Put away**, just like **Bought** on the list.",
             ],

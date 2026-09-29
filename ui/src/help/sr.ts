@@ -248,7 +248,7 @@ const sr: HelpContent = {
           { p: "Kartica zaliha ima tri kolone, jednu pored druge (na telefonu jednu ispod druge), u svakoj najhitnije prvo:" },
           {
             list: [
-              "**Ističe**: ono čemu je istekao rok (crveno, i pre koliko) i ono čemu rok ističe u narednih 30 dana, sa rokom: „danas“, „za 3 dana“;",
+              "**Ističe**: ono čemu je istekao rok (crveno, i pre koliko) i ono čemu rok ističe u narednih 30 dana, sa rokom: „danas“, „za 3 dana“; korpica pored isteklog stavlja ga na listu za kupovinu;",
               "**Ponestaje**: ima ga manje nego što piše u **Upozori kad padne ispod**, na primer „2 od 3 kg“, prvo ono čega ima najmanje; kolica znače da je već na listi za kupovinu;",
               "**Za kupovinu**: lista za kupovinu. Štikliraj ono što je kupljeno; prelazi u **Spremi**, isto kao **Kupljeno** na listi.",
             ],

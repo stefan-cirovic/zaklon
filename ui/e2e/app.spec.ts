@@ -1462,6 +1462,58 @@ test("home: an empty column of the supplies says Nothing, calmly, so all is well
   await noHorizontalScroll(page);
 });
 
+test("home: something expired goes on the shopping list with the cart beside it", async ({ page }, info) => {
+  await ensureSetUp(page);
+  // Bread expired and is not on the list; Beans expired and are on it already; Yogurt only expires soon.
+  await page.route("**/api/supplies/summary", (r) =>
+    r.fulfill({
+      json: {
+        total_items: 5,
+        expired: [fakeItem("e1", "Bread", { quantity: 2, expiry: dayFromToday(-2) }), fakeItem("e2", "Beans", { expiry: dayFromToday(-5) })],
+        expiring_soon: [fakeItem("s1", "Yogurt", { expiry: dayFromToday(3) })],
+        running_low: [],
+        to_put_away: 0,
+      },
+    }),
+  );
+  let shop: Record<string, unknown>[] = [{ id: "b1", item_id: "e2", text: "Beans", quantity: 1, unit: "pcs", status: "open", source: "manual" }];
+  const posted: Record<string, unknown>[] = [];
+  await page.route("**/api/shopping", async (r) => {
+    if (r.request().method() === "POST") {
+      const body = r.request().postDataJSON() as Record<string, unknown>;
+      posted.push(body);
+      shop = [...shop, { id: `n${posted.length}`, ...body, status: "open", source: "manual" }];
+      return r.fulfill({ status: 201, json: shop.at(-1) });
+    }
+    return r.fulfill({ json: shop });
+  });
+  await page.goto("/#home");
+  const expiring = page.getByRole("region", { name: "Supplies" }).getByRole("region", { name: "Expiring" });
+  const bread = expiring.locator(".sup-row", { hasText: "Bread" });
+  const beans = expiring.locator(".sup-row", { hasText: "Beans" });
+  const yogurt = expiring.locator(".sup-row", { hasText: "Yogurt" });
+  // A cart to press where it is not on the list; the mark where it is; nothing for what only expires soon.
+  const add = bread.getByRole("button", { name: "Add to the shopping list: Bread" });
+  await expect(add).toBeVisible();
+  await expect(beans.locator(".sup-listed")).toHaveAttribute("title", "On the list");
+  await expect(beans.getByRole("button")).toHaveCount(0);
+  await expect(yogurt.getByRole("button")).toHaveCount(0);
+  await expect(yogurt.locator(".sup-listed")).toHaveCount(0);
+  if (info.project.name === "phone") {
+    const box = (await add.boundingBox())!;
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  }
+  // One press: on the list as much as there was, linked to the item; the cart turns into the mark.
+  await add.click();
+  await expect.poll(() => posted.length).toBe(1);
+  expect(posted[0]).toMatchObject({ text: "Bread", quantity: 2, item_id: "e1" });
+  await expect(bread.locator(".sup-listed")).toBeVisible();
+  await expect(bread.getByRole("button")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "To buy" }).getByRole("checkbox", { name: "Bought: Bread" })).toBeVisible();
+  await noHorizontalScroll(page);
+});
+
 test("home: Add item on the supplies card opens a new item in Supplies, once", async ({ page }) => {
   await ensureSetUp(page);
   await page.goto("/#home");
