@@ -488,9 +488,9 @@ const DRIP: &[&str] = &["kap po kap", "kapaljk*", "navodnj*", "zaliv*", "drip", 
 /// Crops as people name them, and the calculator's crop groups.
 const CROPS: &[(&str, &str)] = &[
     ("paradajz*", "tomatoes"), ("tomato*", "tomatoes"), ("paprik*", "tomatoes"), ("pepper", "tomatoes"), ("peppers", "tomatoes"),
-    ("patlidzan*", "tomatoes"), ("eggplant*", "tomatoes"), ("krastav*", "cucumbers"), ("cucumber*", "cucumbers"), ("tikvic*", "cucumbers"),
-    ("zucchini", "cucumbers"), ("bundev*", "cucumbers"), ("squash", "cucumbers"), ("lubenic*", "cucumbers"), ("dinj*", "cucumbers"),
-    ("melon*", "cucumbers"), ("salat*", "greens"), ("lettuce", "greens"), ("spanac*", "greens"), ("spinach", "greens"), ("blitv*", "greens"),
+    ("patlidzan*", "tomatoes"), ("eggplant*", "tomatoes"), ("krastav*", "squash"), ("cucumber*", "squash"), ("tikvic*", "squash"),
+    ("zucchini", "squash"), ("bundev*", "squash"), ("squash", "squash"), ("lubenic*", "squash"), ("dinj*", "squash"),
+    ("melon*", "squash"), ("salat*", "greens"), ("lettuce", "greens"), ("spanac*", "greens"), ("spinach", "greens"), ("blitv*", "greens"),
     ("chard", "greens"), ("rukol*", "greens"), ("kupus*", "greens"), ("cabbage*", "greens"), ("kelj*", "greens"), ("kale", "greens"),
     ("greens", "greens"), ("zacinsk*", "greens"), ("herbs", "greens"), ("pasulj*", "beans"), ("boranij*", "beans"), ("grasak", "beans"),
     ("graska", "beans"), ("bean*", "beans"), ("peas", "beans"), ("sargarep*", "roots"), ("carrot*", "roots"), ("cvekl*", "roots"),
