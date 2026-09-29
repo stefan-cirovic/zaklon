@@ -38,20 +38,33 @@ export default function StarterSet({
   const [map, setMap] = useState<MapCountry | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Whether the hub has said which AI model fits, and the country the map was looked up for.
+  const [modelKnown, setModelKnown] = useState(false);
+  const [mapFor, setMapFor] = useState<string | null | undefined>(undefined);
   const set = sets.find((s) => s.lang === lang) ?? null;
   const country = set?.map ?? null;
 
   useEffect(() => {
     // No model when none fits this computer's memory (recommended is null).
-    api<{ recommended: string | null }>("/api/assistant").then((a) => setModel(a.recommended ?? null)).catch(() => {});
+    api<{ recommended: string | null }>("/api/assistant")
+      .then((a) => setModel(a.recommended ?? null))
+      .catch(() => {})
+      .finally(() => setModelKnown(true));
   }, []);
   useEffect(() => {
     if (country) {
       api<{ countries: MapCountry[] }>("/api/maps")
         .then((m) => setMap(m.countries.find((c) => c.id === country) ?? null))
-        .catch(() => {});
-    } else setMap(null);
+        .catch(() => {})
+        .finally(() => setMapFor(country));
+    } else {
+      setMap(null);
+      setMapFor(null);
+    }
   }, [country]);
+  // "Download all" waits until the set is complete: a tap before the model is
+  // known would leave the AI model out.
+  const complete = modelKnown && mapFor === country;
 
   const title = (p: Pack) => (lang === "sr" && p.title.sr ? p.title.sr : p.title.en);
   const lines: Line[] = [];
@@ -115,7 +128,7 @@ export default function StarterSet({
       {!fits && <p className="warn" style={{ margin: 0 }}>{t("errDisk")}</p>}
       {err && <p className="error" role="alert">{err}</p>}
       <div>
-        <button className="btn" onClick={startAll} disabled={busy || !fits}>{t("starterDownload")}</button>
+        <button className="btn" onClick={startAll} disabled={busy || !fits || !complete}>{t("starterDownload")}</button>
       </div>
     </div>
   );

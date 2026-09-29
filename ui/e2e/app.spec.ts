@@ -1605,6 +1605,9 @@ test("add-ons: the starter set downloads the recommended packs in one go (reques
   const panel = page.locator(".starter");
   await expect(panel.getByRole("heading", { name: "English essentials" })).toBeVisible();
   await expect(panel.getByText(/Still to download/)).toBeVisible();
+  // The set is complete, and can be downloaded, once the hub has said which AI model fits this computer.
+  await expect(panel.getByRole("listitem").filter({ hasText: /AI model/ })).toHaveCount(1);
+  await expect(panel.getByRole("button", { name: "Download all" })).toBeEnabled();
   await panel.getByRole("button", { name: "Download all" }).click();
   await expect.poll(() => asked.length).toBeGreaterThanOrEqual(3);
   expect(asked).toContain("/api/packs/wikimed-en/download");
