@@ -880,6 +880,7 @@ test("add-ons: the starter set holds only packs offered to everyone", async ({ p
   await panel.getByRole("button", { name: "Download all" }).click();
   await expect.poll(() => asked).toContain("/api/packs/military-medicine-en/download");
   expect(asked.filter((p) => /ifixit|zimgit/.test(p))).toEqual([]);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 test("add-ons: a pack Zaklon no longer offers stays listed, usable and removable (states simulated)", async ({ page }) => {
@@ -928,6 +929,8 @@ test("add-ons: a pack Zaklon no longer offers stays listed, usable and removable
   await pack.getByRole("button", { name: "Remove: First aid and medicine guides (English)" }).click();
   await pack.getByRole("button", { name: "Yes, remove" }).click();
   await expect.poll(() => removed).toBe(true);
+  // The screen asks again every few seconds: stop the made-up answers before the page closes.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
   await noHorizontalScroll(page);
 });
 
