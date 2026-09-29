@@ -573,8 +573,25 @@ const sr: HelpContent = {
         title: "Zaklon mapa",
         body: [
           { p: "Mapu pomeraš prevlačenjem, a uvećavaš i umanjuješ točkićem miša, sa dva prsta ili dugmadima **+** i **−**. Dugme s kućicom vraća mapu na tvoj dom, a globus prikazuje ceo svet. Nazivi su na jeziku aplikacije gde ih mapa ima." },
-          { p: "Uz Zaklon stiže pregled celog sveta: države, granice i veći gradovi. Nosi ga i telefon, pa i van kuće njegova mapa prikazuje svet (sa domom koji je poslednji video). Za mesta, ulice i zgrade preuzmi **mapu sveta** u folderu Mape u [Dodacima](#addons/maps). Veoma je velika (oko 138 GB), pa joj treba veliki disk i vreme; preuzimanje se nastavlja posle prekida i ponovnog pokretanja, a mapa je prikazuje čim je proverena." },
+          { p: "Uz Zaklon stiže pregled celog sveta: države, granice i veći gradovi. Nosi ga i telefon, pa i van kuće njegova mapa prikazuje svet (sa domom koji je poslednji video). Za mesta, ulice i zgrade preuzmi **mapu sveta** u folderu Mape u [Dodacima](#addons/maps). Veoma je velika (oko 140 GB), pa joj treba veliki disk i vreme; preuzimanje se nastavlja posle prekida i ponovnog pokretanja, a mapa je prikazuje čim je proverena." },
           { note: "Podaci mapa © OpenStreetMap saradnici. Oznaka u uglu mape vodi do detalja. Mapa nikada ništa ne traži od interneta: sve što prikazuje stiže sa huba." },
+        ],
+      },
+      {
+        id: "world-map",
+        title: "Odakle stiže mapa sveta i kako se ažurira",
+        body: [
+          { p: "Mapu sveta pravi **Protomaps** od podataka OpenStreetMap-a. Protomaps svaki dan pravi novu verziju, te dnevne verzije čuva oko nedelju dana, a neke čuva trajno. Zaklon nudi najnoviju verziju staru bar nedelju dana, pa ona postoji dokle god traje njeno preuzimanje. Dodaci prikazuju njen datum." },
+          { p: "Kad otvoriš Dodatke, hub pita Protomaps za spisak verzija, najviše otprilike jednom dnevno. Bez interneta nudi poslednju verziju za koju je znao. Svako preuzimanje se proverava kontrolnim zbirom koji Protomaps objavljuje za tu verziju pre nego što ga mapa koristi; oštećeno preuzimanje se baca." },
+          { p: "Kad izađe novija verzija, kod mape sveta u [Dodacima](#addons/maps) piše **Dostupna je novija mapa sveta**, sa datumom i veličinom. Ništa se ne menja dok na laptopu ne izabereš **Ažuriraj mapu**:" },
+          {
+            steps: [
+              "Novija mapa se preuzima pored one koju imaš. Mapa za to vreme i dalje prikazuje staru.",
+              "Kad se nova mapa preuzme i proveri, mapa prelazi na nju, a stara se briše.",
+              "Ako na disku nema mesta za obe, Zaklon to kaže i pita da li da prvo ukloni staru mapu. Dok nova ne bude spremna, mapa tada prikazuje samo pregled sveta.",
+            ],
+          },
+          { note: "Tvoja mapa ti se nikad ne oduzima: starija verzija ostaje dok je ne ažuriraš ili ukloniš. Ako Protomaps više nema verziju koja se preuzima, preuzimanje staje uz poruku; otvori Dodatke uz internet i izaberi **Pokušaj ponovo** da preuzmeš aktuelnu verziju." },
         ],
       },
       {
@@ -839,7 +856,7 @@ const sr: HelpContent = {
         id: "updates",
         title: "Nove verzije i uklanjanje",
         body: [
-          { p: "Kad izađe novija verzija instaliranog paketa ili mape, piše **Dostupna je nova verzija** i pojavi se dugme **Ažuriraj**. Na laptopu **Ukloni** briše dodatak, ili nedovršeno preuzimanje, i oslobađa mesto." },
+          { p: "Kad izađe novija verzija instaliranog paketa ili mape, piše **Dostupna je nova verzija** i pojavi se dugme **Ažuriraj**. Kod mape sveta umesto toga piše **Dostupna je novija mapa sveta**, a ažurira se na laptopu dugmetom **Ažuriraj mapu**; vidi [Mapa sveta i njena ažuriranja](#help/maps/world-map). Na laptopu **Ukloni** briše dodatak, ili nedovršeno preuzimanje, i oslobađa mesto." },
         ],
       },
       {
@@ -938,7 +955,7 @@ const sr: HelpContent = {
           {
             list: [
               "**Lozinka domaćinstva** (laptop): ovde se menja. Treba za uparivanje telefona i za otvaranje šifrovane kopije. Već upareni telefoni ostaju povezani.",
-              "**Privatnost**: sve ostaje na hubu i tvojim telefonima. Zaklon ide na internet samo kad pokreneš nešto što to traži, na primer preuzimanje ili pretragu na internetu, i jednom dnevno da proveri da li postoji nova verzija, što može da se isključi.",
+              "**Privatnost**: sve ostaje na hubu i tvojim telefonima. Zaklon ide na internet samo kad pokreneš nešto što to traži, na primer preuzimanje ili pretragu na internetu, jednom dnevno da proveri da li postoji nova verzija, što može da se isključi, i, kad otvoriš Dodatke, najviše jednom dnevno da pita Protomaps koje verzije mape sveta ima.",
             ],
           },
         ],

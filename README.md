@@ -19,7 +19,7 @@
 1. **Offline by default.** Internet is optional.
 2. **Local only.** No accounts, no telemetry, no cloud. Your data lives in one folder you can copy to a USB stick.
 3. **Free forever.** Licensed under GPL-3.0-or-later. Donations are welcome and never unlock features.
-4. **Transparent.** Public repository from the first commit. Zaklon goes online only when you start something (a download, online research) and, unless you switch it off, once a day to check for a new version. Every host it can contact is listed in [docs/network.md](docs/network.md).
+4. **Transparent.** Public repository from the first commit. Zaklon goes online only when you start something (a download, online research), once a day to check for a new version (unless you switch it off), and, when Add-ons is opened, at most once a day to read the list of world map builds. Every host it can contact is listed in [docs/network.md](docs/network.md).
 5. **Light.** Small installer, low idle memory, no animations.
 
 ## How it is built

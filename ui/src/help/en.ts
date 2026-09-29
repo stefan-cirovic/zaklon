@@ -573,8 +573,25 @@ const en: HelpContent = {
         title: "The Zaklon map",
         body: [
           { p: "Drag the map to move it, and zoom with the mouse wheel, two fingers or the **+** and **−** buttons. The house button goes back to your home; the globe shows the whole world. Labels are in the app's language where the map has names in it." },
-          { p: "Zaklon comes with an overview of the whole world: countries, borders and larger cities. A phone carries it too, so away from home its map still shows the world (with the home it saw last). For towns, streets and buildings, download **the world map** in the Maps folder of [Add-ons](#addons/maps). It is very large (about 138 GB), so it needs a big disk and time; the download continues after interruptions and restarts, and the map shows it as soon as it is checked." },
+          { p: "Zaklon comes with an overview of the whole world: countries, borders and larger cities. A phone carries it too, so away from home its map still shows the world (with the home it saw last). For towns, streets and buildings, download **the world map** in the Maps folder of [Add-ons](#addons/maps). It is very large (about 140 GB), so it needs a big disk and time; the download continues after interruptions and restarts, and the map shows it as soon as it is checked." },
           { note: "Map data © OpenStreetMap contributors. The credit in the map's corner leads to the details. The map never asks the internet for anything: everything it shows comes from the hub." },
+        ],
+      },
+      {
+        id: "world-map",
+        title: "Where the world map comes from, and its updates",
+        body: [
+          { p: "The world map is made by **Protomaps** from OpenStreetMap. Protomaps builds a new one every day, keeps those daily builds for about a week, and keeps some builds for good. Zaklon offers the newest build that is at least a week old, so the build is still there for as long as its download takes. Add-ons shows its date." },
+          { p: "When Add-ons is opened, the hub asks Protomaps for its list of builds, at most about once a day. Without internet it offers the last build it knew. Every download is checked against the checksum Protomaps publishes for that build before the map uses it; a damaged download is thrown away." },
+          { p: "When a newer build is out, the world map in [Add-ons](#addons/maps) says **A newer world map is available**, with its date and size. Nothing changes until you choose **Update the map** on the laptop:" },
+          {
+            steps: [
+              "The newer map downloads next to the one you have. The map keeps showing the old one meanwhile.",
+              "Once the new map is downloaded and checked, the map switches to it and the old one is deleted.",
+              "If the disk has no room for both, Zaklon says so and asks whether to remove the old map first. Until the new one is ready, the map then shows only the overview of the world.",
+            ],
+          },
+          { note: "Your map is never taken away: an older build stays until you update it or remove it. If Protomaps no longer has the build being downloaded, the download stops with a message; open Add-ons with internet and choose **Retry** to download the current build." },
         ],
       },
       {
@@ -839,7 +856,7 @@ const en: HelpContent = {
         id: "updates",
         title: "New versions and removing",
         body: [
-          { p: "When a newer version of an installed pack or map is out, it shows **New version available** and an **Update** button. On the laptop, **Remove** deletes an add-on, or an unfinished download, and frees its space." },
+          { p: "When a newer version of an installed pack or map is out, it shows **New version available** and an **Update** button. The world map says **A newer world map is available** instead, and is updated on the laptop with **Update the map**; see [The world map and its updates](#help/maps/world-map). On the laptop, **Remove** deletes an add-on, or an unfinished download, and frees its space." },
         ],
       },
       {
@@ -938,7 +955,7 @@ const en: HelpContent = {
           {
             list: [
               "**Household password** (laptop): change it here. It is needed to pair a phone and to open an encrypted backup. Phones already paired stay connected.",
-              "**Privacy**: everything stays on the hub and your phones. Zaklon goes online only when you start something that needs it, such as a download or online research, and once a day to look for a new version, which can be switched off.",
+              "**Privacy**: everything stays on the hub and your phones. Zaklon goes online only when you start something that needs it, such as a download or online research, once a day to look for a new version, which can be switched off, and, when Add-ons is opened, at most once a day to ask Protomaps which world map builds it has.",
             ],
           },
         ],

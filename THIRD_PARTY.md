@@ -16,6 +16,7 @@ Zaklon runs several independent programs as separate processes, includes some th
 | MapLibre GL JS | Draws the Zaklon map | BSD-3-Clause | Bundled with the interface (loaded when a map is first shown) | https://github.com/maplibre/maplibre-gl-js |
 | Protomaps basemap style (`@protomaps/basemaps`) | The map's layers, in Zaklon's own colors | BSD-3-Clause (code), CC0 (design) | Bundled with the interface | https://github.com/protomaps/basemaps |
 | pmtiles (Rust crate) | Reads the map's tile archives on the hub | MIT or Apache-2.0 | Compiled into the hub | https://github.com/stadiamaps/pmtiles-rs |
+| BLAKE3 (`blake3` Rust crate, with `arrayvec`, `constant_time_eq` and `cpufeatures`) | Checks world map downloads against the BLAKE3 hash Protomaps publishes | CC0-1.0 or Apache-2.0 (or Apache-2.0 with LLVM exception); its helpers MIT or Apache-2.0, and CC0-1.0, MIT-0 or Apache-2.0 | Compiled into the hub | https://github.com/BLAKE3-team/BLAKE3 |
 | go-pmtiles (`pmtiles` tool) | Cuts the world overview from the world map when the app is built | BSD-3-Clause | Used only by `scripts/fetch-map-assets.sh`, not shipped | https://github.com/protomaps/go-pmtiles |
 
 ## Fonts
@@ -57,7 +58,7 @@ The knowledge packs are ZIM files published by Kiwix (openZIM).
 | Gardenology plant encyclopedia (ZIM) | CC BY-SA 3.0 | Gardenology.org contributors |
 | Kiwix maps of Serbia, the Balkans, Montenegro, and Bosnia and Herzegovina (ZIM) | ODbL 1.0 (map data), CC BY 4.0 (place search) | © OpenStreetMap contributors; tiles by OpenFreeMap, © OpenMapTiles; place search © GeoNames |
 | Map data | ODbL 1.0 | © OpenStreetMap contributors |
-| World map for the Zaklon map (Protomaps basemap build, PMTiles) | ODbL 1.0 | © OpenStreetMap contributors; tiles built by Protomaps (https://protomaps.com) |
+| World map for the Zaklon map (a Protomaps basemap build, PMTiles, downloaded from build.protomaps.com: the newest build Protomaps keeps that is at least a week old, or the build pinned in the app) | ODbL 1.0 | © OpenStreetMap contributors; tiles built by Protomaps (https://protomaps.com) |
 | Map region list and region names (bundled in `crates/zaklon-core/catalog/comaps-*.json`, Serbian names converted to Latin script) | Apache-2.0 | CoMaps contributors |
 | AI models (Qwen3.5 0.8B, 2B, 4B, 9B) | Apache-2.0 | Qwen team, Alibaba Cloud; GGUF conversions by ggml-org (0.8B) and Unsloth (2B, 4B, 9B) |
 
