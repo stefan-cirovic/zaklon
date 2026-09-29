@@ -4,7 +4,7 @@
 
 *Zaklon* is the Serbian word for shelter. A laptop runs the hub; the phones in your home connect to it over Wi-Fi, with or without internet. It is built for the bad day, and it is useful on every ordinary day in between.
 
-> Status: early development, not released yet. The hub, phone pairing, library, maps, supplies, the assistant, backups, add-ons and the laptop's own Wi-Fi network work; profiles and the first release are next. Follow the [roadmap](docs/roadmap.md).
+> Status: early development, not released yet. The hub, phone pairing, library, maps, supplies, the assistant, backups, downloads and storage and the laptop's own Wi-Fi network work; profiles and the first release are next. Follow the [roadmap](docs/roadmap.md).
 
 ## What it does
 
@@ -19,7 +19,7 @@
 1. **Offline by default.** Internet is optional.
 2. **Local only.** No accounts, no telemetry, no cloud. Your data lives in one folder you can copy to a USB stick.
 3. **Free forever.** Licensed under GPL-3.0-or-later. Donations are welcome and never unlock features.
-4. **Transparent.** Public repository from the first commit. Zaklon goes online only when you start something (a download, online research), once a day to check for a new version (unless you switch it off), and, when Add-ons is opened, at most once a day to read the list of world map builds. Every host it can contact is listed in [docs/network.md](docs/network.md).
+4. **Transparent.** Public repository from the first commit. Zaklon goes online only when you start something (a download, online research), once a day to check for a new version (unless you switch it off), and, when Maps or Storage & Downloads is opened, at most once a day to read the list of world map builds. Every host it can contact is listed in [docs/network.md](docs/network.md).
 5. **Light.** Small installer, low idle memory, no animations.
 
 ## How it is built
