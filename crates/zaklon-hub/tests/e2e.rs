@@ -639,7 +639,9 @@ async fn full_hub_flow() {
     let r = reqwest::get(format!("{}/maps/260830/..%2F..%2Fhousehold%2Fhub.json", hub.install)).await.unwrap();
     assert_eq!(r.status().as_u16(), 404, "no escaping the maps folder");
     let (_, catalog) = hub.get("/api/catalog").await;
-    assert!(catalog["packs"].as_array().unwrap().iter().all(|p| p["category"] != "maps"), "maps are not in the add-ons list");
+    let packs = catalog["packs"].as_array().unwrap();
+    assert!(packs.iter().all(|p| !p["id"].as_str().unwrap().starts_with("map:")), "the pieces of CoMaps maps are not in the add-ons list");
+    assert!(packs.iter().filter(|p| p["category"] == "maps").all(|p| p["id"] == "world-map"), "only the world map for the Zaklon map is");
     // A paired phone gets the map app over TLS (with its checksum) once the hub has it.
     let r = as_phone(reqwest::Method::GET, "/api/maps-app").send().await.unwrap();
     assert_eq!(r.status().as_u16(), 404, "not on the hub yet");
