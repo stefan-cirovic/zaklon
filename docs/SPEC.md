@@ -172,7 +172,21 @@ Laid out like Windows Settings. On a laptop it opens straight on the first categ
 | Language | app language (this device), Latin script for Serbian articles | same |
 | AI assistant | the AI model the assistant uses, what it remembers | same (models are downloaded on the laptop) |
 | Updates | check now, automatic daily check on/off (on by default) | check now |
-| About | version and license, this hub's computer and data folder, licenses and attribution | same, without the data folder |
+| About | version and license, this hub's computer and data folder, licenses and attribution, system specification | same, without the data folder; the system specification starts with the phone's own part |
+
+**System specification** (at the bottom of About; to send with a bug report). A plain two-column table (label and value, thin lines between rows) under small uppercase group names, and **Copy all**, which puts all of it on the clipboard as plain text ("Label: value" lines under each group's name). A value that is not known shows "n/a"; the page never waits for a slow one.
+
+| Group | Rows |
+|---|---|
+| Application | Zaklon version; build date and commit; mode (release or development); Windows version and build; WebView2 version. On a phone instead: the phone app's version, build and mode, the Android and WebView (Chrome) versions, then a Hub group: the hub it is connected to, when it last reached it, the hub's version and computer |
+| Built with | Hub (server): Rust; interface: TypeScript + React; desktop and phone app: Tauri; database: SQLite; AI engine: llama.cpp build (C++); library engine: libzim / kiwix-serve (C++); Zaklon map: MapLibre + Protomaps basemaps; navigation (phones): CoMaps, a separate app |
+| Database | SQLite version, size on disk, schema (no version number: tables, indexes and columns are made on every start where missing; the one-time migrations done, each marked by a `migration_<name>` setting), last backup |
+| AI assistant | engine and its state, installed models and the one in use, the hub computer's memory and the model it recommends, processor (name, cores, threads) |
+| Library | knowledge packs installed (count, size), library folder, its drive with free and total space |
+| Maps | Zaklon world map (build and size, or overview only), the overview's build, the CoMaps app the hub hands out (and whether it is on the hub), CoMaps map pieces on the hub (count, size) |
+| Network | hub addresses, port, how Windows files each network (Private, Public, Domain), phones paired, the first 16 hex digits of the certificate fingerprint |
+
+The hub's part comes from `GET /api/system/spec` (the laptop and paired phones; read-only). It holds nothing secret: no password or its hash, no token, no key. It answers at once: what takes a program to find out (how Windows files the network, the libzim in kiwix-serve) is read in the background the first time and kept (the network profile for a minute), and until then it is listed as pending; the page shows it as being read and asks again. The Windows version, processor and WebView2 version are read once per run. Versions are never typed by hand: the hub's build script records the Rust compiler, Tauri's version from `Cargo.lock`, and the build's day and commit (`ZAKLON_BUILD_DATE`, `ZAKLON_BUILD_COMMIT`, set by `scripts/build-all.sh` and the release workflow; otherwise the day of the build and the commit git has); SQLite's is the library's own; the engines' are those of the installed add-ons (libzim as kiwix-serve reports it); the interface's build records TypeScript, React, MapLibre and Protomaps basemaps as installed from `pnpm-lock.yaml`. A phone's own values come from the app (its version and whether it is a debug build) and the WebView's user agent (Android and Chrome versions).
 
 Profiles are planned. First run shows the setup (with restoring a previous hub's backup) instead.
 

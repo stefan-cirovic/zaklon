@@ -14,11 +14,15 @@ labels: bug
 2.
 3.
 
-**Versions**
+**System specification**
 
-- Zaklon version (Household → About):
-- Windows version:
-- Phone model and Android version (if a phone is involved):
+In Zaklon, open Settings → About, choose **Copy all** under "System specification" and paste it here (on the phone too, if a phone is involved). It holds the versions and nothing secret.
+
+```
+(paste here)
+```
+
+- Phone model (if a phone is involved):
 
 **Logs (optional)**
 
