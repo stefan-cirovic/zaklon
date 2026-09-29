@@ -248,6 +248,36 @@ async fn full_hub_flow() {
         assert_eq!(r.status().as_u16(), 403, "a phone must not reach {method} {path}");
     }
 
+    // The water calculator's inputs are the household's, and any paired
+    // phone may change them. Nothing is saved at first.
+    let (status, empty) = hub.get("/api/water").await;
+    assert_eq!((status, empty["plan"].clone()), (200, Value::Null));
+    let plan = json!({ "v": 1, "drink": { "people": 4, "children": 1, "smallPets": 0, "largePets": 1, "days": 7 }, "garden": { "beds": [{ "id": "a", "by": "size", "length": 3, "width": 1.2, "crop": "tomatoes" }], "lat": 44.8, "month": 7 } });
+    let r = as_phone(reqwest::Method::PUT, "/api/water").json(&json!({ "plan": plan })).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 200, "a phone saves the water plan");
+    let (_, on_laptop) = hub.get("/api/water").await;
+    assert_eq!(on_laptop["plan"], plan);
+    assert_eq!(on_laptop["updated_by"], "Ana's phone");
+    assert!(on_laptop["updated_at"].as_str().is_some_and(|t| t.len() >= 20), "{on_laptop}");
+    // The laptop changes it; the phone reads the laptop's plan.
+    let plan2 = json!({ "v": 1, "drink": { "people": 2, "days": 3 }, "garden": { "beds": [] } });
+    assert_eq!(hub.send(reqwest::Method::PUT, "/api/water", Some(json!({ "plan": plan2 }))).await.0, 200);
+    let on_phone: Value = as_phone(reqwest::Method::GET, "/api/water").send().await.unwrap().json().await.unwrap();
+    assert_eq!((on_phone["plan"].clone(), on_phone["updated_by"].clone()), (plan2.clone(), json!("laptop")));
+    // Every save is a new revision, also within the same second.
+    assert!(on_phone["rev"].is_string() && on_phone["rev"] != on_laptop["rev"], "{on_phone} {on_laptop}");
+    // Not a JSON object, or far too large: refused, and the plan stays.
+    for refused in [json!({ "plan": [1, 2, 3] }), json!({ "plan": "4 people" }), json!({ "plan": { "garden": "x".repeat(40_000) } })] {
+        let r = as_phone(reqwest::Method::PUT, "/api/water").json(&refused).send().await.unwrap();
+        assert_eq!(r.status().as_u16(), 400);
+    }
+    assert_eq!(hub.get("/api/water").await.1["plan"], plan2);
+    // Cleared: no plan again.
+    assert_eq!(hub.send(reqwest::Method::PUT, "/api/water", Some(json!({ "plan": null }))).await.0, 200);
+    assert_eq!(hub.get("/api/water").await.1["plan"], Value::Null);
+    let stranger = phone.get(format!("{}/api/water", hub.tls)).send().await.unwrap();
+    assert_eq!(stranger.status().as_u16(), 401, "only the household reads the water plan");
+
     // The tool pinned to the bar is the household's: the laptop pins it,
     // every phone reads the same one. Nothing is pinned at first.
     let phone_pinned = || {

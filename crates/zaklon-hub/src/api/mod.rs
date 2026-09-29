@@ -17,6 +17,7 @@ mod packs;
 mod pairing;
 mod power;
 mod supplies;
+mod water;
 
 use std::sync::Arc;
 
@@ -55,6 +56,7 @@ use supplies::{
     items_update, places_add, places_delete, places_list, put_away, put_away_list, shopping_add, shopping_bought, shopping_dismiss,
     shopping_list, supplies_summary,
 };
+use water::{water_plan, water_plan_save};
 
 /// Which listener a request came in on. Laptop trust exists only on the
 /// loopback listener used by the desktop window; the network (TLS) listener
@@ -128,6 +130,7 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/put-away", get(put_away_list))
         .route("/api/put-away/{id}", post(put_away))
         .route("/api/history", get(history))
+        .route("/api/water", get(water_plan).put(water_plan_save))
         .route("/api/maps", get(maps_overview))
         .route("/api/maps-app", get(maps_app_file))
         .route("/api/maps/{country}/download", post(maps_country_download))
