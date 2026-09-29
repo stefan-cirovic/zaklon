@@ -1258,6 +1258,7 @@ input[type="text"].water-count { width: 64px; text-align: center; font-weight: 6
   .water-num { font-size: 26px; }
   .water-how { padding: 4px 12px 12px; }
   .water-sync { justify-content: center; text-align: center; }
+}
 /* The Zaklon map: dark and calm, its buttons in the panels' colors, the home the one colored mark. */
 .zmap { position: relative; overflow: hidden; min-height: 260px; background: #1b1d20; border: 1px solid var(--line); border-radius: var(--radius); }
 /* Stronger than MapLibre's own ".maplibregl-map { position: relative }", which loads later. */
