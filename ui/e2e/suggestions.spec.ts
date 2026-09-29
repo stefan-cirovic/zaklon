@@ -68,7 +68,7 @@ test("suggestions: a sizing question opens the power calculator filled in, and t
   const chips = answer.getByRole("group", { name: "Tools and guides for this" });
   const calc = chips.getByRole("link", { name: "Open the power calculator with this list" });
   await expect(calc).toHaveAttribute("href", "#power?items=fridge:1,lights-led:6,laptop:1&days=3");
-  await expect(chips.getByRole("link", { name: "Guides: Power" })).toHaveAttribute("href", "#addons/power");
+  await expect(chips.getByRole("link", { name: "Guides: Power" })).toHaveAttribute("href", "#library/power");
   await expect(chips.getByRole("link")).toHaveCount(2);
   await noHorizontalScroll(page);
 
@@ -92,9 +92,9 @@ test("suggestions: a sizing question opens the power calculator filled in, and t
   await expect(page.locator(".exchange .q")).toHaveText([question]);
   await expect(calc).toBeVisible();
 
-  // The guides open Add-ons at the topic's folder; the way back is on the screen too.
+  // The guides open the topic in the Library; the way back is on the screen too.
   await answer.getByRole("link", { name: "Guides: Power" }).click();
-  await expect(page).toHaveURL(/#addons\/power$/);
+  await expect(page).toHaveURL(/#library\/power$/);
   await expect(page.getByRole("heading", { name: "Power", level: 1 })).toBeVisible();
   await page.getByRole("link", { name: "Back to the conversation" }).click();
   await expect(page.locator(".exchange .q")).toHaveText([question]);
@@ -117,7 +117,54 @@ test("suggestions: none for small talk or the supplies; a Serbian health questio
   await ask(page, burn);
   const chips = page.locator(".exchange", { hasText: burn }).getByRole("group", { name: "Tools and guides for this" });
   await expect(chips.getByRole("link")).toHaveCount(1);
-  await expect(chips.getByRole("link", { name: "Guides: Health and first aid" })).toHaveAttribute("href", "#addons/health");
+  await expect(chips.getByRole("link", { name: "Guides: Health and first aid" })).toHaveAttribute("href", "#library/health");
+});
+
+test("suggestions: an encyclopedic question is looked up in the Library; a maps question gets Maps, no guides", async ({ page }, info) => {
+  await ensureSetUp(page);
+  await assistantReady(page);
+  const ref = `${info.project.name === "phone" ? "P" : "L"}${Date.now() % 1_000_000}`;
+  await page.goto("/#assistant");
+  const tesla = `Who was Nikola Tesla? ${ref}`;
+  await ask(page, tesla);
+  const chips = page.locator(".exchange", { hasText: tesla }).getByRole("group", { name: "Tools and guides for this" });
+  await expect(chips.getByRole("link")).toHaveCount(1);
+  await expect(chips.getByRole("link", { name: "Look it up in the library" })).toHaveAttribute("href", "#library/reference");
+  const trails = `Where is a map of the hiking trails? ${ref}`;
+  await ask(page, trails);
+  const mapChips = page.locator(".exchange", { hasText: trails }).getByRole("group", { name: "Tools and guides for this" });
+  await expect(mapChips.getByRole("link")).toHaveCount(1);
+  await expect(mapChips.getByRole("link", { name: "Maps" })).toHaveAttribute("href", "#maps");
+  await chips.getByRole("link", { name: "Look it up in the library" }).click();
+  await expect(page).toHaveURL(/#library\/reference$/);
+  await expect(page.getByRole("heading", { name: "Encyclopedias & dictionaries", level: 1 })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to the conversation" })).toBeVisible();
+});
+
+test("suggestions: an answer saved before the Library had topics leads there, not to Add-ons (simulated)", async ({ page }, info) => {
+  await ensureSetUp(page);
+  await assistantReady(page);
+  // As an answer of an earlier version names them: the Library as a tool, and the guides as folders of Add-ons.
+  const old = [
+    { kind: "tool", id: "library", topic: "knowledge", link: "#library", label_key: "library" },
+    { kind: "guides", id: "knowledge", topic: "knowledge", link: "#addons/knowledge", label_key: "aiSugGuides" },
+    { kind: "guides", id: "maps", topic: "maps", link: "#addons/maps", label_key: "topicMapsGuides" },
+    { kind: "guides", id: "water", topic: "water", link: "#addons/water", label_key: "aiSugGuides" },
+  ];
+  await page.route("**/api/assistant/answers/*", async (route) => {
+    const json = await (await route.fetch()).json();
+    return route.fulfill({ json: { ...json, status: "done", error: null, grounded: true, text: "Here is what I found.", sources: [], suggestions: old } });
+  });
+  const question = `Old answer ${info.project.name} ${Date.now() % 1_000_000}`;
+  await page.goto("/#assistant");
+  await page.getByRole("textbox", { name: "Ask something" }).fill(question);
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  const chips = page.locator(".exchange", { hasText: question }).getByRole("group", { name: "Tools and guides for this" });
+  // The Library and its old Knowledge folder are one chip now; the maps' folder is left out (Maps is a tool).
+  await expect(chips.getByRole("link")).toHaveCount(2);
+  await expect(chips.getByRole("link", { name: "Look it up in the library" })).toHaveAttribute("href", "#library/reference");
+  await expect(chips.getByRole("link", { name: "Guides: Water" })).toHaveAttribute("href", "#library/water");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 // Pictures to look at by eye, not a check: only with ZAKLON_SHOTS_DIR (SHOT_SIZE=1600x900

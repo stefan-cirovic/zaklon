@@ -76,9 +76,9 @@ test("maps: the Zaklon map is drawn from the hub with its credit, next to Naviga
   await expect(map.getByText("Only the world overview: countries and larger cities.")).toBeVisible();
   // The way to the world map, where the catalog offers it (only once its checksum is known).
   const world = (await (await page.request.get("/api/map")).json()).world;
-  const toAddons = map.getByRole("link", { name: "The world map is in Add-ons." });
-  if (world) await expect(toAddons).toHaveAttribute("href", "#addons/maps");
-  else await expect(toAddons).toHaveCount(0);
+  const toWorld = map.getByRole("link", { name: "Get the world map." });
+  if (world) await expect(toWorld).toHaveAttribute("href", "#maps/world");
+  else await expect(toWorld).toHaveCount(0);
   // Tiles and fonts come from the hub.
   await expect.poll(() => fromHub.some((p) => /^\/tiles\/\d+\/\d+\/\d+\.mvt$/.test(p)), { timeout: 15_000 }).toBe(true);
   await expect.poll(() => fromHub.some((p) => p.startsWith("/map/fonts/")), { timeout: 15_000 }).toBe(true);

@@ -1,4 +1,4 @@
-import { test } from "@playwright/test";
+import { test, type Page } from "@playwright/test";
 import { join } from "node:path";
 
 // Screenshots of every screen, to look at by eye; not a check. Runs only when
@@ -86,8 +86,8 @@ test("shots", async ({ page }, info) => {
     ["home", "/#home"], ["tools", "/#tools"], ["library", "/#library"], ["maps", "/#maps"], ["supplies", "/#supplies"],
     ["water", "/#tools/water?people=2&children=2&smallpets=1&days=7"],
     ["water-drip", "/#tools/water?part=drip&beds=4x1.2:tomatoes,3x1:greens,6:potatoes&lat=44.8&month=7&tmax=29&tmin=17&rain=60&roof=80"],
-    ["assistant", "/#assistant"], ["addons", "/#addons"], ["settings", "/#settings"], ["settings-help", "/#help"],
-    ...["devices", "network", "backups", "privacy", "appearance", "language", "assistant", "updates", "about"].map(
+    ["assistant", "/#assistant"], ["settings", "/#settings"], ["settings-help", "/#help"],
+    ...["devices", "storage", "network", "backups", "privacy", "appearance", "language", "assistant", "updates", "about"].map(
       (c) => [`settings-${c}`, `/#settings/${c}`] as [string, string],
     ),
   ];
@@ -104,93 +104,6 @@ test("shots", async ({ page }, info) => {
   await page.keyboard.press("Enter");
   await page.waitForTimeout(600);
   await page.screenshot({ path: file("settings-search-opened"), fullPage: false });
-  // Add-ons as a file explorer, with some packs on the hub, one on its way and one
-  // that failed (states made up for the picture; nothing is downloaded).
-  await page.route("**/api/catalog", async (r) => {
-    const json = await (await r.fetch()).json();
-    for (const p of json.packs) {
-      if (["wikipedia-sr-maxi", "wikimed-en", "kiwix-tools", "llama-cpp", "qwen35-4b"].includes(p.id)) p.state = { ...p.state, status: "installed", bytes_done: p.size, bytes_total: p.size };
-      if (p.id === "ifixit-en") p.state = { ...p.state, status: "downloading", bytes_done: Math.round(p.size * 0.45), bytes_total: p.size, speed: 3_400_000 };
-      if (p.id === "zimgit-water-en") p.state = { ...p.state, status: "failed", error: "checksum mismatch" };
-      if (p.id === "qwen35-9b") p.state = { ...p.state, status: "paused", bytes_done: Math.round(p.size * 0.2), bytes_total: p.size };
-    }
-    // A pack the hub has that the catalog no longer offers.
-    json.packs.push({
-      id: "zimgit-medicine-en",
-      title: { en: "First aid and medicine guides (English)", sr: "Vodiči za prvu pomoć i medicinu (engleski)" },
-      description: { en: "Field manuals on first aid and medical care when no doctor is available.", sr: "Priručnici za prvu pomoć i lečenje kad lekar nije dostupan." },
-      category: "knowledge", topics: ["health"], version: "2024-08", size: 70179585, license: "Various; see each document",
-      attribution: "Various authors, collected by Kiwix", source: "https://library.kiwix.org", offer: "auto", languages: ["eng"], recommended_for: [],
-      withdrawn: true, state: { status: "installed", bytes_done: 70179585, bytes_total: 70179585, speed: 0 },
-    });
-    return r.fulfill({ json });
-  });
-  await page.route("**/api/maps", async (r) => {
-    const json = await (await r.fetch()).json();
-    const serbia = json.countries.find((c: { id: string }) => c.id === "Serbia");
-    for (const reg of serbia.regions) reg.status = "installed";
-    json.installed_bytes = serbia.size;
-    return r.fulfill({ json });
-  });
-  for (const [name, url, view] of [
-    ["addons-x", "/#addons", "tiles"],
-    ["addons-x-models", "/#addons/models", "tiles"],
-    ["addons-x-build", "/#addons/build", "tiles"],
-    ["addons-x-water", "/#addons/water", "tiles"],
-    ["addons-x-details", "/#addons", "details"],
-    ["addons-x-knowledge-details", "/#addons/knowledge", "details"],
-    ["addons-x-health-details", "/#addons/health", "details"],
-    ["addons-x-maps-details", "/#addons/maps", "details"],
-    ["addons-x-library", "/#addons/library", "details"],
-  ]) {
-    await page.evaluate((v) => localStorage.setItem("zaklon.addonsView", v), view);
-    await page.goto(url);
-    await page.reload();
-    await page.waitForTimeout(1200);
-    await page.screenshot({ path: file(name), fullPage: name !== "addons-x-maps-details" });
-  }
-  await page.getByRole("searchbox").fill("wiki");
-  await page.waitForTimeout(400);
-  await page.screenshot({ path: file("addons-x-search"), fullPage: true });
-  await page.getByRole("searchbox").fill("");
-  // The packs people download themselves, and the question before one downloads
-  // (nothing is asked of the hub: the question is only opened).
-  for (const [name, url, view] of [
-    ["addons-x-health", "/#addons/health", "tiles"],
-    ["addons-x-food", "/#addons/food", "tiles"],
-    ["addons-x-build-details", "/#addons/build", "details"],
-  ]) {
-    await page.evaluate((v) => localStorage.setItem("zaklon.addonsView", v), view);
-    await page.goto(url);
-    await page.reload();
-    await page.waitForTimeout(1200);
-    await page.screenshot({ path: file(name), fullPage: true });
-  }
-  await page.evaluate(() => localStorage.setItem("zaklon.addonsView", "tiles"));
-  await page.goto("/#addons/food");
-  await page.reload();
-  await page.waitForTimeout(1200);
-  const grim = page.locator('[data-entry="grimgrains-en"]');
-  await grim.getByRole("button").first().click();
-  await page.waitForTimeout(400);
-  await grim.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: file("addons-x-food-ask"), fullPage: false });
-  if (info.project.name === "laptop") {
-    // A USB drive, when the machine has another drive.
-    await page.goto("/#addons");
-    await page.reload();
-    await page.waitForTimeout(1200);
-    const other = page.locator(".drive-grid button.drive-tile").nth(1);
-    if (await other.count()) {
-      await other.click();
-      await page.waitForTimeout(800);
-      await page.screenshot({ path: file("addons-x-drive"), fullPage: true });
-    }
-  }
-  await page.evaluate(() => localStorage.setItem("zaklon.addonsView", "tiles"));
-  await page.unroute("**/api/catalog");
-  await page.unroute("**/api/maps");
-
   // The bar with a pinned tool, and the logo while pointed at (laptop).
   await page.request.post("/api/pinned-tool", { data: { tool: "supplies" } });
   await page.goto("/#tools");
@@ -471,7 +384,7 @@ test("power shots", async ({ page }, info) => {
 });
 
 test("world map shots", async ({ page }, info) => {
-  // The world map in Add-ons › Maps, with the hub's answers simulated: the
+  // The world map beside the Zaklon map (Maps), with the hub's answers simulated: the
   // build offered, then an older build on the hub with a newer one offered.
   test.setTimeout(60000);
   if (SIZE && info.project.name === "laptop") await page.setViewportSize({ width: Number(SIZE[1]), height: Number(SIZE[2]) });
@@ -504,18 +417,187 @@ test("world map shots", async ({ page }, info) => {
     await page.screenshot({ path: file(name), fullPage: false });
     await entry.screenshot({ path: file(`${name}-entry`) });
   };
-  await page.goto("/#addons/maps");
+  await page.goto("/#maps/world");
   await entry.waitFor();
-  await shoot("addons-world-map");
+  await shoot("maps-world-map");
   world = { ...world, offered: "20261019", offered_size: 129 * GB, installed: "20260811", installed_size: 137295889397, update: true, needed: 130 * GB };
   state = { status: "installed", bytes_done: 137295889397, bytes_total: 137295889397, speed: 0, update_available: true };
   await page.reload();
   await entry.waitFor();
-  await shoot("addons-world-map-update");
+  await shoot("maps-world-map-update");
   // Without room for both maps: the question before the old one is removed.
   world = { ...world, disk_free: 96 * GB, room_for_both: false };
   await page.reload();
   await entry.locator("[data-asks-license]").click();
-  await shoot("addons-world-map-noroom");
+  await shoot("maps-world-map-noroom");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+/** The installed guides of the pictures below (made up; nothing is downloaded), with their topics. */
+const SHOT_BOOKS: [string, string, string[]][] = [
+  ["wikipedia-sr-maxi", "wikipedia_sr_all_maxi", ["reference"]],
+  ["wiktionary-sr", "wiktionary_sr_all", ["reference"]],
+  ["wikimed-en", "wikipedia_en_medicine_maxi", ["health"]],
+  ["military-medicine-en", "zimgit-military-medicine_en", ["health"]],
+  ["appropedia-en", "appropedia_en_all", ["water", "garden", "power", "build"]],
+  ["restarters-en", "restarters_en_all", ["build"]],
+  ["zimgit-medicine-en", "zimgit-medicine_en", ["health"]],
+];
+
+/**
+ * A hub with some guides on it (readable in the Library), one downloading,
+ * one that failed, an AI model paused, a pack the catalog withdrew, a world
+ * map with a newer build and Serbia's map for phones: states made up for the
+ * pictures, nothing is downloaded.
+ */
+async function simulateHub(page: Page) {
+  const GB = 1024 ** 3;
+  await page.route("**/api/world-map/check", (r) => r.fulfill({ json: { checking: false } }));
+  await page.route("**/api/catalog", async (r) => {
+    const json = await (await r.fetch()).json();
+    const installed = [...SHOT_BOOKS.map(([id]) => id), "kiwix-tools", "llama-cpp", "qwen35-4b"];
+    for (const p of json.packs) {
+      if (installed.includes(p.id)) p.state = { ...p.state, status: "installed", bytes_done: p.size, bytes_total: p.size };
+      if (p.id === "wikimed-en") p.state.update_available = true;
+      if (p.id === "ifixit-en") p.state = { ...p.state, status: "downloading", bytes_done: Math.round(p.size * 0.45), bytes_total: p.size, speed: 3_400_000 };
+      if (p.id === "zimgit-water-en") p.state = { ...p.state, status: "failed", error: "checksum mismatch" };
+      if (p.id === "qwen35-9b") p.state = { ...p.state, status: "paused", bytes_done: Math.round(p.size * 0.2), bytes_total: p.size };
+      if (p.id === "world-map") {
+        Object.assign(p, { version: "20261019", size: 139 * GB });
+        p.state = { status: "installed", bytes_done: 139 * GB, bytes_total: 139 * GB, speed: 0, update_available: true };
+      }
+    }
+    json.world = { offered: "20261019", offered_size: 139 * GB, installed: "20260811", installed_size: 128 * GB, update: true, needed: 140 * GB, disk_free: 412 * GB, room_for_both: true, listed: true };
+    // A pack the hub has that the catalog no longer offers.
+    json.packs.push({
+      id: "zimgit-medicine-en",
+      title: { en: "First aid and medicine guides (English)", sr: "Vodiči za prvu pomoć i medicinu (engleski)" },
+      description: { en: "Field manuals on first aid and medical care when no doctor is available.", sr: "Priručnici za prvu pomoć i lečenje kad lekar nije dostupan." },
+      category: "knowledge", topics: ["health"], version: "2024-08", size: 70179585, license: "Various; see each document",
+      attribution: "Various authors, collected by Kiwix", source: "https://library.kiwix.org", offer: "auto", languages: ["eng"], recommended_for: [],
+      withdrawn: true, state: { status: "installed", bytes_done: 70179585, bytes_total: 70179585, speed: 0 },
+    });
+    json.system = { ...json.system, disk_free: 412 * GB, disk_total: 931 * GB };
+    return r.fulfill({ json });
+  });
+  await page.route("**/api/maps", async (r) => {
+    const json = await (await r.fetch()).json();
+    const serbia = json.countries.find((c: { id: string }) => c.id === "Serbia");
+    for (const reg of serbia.regions) reg.status = "installed";
+    json.installed_bytes = serbia.size;
+    return r.fulfill({ json });
+  });
+  const catalog = await (await page.request.get("/api/catalog")).json();
+  const titles = new Map<string, { en: string; sr: string }>(catalog.packs.map((p: { id: string; title: { en: string; sr: string } }) => [p.id, p.title]));
+  titles.set("zimgit-medicine-en", { en: "First aid and medicine guides (English)", sr: "Vodiči za prvu pomoć i medicinu (engleski)" });
+  const books = SHOT_BOOKS.map(([id, name, topics]) => ({
+    name, pack_id: id, title_en: titles.get(id)!.en, title_sr: titles.get(id)!.sr, languages: [id.endsWith("-sr") ? "srp" : "eng"], home: `/kiwix/content/${name}/`, topics,
+  }));
+  await page.route("**/api/library", (r) => r.fulfill({ json: { engine: "running", books } }));
+  await page.route("**/kiwix/content/**", (r) =>
+    r.fulfill({ contentType: "text/html", body: "<!doctype html><title>Guide</title><body style='font-family:sans-serif;padding:24px'><h1>Water purification</h1><p>Boil clear water for one minute.</p></body>" }),
+  );
+  await page.route("**/api/assistant", (route) =>
+    route.fulfill({
+      json: {
+        engine: "ready", engine_installed: true, selected: "qwen35-4b", recommended: "qwen35-4b", ram_total: 16e9, books: books.length,
+        models: [
+          { id: "qwen35-08b", title_en: "Small AI model (Qwen3.5 0.8B)", title_sr: "Mali AI model (Qwen3.5 0.8B)", size: 8.3e8, installed: false, recommended: false, fits: true },
+          { id: "qwen35-2b", title_en: "AI model for phones (Qwen3.5 2B)", title_sr: "AI model za telefone (Qwen3.5 2B)", size: 1.3e9, installed: false, recommended: false, fits: true },
+          { id: "qwen35-4b", title_en: "AI model for laptops (Qwen3.5 4B)", title_sr: "AI model za laptopove (Qwen3.5 4B)", size: 2.7e9, installed: true, recommended: true, fits: true },
+          { id: "qwen35-9b", title_en: "AI model for 16 GB computers (Qwen3.5 9B)", title_sr: "AI model za računare sa 16 GB (Qwen3.5 9B)", size: 5.7e9, installed: false, recommended: false, fits: false },
+        ],
+      },
+    }),
+  );
+}
+
+// The three places (run alone with -g "places shots"): the bar, the Library (empty, then with
+// guides), Tools, Storage & Downloads, Settings › AI assistant and the world map beside the map.
+test("places shots", async ({ page }, info) => {
+  test.setTimeout(180000);
+  if (SIZE && info.project.name === "laptop") await page.setViewportSize({ width: Number(SIZE[1]), height: Number(SIZE[2]) });
+  const file = (name: string) => join(DIR ?? "", `${LANG}-${info.project.name}-${name}.png`);
+  await page.addInitScript((l) => localStorage.setItem("zaklon.lang", l), LANG);
+  await page.goto("/#settings");
+  const setup = page.getByText(/Set up your household|Podesi domaćinstvo/);
+  if (await setup.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await page.locator('input[type="password"]').nth(0).fill("correct horse");
+    await page.locator('input[type="password"]').nth(1).fill("correct horse");
+    await page.locator("form button.btn").click();
+    await page.waitForTimeout(800);
+  }
+  const shot = async (name: string, url: string, full = true) => {
+    await page.goto(url);
+    await page.waitForTimeout(1300);
+    await page.screenshot({ path: file(name), fullPage: full });
+  };
+  // Nothing on the hub yet: the Library starts with the recommended set.
+  await page.request.post("/api/pinned-tool", { data: { tool: null } });
+  await shot("places-library-start", "/#library");
+  await shot("places-library-start-topic", "/#library/water");
+  await shot("places-tools", "/#tools");
+  // The bar: five items, and six with a pinned tool (also on a 360 px phone).
+  await page.request.post("/api/pinned-tool", { data: { tool: "power" } });
+  await page.goto("/#tools");
+  await page.reload();
+  await page.waitForTimeout(1000);
+  await page.screenshot({ path: file("places-tools-pinned"), fullPage: false });
+  await page.locator("nav.nav").screenshot({ path: file("places-bar-pinned") });
+  if (info.project.name === "phone") {
+    const size = page.viewportSize()!;
+    await page.setViewportSize({ width: 360, height: 760 });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: file("places-360-tools-pinned"), fullPage: false });
+    await page.locator("nav.nav").screenshot({ path: file("places-360-bar-pinned") });
+    await page.request.post("/api/pinned-tool", { data: { tool: null } });
+    await page.reload();
+    await page.waitForTimeout(800);
+    await page.locator("nav.nav").screenshot({ path: file("places-360-bar") });
+    await page.setViewportSize(size);
+  }
+  await page.request.post("/api/pinned-tool", { data: { tool: null } });
+
+  // With guides on the hub.
+  await simulateHub(page);
+  await shot("places-library", "/#library");
+  await shot("places-library-health", "/#library/health");
+  await shot("places-library-water", "/#library/water");
+  await shot("places-library-reference", "/#library/reference");
+  await shot("places-library-build", "/#library/build");
+  await page.goto("/#library/food");
+  await page.waitForTimeout(1200);
+  const grim = page.locator('[data-entry="grimgrains-en"]');
+  await grim.getByRole("button").first().click();
+  await page.waitForTimeout(400);
+  await grim.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: file("places-library-food-ask"), fullPage: false });
+  await page.goto("/#library/health");
+  await page.waitForTimeout(1200);
+  await page.locator(".lib-book-open").first().click();
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: file("places-library-reader"), fullPage: false });
+
+  await page.evaluate(() => localStorage.setItem("zaklon.storageView", "tiles"));
+  await shot("places-storage", "/#settings/storage");
+  for (const place of ["guides", "maps", "models", "programs", "disk"]) await shot(`places-storage-${place}`, `/#settings/storage/${place}`);
+  await page.evaluate(() => localStorage.setItem("zaklon.storageView", "details"));
+  await shot("places-storage-details", "/#settings/storage");
+  await shot("places-storage-guides-details", "/#settings/storage/guides");
+  await page.evaluate(() => localStorage.setItem("zaklon.storageView", "tiles"));
+  if (info.project.name === "laptop") {
+    // A USB drive, when the machine has another drive.
+    await page.goto("/#settings/storage");
+    await page.waitForTimeout(1200);
+    const other = page.locator(".drive-grid button.drive-tile").nth(1);
+    if (await other.count()) {
+      await other.click();
+      await page.waitForTimeout(900);
+      await page.screenshot({ path: file("places-storage-drive"), fullPage: true });
+    }
+  }
+  await shot("places-settings-assistant", "/#settings/assistant");
+  await shot("places-maps", "/#maps/world", false);
+  await shot("places-home", "/#home");
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });

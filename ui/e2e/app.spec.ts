@@ -186,18 +186,161 @@ test("language switch to Serbian and back, with Serbian number format", async ({
   await expect(page.locator("nav.nav").getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
 });
 
-test("library without packs points to add-ons, which lists the catalog", async ({ page }) => {
+/**
+ * The hub's library with these guides on it, as the hub answers once they are
+ * installed (simulated: nothing is downloaded), and their pages.
+ */
+async function libraryWith(page: Page, installed: { id: string; name: string; topics: string[] }[]) {
+  const catalog = await (await page.request.get("/api/catalog")).json();
+  const title = (id: string) => catalog.packs.find((p: { id: string }) => p.id === id).title;
+  await page.route("**/api/catalog", async (r) => {
+    const json = await (await r.fetch()).json();
+    for (const p of json.packs) if (installed.some((i) => i.id === p.id)) p.state = { ...p.state, status: "installed", bytes_done: p.size, bytes_total: p.size };
+    return r.fulfill({ json });
+  });
+  const books = installed.map((i) => ({
+    name: i.name, pack_id: i.id, title_en: title(i.id).en, title_sr: title(i.id).sr, languages: ["eng"], home: `/kiwix/content/${i.name}/`, topics: i.topics,
+  }));
+  await page.route("**/api/library", (r) => r.fulfill({ json: { engine: "running", books } }));
+  await page.route("**/kiwix/content/**", (r) => r.fulfill({ contentType: "text/html", body: "<!doctype html><title>Guide</title><h1>Burns</h1>" }));
+}
+
+test("library: without guides it starts with the recommended set and the topics; a topic lists the guides to get", async ({ page }) => {
   await ensureSetUp(page);
   await page.goto("/#library");
-  await expect(page.getByText(/No knowledge packs yet/)).toBeVisible();
-  await page.getByRole("button", { name: "Open Add-ons" }).click();
-  await expect(page.getByRole("heading", { name: "Add-ons" })).toBeVisible();
-  // The hub's drive with how full it is, then the catalog in folders.
-  const library = page.locator(".drive-grid .drive-tile").first();
-  await expect(library).toContainText("Zaklon library");
-  await expect(library).toContainText(/free of/);
-  await page.getByRole("list", { name: "Folders" }).getByRole("button", { name: /^Knowledge/ }).click();
-  await expect(page.getByText("Wikipedia in Serbian (with pictures)")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Library", level: 1 })).toBeVisible();
+  await expect(page.locator("nav.nav").getByRole("button", { name: "Library" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("heading", { name: "Nothing to read yet" })).toBeVisible();
+  // The recommended set for the app's language, right here (on the laptop).
+  await expect(page.locator(".lib-start .starter").getByRole("heading", { name: "English essentials" })).toBeVisible();
+  // The topics as clear entries; the maps are not one of them (they are in Tools › Maps).
+  await expect(page.locator(".lib-topic-name")).toHaveText([
+    "Health and first aid", "Water", "Food", "Garden", "Power", "Build and install", "Encyclopedias & dictionaries",
+  ]);
+  await expect(page.locator('[data-topic="water"]')).toContainText(/\d+ guides to download/);
+  await noHorizontalScroll(page);
+  await page.locator('[data-topic="reference"]').click();
+  await expect(page).toHaveURL(/#library\/reference$/);
+  await expect(page.getByRole("heading", { name: "Encyclopedias & dictionaries", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your guides" })).toBeVisible();
+  await expect(page.getByText("None yet. Download one below, then read it here without internet.")).toBeVisible();
+  const wikipedia = page.locator('[data-entry="wikipedia-sr-maxi"]');
+  await expect(wikipedia).toContainText("Not downloaded");
+  await expect(wikipedia).toContainText("CC BY-SA 4.0");
+  await expect(wikipedia.getByRole("button", { name: "Download: Wikipedia in Serbian (with pictures)" })).toBeVisible();
+  // Encyclopedias and dictionaries have no tool of their own.
+  await expect(page.locator(".lib-tool")).toHaveCount(0);
+  await noHorizontalScroll(page);
+  await page.getByRole("link", { name: "Back to the Library" }).click();
+  await expect(page).toHaveURL(/#library$/);
+  await expect(page.getByRole("heading", { name: "Library", level: 1 })).toBeVisible();
+  // In Serbian, the same topics.
+  await setLanguage(page, "sr");
+  await page.goto("/#library");
+  await expect(page.locator(".lib-topic-name")).toHaveText(["Zdravlje i prva pomoć", "Voda", "Hrana", "Bašta", "Struja", "Ugradnja", "Enciklopedije i rečnici"]);
+  await noHorizontalScroll(page);
+  await setLanguage(page, "en");
+});
+
+test("library: a topic has its guides on the hub to read, the ones to get and its tool (states simulated)", async ({ page }) => {
+  await ensureSetUp(page);
+  await libraryWith(page, [
+    { id: "wikimed-en", name: "wikipedia_en_medicine", topics: ["health"] },
+    { id: "appropedia-en", name: "appropedia_en_all", topics: ["water", "garden", "power", "build"] },
+  ]);
+  await page.goto("/#library");
+  // The search across every guide, and what of each topic is on the hub.
+  await expect(page.getByRole("searchbox", { name: "Search the library…" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Nothing to read yet" })).toHaveCount(0);
+  await expect(page.locator('[data-topic="health"]')).toContainText("On the hub: 1");
+  await expect(page.locator('[data-topic="water"]')).toContainText("On the hub: 1");
+  await page.locator('[data-topic="health"]').click();
+  await expect(page.getByRole("heading", { name: "Health and first aid", level: 1 })).toBeVisible();
+  // Its tool: Supplies (food and medicine).
+  const tool = page.locator(".lib-tool");
+  await expect(tool).toContainText("Tool for this topic");
+  await expect(tool).toContainText("Supplies");
+  await expect(tool).toHaveAttribute("href", "#supplies");
+  // Your guides: the one on the hub, opening straight into reading.
+  const yours = page.getByRole("list", { name: "Your guides" });
+  await expect(yours.getByRole("listitem")).toHaveCount(1);
+  await expect(yours).toContainText("Medical Wikipedia (English)");
+  // Get more: the topic's other guides, not the one on the hub; the ones you download yourself apart.
+  const more = page.getByRole("list", { name: "Get more: Health and first aid" });
+  await expect(more.locator('[data-entry="military-medicine-en"]')).toContainText("Not downloaded");
+  await expect(more.locator('[data-entry="wikimed-en"]')).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "You download these yourself" }).locator('[data-entry="zimgit-water-en"]')).toBeVisible();
+  await noHorizontalScroll(page);
+  await yours.getByRole("button", { name: "Read: Medical Wikipedia (English)" }).click();
+  await expect(page.locator(".reader-title")).toHaveText("Medical Wikipedia (English)");
+  await page.locator(".reader-bar").getByRole("button", { name: /Back/ }).click();
+  await expect(page.getByRole("heading", { name: "Health and first aid", level: 1 })).toBeVisible();
+  // A guide about several topics is under each: Appropedia under Water and Garden, whose tool is the water calculator.
+  for (const [id, name] of [["water", "Water"], ["garden", "Garden"]]) {
+    await page.goto(`/#library/${id}`);
+    await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
+    await expect(page.getByRole("list", { name: "Your guides" })).toContainText("Appropedia");
+    await expect(page.locator(".lib-tool")).toHaveAttribute("href", "#water");
+  }
+  await page.goto("/#library/power");
+  await expect(page.locator(".lib-tool")).toHaveAttribute("href", "#power");
+  await page.goto("/#library/build");
+  await expect(page.getByRole("list", { name: "Your guides" })).toContainText("Appropedia");
+  await expect(page.locator(".lib-tool")).toHaveCount(0);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("library: a guide downloads from its topic, and a topic's search looks only in its guides (requests intercepted)", async ({ page }) => {
+  await ensureSetUp(page);
+  const asked: string[] = [];
+  await page.route("**/api/packs/*/download*", (r) => {
+    const url = new URL(r.request().url());
+    asked.push(url.pathname + url.search);
+    return r.fulfill({ status: 202, body: "" });
+  });
+  await page.goto("/#library/garden");
+  const more = page.getByRole("list", { name: "Get more: Garden" });
+  await more.locator('[data-entry="gardenology-en"]').getByRole("button", { name: "Download: Gardenology plant encyclopedia (English)" }).click();
+  await expect.poll(() => asked).toEqual(["/api/packs/gardenology-en/download"]);
+  await page.waitForTimeout(300);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+
+  // Once it is on the hub, the topic's search asks for that topic's guides only.
+  await libraryWith(page, [{ id: "gardenology-en", name: "gardenology_en_all", topics: ["garden"] }]);
+  const searched: string[] = [];
+  await page.route("**/api/library/search*", (r) => {
+    searched.push(r.request().url());
+    return r.fulfill({
+      json: [{ title: "Tomato", url: "/kiwix/content/gardenology_en_all/A/Tomato", snippet: "Tomatoes need sun.", book: "gardenology_en_all", book_title_en: "Gardenology plant encyclopedia (English)", book_title_sr: "x", kind: "title" }],
+    });
+  });
+  await page.reload();
+  await page.getByRole("searchbox", { name: "Search these guides…" }).fill("tomato");
+  const results = page.getByRole("region", { name: "Search results" });
+  await expect(results.getByRole("button")).toHaveCount(1);
+  expect(new URL(searched.at(-1)!).searchParams.get("topic")).toBe("garden");
+  await results.getByRole("button", { name: /Tomato/ }).click();
+  await expect(page.locator(".reader-title")).toHaveText("Tomato");
+  await page.locator(".reader-bar").getByRole("button", { name: /Back/ }).click();
+  // The Library's own search looks in every guide.
+  await page.goto("/#library");
+  await page.getByRole("searchbox", { name: "Search the library…" }).fill("tomato");
+  await expect(page.getByText("Tomatoes need sun.")).toBeVisible();
+  expect(new URL(searched.at(-1)!).searchParams.get("topic")).toBeNull();
+  await noHorizontalScroll(page);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("the Kiwix map packs are not offered: the maps are in Tools › Maps", async ({ page }) => {
+  await ensureSetUp(page);
+  const catalog = await (await page.request.get("/api/catalog")).json();
+  expect(catalog.packs.filter((p: { id: string }) => p.id.startsWith("kiwix-map-")).map((p: { id: string }) => p.id)).toEqual([]);
+  expect(catalog.packs.filter((p: { category: string; topics?: string[] }) => p.category === "knowledge" && p.topics?.includes("maps"))).toEqual([]);
+  for (const topic of ["reference", "health", "build"]) {
+    await page.goto(`/#library/${topic}`);
+    await expect(page.locator("[data-entry]").first()).toBeVisible();
+    await expect(page.locator('[data-entry^="kiwix-map-"]')).toHaveCount(0);
+  }
 });
 
 test("every screen fits the width of the device", async ({ page }, info) => {
@@ -207,8 +350,9 @@ test("every screen fits the width of the device", async ({ page }, info) => {
   const name = `Extra virgin olive oil from the cooperative in Istria, 750 ml (${info.project.name})`;
   const res = await page.request.post("/api/items", { data: { name, quantity: 2, unit: "pcs", category: "food", expiry: soon, min_quantity: 3 } });
   expect(res.ok()).toBe(true);
-  const settings = ["devices", "network", "backups", "privacy", "appearance", "language", "assistant", "updates", "about"].map((c) => `settings/${c}`);
-  for (const tab of ["home", "tools", "library", "maps", "supplies", "assistant", "addons", "settings", "help", ...settings]) {
+  const settings = ["devices", "storage", "network", "backups", "privacy", "appearance", "language", "assistant", "updates", "about"].map((c) => `settings/${c}`);
+  const places = ["library/health", "library/reference", "settings/storage/guides", "settings/storage/programs", "settings/storage/disk"];
+  for (const tab of ["home", "tools", "library", "maps", "supplies", "assistant", "settings", "help", ...settings, ...places]) {
     await page.goto(`/#${tab}`);
     await page.waitForTimeout(300);
     await noHorizontalScroll(page);
@@ -247,14 +391,14 @@ test("the tab is remembered in the address", async ({ page }) => {
   await page.goto("/#home");
   await page.locator("nav").getByRole("button", { name: "Tools" }).click();
   await expect(page).toHaveURL(/#tools$/);
-  await page.getByRole("region", { name: "Food", exact: true }).getByRole("button", { name: /^Supplies/ }).click();
+  await page.locator('[data-tool="supplies"]').getByRole("button", { name: /^Supplies/ }).click();
   await expect(page).toHaveURL(/#supplies$/);
   await page.reload();
   await expect(page.getByRole("heading", { name: "Supplies" })).toBeVisible();
   // A tool that is not pinned is found under Tools, and the bar says so.
   await expect(page.locator("nav").getByRole("button", { name: "Tools" })).toHaveAttribute("aria-current", "true");
   // Every screen keeps its own address.
-  for (const [tab, heading] of [["library", "Library"], ["maps", "Maps"], ["addons", "Add-ons"], ["assistant", "Assistant"], ["tools", "Tools"], ["help", "Help"]]) {
+  for (const [tab, heading] of [["library", "Library"], ["library/water", "Water"], ["maps", "Maps"], ["assistant", "Assistant"], ["tools", "Tools"], ["help", "Help"], ["settings/storage", "Storage & Downloads"]]) {
     await page.goto(`/#${tab}`);
     await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
   }
@@ -269,24 +413,28 @@ async function barItems(page: Page) {
   return page.locator("nav .nav-items button").allInnerTexts();
 }
 
-test("tools: every tool is listed, and one can be pinned to the bar for the whole household", async ({ page }) => {
+/** No label in the bar is cut short, every item is on the screen and a fingertip wide. */
+async function barReadable(page: Page) {
+  const cut = await page.evaluate(() =>
+    [...document.querySelectorAll(".nav-label")].filter((l) => l.scrollWidth > l.clientWidth + 1).map((l) => l.textContent),
+  );
+  expect(cut, "labels cut short in the bar").toEqual([]);
+  const width = page.viewportSize()!.width;
+  for (const b of await page.locator("nav .nav-items button").all()) {
+    const box = (await b.boundingBox())!;
+    expect(box.x + box.width).toBeLessThanOrEqual(width + 1);
+    expect(box.width).toBeGreaterThanOrEqual(44);
+  }
+  await noHorizontalScroll(page);
+}
+
+test("the bar: Home, Assistant, Library, Tools, Settings, and one tool pinned for the whole household", async ({ page }, info) => {
   await ensureSetUp(page);
   // The pinned tool lives on the hub; start from none whatever ran before.
   await page.request.post("/api/pinned-tool", { data: { tool: null } });
   await page.goto("/#tools");
   await expect(page.getByRole("heading", { name: "Tools", exact: true })).toBeVisible();
-  for (const name of ["Supplies", "Library", "Maps", "Power calculator", "Water calculator", "Add-ons"]) {
-    await expect(page.locator(".tool-card", { hasText: name }).first()).toBeVisible();
-  }
-  await expect(page.getByText(/expiry dates and a shopping list/).first()).toBeVisible();
-  // Supplies (food and medicines) is listed under Food and under Health and first aid,
-  // the water calculator under Water and under Garden.
-  await expect(page.locator(".tool-card", { hasText: "Supplies" })).toHaveCount(2);
-  await expect(page.locator(".tool-card", { hasText: "Water calculator" })).toHaveCount(2);
-  // Only the tools: Help is in Settings now.
-  await expect(page.locator(".tool-card")).toHaveCount(8);
-  await expect(page.locator(".topic-grid").getByRole("link", { name: /^Help/ })).toHaveCount(0);
-  expect(await barItems(page)).toEqual(["Home", "Assistant", "Tools", "Settings"]);
+  expect(await barItems(page)).toEqual(["Home", "Assistant", "Library", "Tools", "Settings"]);
 
   // The bar is along the bottom of the window, on the laptop too.
   const nav = await page.locator("nav").boundingBox();
@@ -296,16 +444,11 @@ test("tools: every tool is listed, and one can be pinned to the bar for the whol
 
   await page.getByRole("button", { name: "Pin to the bar: Maps" }).click();
   await expect(page.locator("nav").getByRole("button", { name: "Maps" })).toBeVisible();
-  expect(await barItems(page)).toEqual(["Home", "Assistant", "Maps", "Tools", "Settings"]);
+  // The pinned tool comes before Tools.
+  expect(await barItems(page)).toEqual(["Home", "Assistant", "Library", "Maps", "Tools", "Settings"]);
   await expect(page.locator(".tool-card.pinned")).toHaveCount(1);
   await expect(page.locator(".tool-card.pinned")).toContainText("Pinned");
-  await noHorizontalScroll(page);
-  // All five fit on the screen.
-  const width = page.viewportSize()!.width;
-  for (const b of await page.locator("nav .nav-items button").all()) {
-    const box = await b.boundingBox();
-    expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1);
-  }
+  await barReadable(page);
 
   // It opens its screen and is the current item there.
   await page.locator("nav").getByRole("button", { name: "Maps" }).click();
@@ -313,78 +456,69 @@ test("tools: every tool is listed, and one can be pinned to the bar for the whol
   await expect(page.getByRole("heading", { name: "Maps", exact: true })).toBeVisible();
   await expect(page.locator("nav").getByRole("button", { name: "Maps" })).toHaveAttribute("aria-current", "page");
 
-  // Pinning another replaces it; the hub keeps it for everyone.
+  // Pinning another replaces it, under a short name in the bar; the hub keeps it for everyone.
   await page.goto("/#tools");
-  await page.getByRole("button", { name: "Pin to the bar: Library" }).click();
-  await expect(page.locator("nav").getByRole("button", { name: "Library" })).toBeVisible();
+  await page.getByRole("button", { name: "Pin to the bar: Water calculator" }).click();
+  await expect(page.locator("nav").getByRole("button", { name: "Water" })).toBeVisible();
   await expect(page.locator("nav").getByRole("button", { name: "Maps" })).toHaveCount(0);
-  expect((await (await page.request.get("/api/pinned-tool")).json()).tool).toBe("library");
+  expect((await (await page.request.get("/api/pinned-tool")).json()).tool).toBe("water");
   await page.reload();
-  expect(await barItems(page)).toEqual(["Home", "Assistant", "Library", "Tools", "Settings"]);
-  // Five items: none is cut short, in Serbian either (the longest is "Podešavanja").
+  expect(await barItems(page)).toEqual(["Home", "Assistant", "Library", "Water", "Tools", "Settings"]);
+  // Six items: none is cut short, in Serbian either (the longest are "Podešavanja" and "Biblioteka"),
+  // and on a narrow phone (360 px) too.
   await setLanguage(page, "sr");
   await expect(page.locator("nav").getByRole("button", { name: "Podešavanja" })).toBeVisible();
-  const cut = await page.evaluate(() =>
-    [...document.querySelectorAll(".nav-label")].filter((l) => l.scrollWidth > l.clientWidth + 1).map((l) => l.textContent),
-  );
-  expect(cut, "labels cut short in the bar").toEqual([]);
+  expect(await barItems(page)).toEqual(["Početna", "Asistent", "Biblioteka", "Voda", "Alati", "Podešavanja"]);
+  await barReadable(page);
+  if (info.project.name === "phone") {
+    const size = page.viewportSize()!;
+    await page.setViewportSize({ width: 360, height: 760 });
+    await barReadable(page);
+    await page.setViewportSize(size);
+  }
   await setLanguage(page, "en");
   await page.goto("/#tools");
 
-  await page.getByRole("button", { name: "Unpin: Library" }).click();
-  await expect(page.locator("nav").getByRole("button", { name: "Library" })).toHaveCount(0);
-  expect(await barItems(page)).toEqual(["Home", "Assistant", "Tools", "Settings"]);
+  await page.getByRole("button", { name: "Unpin: Water calculator" }).click();
+  await expect(page.locator("nav").getByRole("button", { name: "Water" })).toHaveCount(0);
+  expect(await barItems(page)).toEqual(["Home", "Assistant", "Library", "Tools", "Settings"]);
   expect((await (await page.request.get("/api/pinned-tool")).json()).tool).toBe(null);
+  await barReadable(page);
 });
 
-test("tools: sorted by topic; a topic shows its tools, and its guides open Add-ons at that topic's folder", async ({ page }) => {
+test("tools: each tool once, with a quiet way to its guides in the Library", async ({ page }) => {
   await ensureSetUp(page);
+  await page.request.post("/api/pinned-tool", { data: { tool: null } });
   await page.goto("/#tools");
-  // The same topics as the folders of Add-ons, then Downloads (Add-ons itself).
-  await expect(page.locator(".topic-panel h2")).toHaveText(["Health and first aid", "Water", "Food", "Garden", "Power", "Build and install", "Knowledge", "Maps", "Downloads"]);
-  const topic = (name: string) => page.getByRole("region", { name, exact: true });
-  // Each with a line on what it is about, and its tools (a topic may have none yet, only guides).
-  const water = topic("Water");
-  await expect(water).toContainText("Finding, cleaning and storing safe drinking water.");
-  await expect(water.locator(".tool-title")).toHaveText(["Water calculator"]);
-  await expect(topic("Garden").locator(".tool-title")).toHaveText(["Water calculator"]);
-  await expect(topic("Build and install").locator(".tool-card")).toHaveCount(0);
-  await expect(topic("Health and first aid").locator(".tool-title")).toHaveText(["Supplies"]);
-  await expect(topic("Food").locator(".tool-title")).toHaveText(["Supplies"]);
-  await expect(topic("Knowledge").locator(".tool-title")).toHaveText(["Library"]);
-  await expect(topic("Maps").locator(".tool-title")).toHaveText(["Maps"]);
-  await expect(topic("Downloads").locator(".tool-title")).toHaveText(["Add-ons"]);
-  // Every topic leads to its guides; Downloads is Add-ons already.
-  await expect(page.getByRole("link", { name: /^Guides for this topic: / })).toHaveCount(7);
-  await expect(topic("Maps").getByRole("link", { name: "Maps to download: Maps" })).toHaveAttribute("href", "#addons/maps");
-  await expect(topic("Downloads").getByRole("link")).toHaveCount(0);
+  // Only the tools, each once: no topics, no guides to download, no Library, no Help.
+  await expect(page.locator(".tool-card .tool-title")).toHaveText(["Supplies", "Maps", "Power calculator", "Water calculator"]);
+  await expect(page.getByText(/expiry dates and a shopping list/)).toHaveCount(1);
+  await expect(page.locator(".topic-panel")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Download/ })).toHaveCount(0);
+  // A tool's guides are the Library's topics it helps with; Maps has none.
+  await expect(page.locator('[data-tool="water"] .tool-guides a')).toHaveText(["Water", "Garden"]);
+  await expect(page.locator('[data-tool="supplies"] .tool-guides a')).toHaveText(["Food", "Health and first aid"]);
+  await expect(page.locator('[data-tool="power"] .tool-guides a')).toHaveText(["Power"]);
+  await expect(page.locator('[data-tool="maps"] .tool-guides')).toHaveCount(0);
   await noHorizontalScroll(page);
-  // A tool opens its screen.
-  await topic("Knowledge").getByRole("button", { name: /^Library/ }).click();
-  await expect(page).toHaveURL(/#library$/);
-  await page.goBack();
-
-  // The guides open Add-ons at the topic's folder: the safe water guides, and the
-  // sustainable living answers, which are about more than water.
-  await water.getByRole("link", { name: "Guides for this topic: Water" }).click();
-  await expect(page).toHaveURL(/#addons\/water$/);
-  await expect(page.getByRole("heading", { name: "Water", level: 1 })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Location" }).locator('[aria-current="page"]')).toHaveText("Water");
-  await expect(page.locator('[data-entry="zimgit-water-en"]')).toBeVisible();
-  await expect(page.locator('[data-entry="stackexchange-sustainability-en"]')).toBeVisible();
-  await expect(page.locator('[data-entry="wikimed-en"]')).toHaveCount(0);
-  // The browser's (or the phone's) Back returns to Tools.
+  await page.getByRole("link", { name: "Guides: Garden" }).click();
+  await expect(page).toHaveURL(/#library\/garden$/);
+  await expect(page.getByRole("heading", { name: "Garden", level: 1 })).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(/#tools$/);
-  await topic("Build and install").getByRole("link", { name: /^Guides for this topic/ }).click();
-  await expect(page.getByRole("heading", { name: "Build and install", level: 1 })).toBeVisible();
-  await expect(page.locator('[data-entry="ifixit-en"]')).toBeVisible();
-
-  // In Serbian, the same topics.
+  // A tool opens its screen.
+  await page.locator('[data-tool="power"]').getByRole("button", { name: /^Power calculator/ }).click();
+  await expect(page).toHaveURL(/#power$/);
+  await page.goBack();
+  // Where the rest is: reading in the Library, downloads and space in Settings.
+  const note = page.locator(".tools-note").last();
+  await expect(note.getByRole("link", { name: "Library" })).toHaveAttribute("href", "#library");
+  await expect(note.getByRole("link", { name: "Settings › Storage & Downloads" })).toHaveAttribute("href", "#settings/storage");
+  // In Serbian.
   await setLanguage(page, "sr");
   await page.goto("/#tools");
-  await expect(page.locator(".topic-panel h2")).toHaveText(["Zdravlje i prva pomoć", "Voda", "Hrana", "Bašta", "Struja", "Ugradnja", "Znanje", "Mape", "Preuzimanja"]);
-  await expect(page.getByRole("region", { name: "Voda", exact: true }).getByRole("link", { name: "Vodiči za ovu temu: Voda" })).toBeVisible();
+  await expect(page.locator(".tool-card .tool-title")).toHaveText(["Zalihe", "Mape", "Kalkulator struje", "Kalkulator vode"]);
+  await expect(page.locator('[data-tool="water"] .tool-guides a')).toHaveText(["Voda", "Bašta"]);
   await noHorizontalScroll(page);
   await setLanguage(page, "en");
 });
@@ -425,7 +559,7 @@ test("the logo in the bar opens the Zaklon website", async ({ page, context }, i
 test("an idle screen does not flood the hub with requests", async ({ page }) => {
   test.setTimeout(90_000);
   await ensureSetUp(page);
-  for (const tab of ["home", "supplies", "settings", "library", "addons", "tools"]) {
+  for (const tab of ["home", "supplies", "settings", "library", "library/water", "settings/storage", "tools"]) {
     await page.goto(`/#${tab}`);
     await page.waitForTimeout(1500);
     const counts: Record<string, number> = {};
@@ -545,15 +679,16 @@ test("maps: the phone steps show the hub address, and the world is searchable", 
   await search.fill("zzzz-nowhere");
   await expect(page.getByText("Nothing found.")).toBeVisible();
   await noHorizontalScroll(page);
-  // In Add-ons the maps are a folder of countries (not their pieces), which points here for phones.
-  await page.goto("/#addons/maps");
+  // What maps take on the hub is in Storage & Downloads, which leads here to get them.
+  await page.goto("/#settings/storage/maps");
+  await expect(page.getByRole("navigation", { name: "Location" }).locator('[aria-current="page"]')).toHaveText("Maps");
+  await page.locator(".folder-note").getByRole("link", { name: "Tools › Maps" }).click();
+  await expect(page).toHaveURL(/#maps$/);
   await expect(page.getByRole("heading", { name: "Maps", exact: true })).toBeVisible();
-  await expect(page.getByText(/Phones show maps in the CoMaps app/)).toBeVisible();
-  await expect(page.locator('[data-entry="map:Montenegro"]')).toBeVisible();
-  await expect(page.locator('[data-entry^="map:Germany"]')).toHaveCount(1);
-  await page.getByRole("link", { name: "Open Maps" }).click();
-  await expect(page).toHaveURL(/#maps\/navigation$/);
-  await expect(page.getByRole("heading", { name: "Maps on a phone" })).toBeVisible();
+  // The old address of the maps' folder in Add-ons leads to Maps too.
+  await page.goto("/#addons/maps");
+  await expect(page).toHaveURL(/#maps$/);
+  await expect(page.getByRole("tab", { name: "Zaklon map" })).toHaveAttribute("aria-selected", "true");
 });
 
 test("settings: accent color is remembered, password can be changed, hub facts and privacy are shown", async ({ page }) => {
@@ -592,11 +727,93 @@ test("settings: accent color is remembered, password can be changed, hub facts a
   await noHorizontalScroll(page);
 });
 
-test("add-ons: copy to USB and import offer the laptop's drives", async ({ page }) => {
+/** Where Storage & Downloads is: the crumb of the place open. */
+function storagePlace(page: Page) {
+  return page.getByRole("navigation", { name: "Location" }).locator('[aria-current="page"]');
+}
+
+test("storage: the drives, what is on the hub by kind, the downloads and USB (states simulated)", async ({ page }) => {
   await ensureSetUp(page);
-  await page.goto("/#addons");
+  const GB = 1024 ** 3;
+  await page.route("**/api/catalog", async (r) => {
+    const json = await (await r.fetch()).json();
+    json.system = { ...json.system, disk_free: 120 * GB, disk_total: 500 * GB };
+    for (const p of json.packs) {
+      if (["wikimed-en", "kiwix-tools", "qwen35-2b"].includes(p.id)) p.state = { ...p.state, status: "installed", bytes_done: p.size, bytes_total: p.size };
+      if (p.id === "kiwix-tools") p.state.update_available = true;
+      if (p.id === "restarters-en") p.state = { ...p.state, status: "downloading", bytes_done: Math.round(p.size * 0.4), bytes_total: p.size, speed: 1_000_000 };
+      if (p.id === "gardenology-en") p.state = { ...p.state, status: "paused", bytes_done: Math.round(p.size * 0.2), bytes_total: p.size };
+    }
+    return r.fulfill({ json });
+  });
+  await page.route("**/api/maps", async (r) => {
+    const json = await (await r.fetch()).json();
+    const serbia = json.countries.find((c: { id: string }) => c.id === "Serbia");
+    for (const reg of serbia.regions) reg.status = "installed";
+    json.installed_bytes = serbia.size;
+    return r.fulfill({ json });
+  });
+  // In Settings, found by its old name too.
+  await page.goto("/#settings");
+  await page.getByRole("searchbox", { name: "Find a setting" }).fill("add-ons");
+  await expect(page.locator(".set-results").getByRole("link").first()).toContainText("Storage & Downloads");
+  await page.goto("/#settings/storage");
+  await expect(page.getByRole("heading", { name: "Storage & Downloads", level: 1 })).toBeVisible();
+  await expect(storagePlace(page)).toHaveText("Storage & Downloads");
+  // The hub's drive, how full it is and how much Zaklon takes.
+  const drive = page.locator(".drive-grid .drive-tile").first();
+  await expect(drive).toContainText("Zaklon library");
+  await expect(drive).toContainText(/120\sGB free of 500\sGB/);
+  await expect(drive).toContainText("Zaklon uses");
+  // What is on the hub, in folders by kind (partly downloaded counts too).
+  const folders = page.getByRole("list", { name: "Folders" });
+  await expect(folders.locator(".folder-name")).toHaveText(["Guides & books", "Maps", "AI models", "Programs"]);
+  await expect(folders.getByRole("button", { name: /^Guides & books/ })).toContainText(/3 items ·/);
+  await expect(folders.getByRole("button", { name: /^Maps/ })).toContainText(/1 item ·/);
+  await expect(folders.getByRole("button", { name: /^AI models/ })).toContainText(/1 item ·/);
+  // Downloads: under way first, then paused, then new versions.
+  const downloads = page.getByRole("list", { name: "Downloads" });
+  expect(await downloads.locator("[data-entry]").evaluateAll((els) => els.map((e) => e.getAttribute("data-entry")))).toEqual(["restarters-en", "gardenology-en", "kiwix-tools"]);
+  await expect(downloads.locator('[data-entry="restarters-en"]')).toContainText("Downloading 40%");
+  await expect(downloads.locator('[data-entry="restarters-en"]').getByRole("button", { name: /^Pause/ })).toBeVisible();
+  await expect(downloads.locator('[data-entry="kiwix-tools"]').getByRole("button", { name: /^Update/ })).toBeVisible();
+  // USB, on the laptop: what is on the hub can be copied.
   await expect(page.getByRole("heading", { name: "Copy to USB" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Import from a USB stick or folder" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /Medical Wikipedia/ })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /Maps: Serbia/ })).toBeVisible();
+  await noHorizontalScroll(page);
+
+  // A folder: what of its kind is on the hub, removable on the laptop, and where new ones come from.
+  await folders.getByRole("button", { name: /^Guides & books/ }).click();
+  await expect(page).toHaveURL(/#settings\/storage\/guides$/);
+  await expect(storagePlace(page)).toHaveText("Guides & books");
+  await expect(page.locator('[data-entry="wikimed-en"]').getByRole("button", { name: "Remove: Medical Wikipedia (English)" })).toBeVisible();
+  await expect(page.locator('[data-entry="military-medicine-en"]')).toHaveCount(0);
+  await noHorizontalScroll(page);
+  // The maps on the hub; AI models only with the space they take (they are managed in Settings › AI assistant).
+  await page.goto("/#settings/storage/maps");
+  await expect(page.locator('[data-entry="map:Serbia"]')).toContainText("Installed");
+  await page.goto("/#settings/storage/models");
+  await expect(page.locator('[data-entry="qwen35-2b"]')).toContainText("Installed");
+  await expect(page.locator('[data-entry="qwen35-2b"] .entry-actions button')).toHaveCount(0);
+  await expect(page.locator('[data-entry="qwen35-4b"]')).toHaveCount(0);
+  await page.locator(".folder-note").getByRole("link", { name: "Settings › AI assistant" }).click();
+  await expect(page).toHaveURL(/#settings\/assistant\/model$/);
+  // Programs are listed whether on the hub or not: the one place to get one again.
+  await page.goto("/#settings/storage/programs");
+  await expect(page.locator('[data-entry="kiwix-tools"]')).toContainText("New version available");
+  await expect(page.locator('[data-entry="llama-cpp"]').getByRole("button", { name: /^Download/ })).toBeVisible();
+  await page.goto("/#settings/storage/guides");
+  await page.locator(".folder-note").getByRole("link", { name: "Library" }).click();
+  await expect(page).toHaveURL(/#library$/);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("storage: copy to USB and import offer the laptop's drives; a drive opens with them set to it", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.goto("/#settings/storage");
+  await expect(page.getByRole("heading", { name: "Copy to USB" })).toBeVisible();
   const importDrive = page.getByRole("combobox", { name: "Import from a USB stick or folder", exact: true });
   await expect.poll(async () => importDrive.locator("option").count()).toBeGreaterThan(1);
   await expect(importDrive.locator("option").nth(1)).toHaveText(/[A-Z]:.*free/);
@@ -616,102 +833,61 @@ test("add-ons: copy to USB and import offer the laptop's drives", async ({ page 
   const name = await other.locator(".drive-title").innerText();
   const letter = name.match(/\(([A-Z]):\)$/)![1];
   await other.click();
-  await expect(page).toHaveURL(new RegExp(`#addons/drive/${letter}$`));
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(name);
+  await expect(page).toHaveURL(new RegExp(`#settings/storage/drive-${letter}$`));
+  await expect(storagePlace(page)).toHaveText(name);
   await expect(page.getByRole("combobox", { name: "Drive", exact: true })).toHaveValue(`${letter}:\\`);
   await expect(page.getByRole("combobox", { name: "Import from a USB stick or folder", exact: true })).toHaveValue(`${letter}:\\`);
   await noHorizontalScroll(page);
+  // Back returns to the top of Storage & Downloads.
   await page.getByRole("button", { name: "Back", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Add-ons", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/#settings\/storage$/);
+  await expect(storagePlace(page)).toHaveText("Storage & Downloads");
+  await expect(page.getByRole("button", { name: "Back", exact: true })).toBeDisabled();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
-test("add-ons: a folder opens; the breadcrumb, Back and the browser's Back return to the top", async ({ page }) => {
+test("storage: a folder opens; the breadcrumb, Back and the browser's Back return to the top", async ({ page }) => {
   await ensureSetUp(page);
-  await page.goto("/#addons");
+  await page.goto("/#settings/storage");
   const folders = page.getByRole("list", { name: "Folders" });
-  // The topics (the same as on the Tools screen), then AI models and programs.
-  await expect(folders.locator(".folder-name")).toHaveText([
-    "Health and first aid", "Water", "Food", "Garden", "Power", "Build and install", "Knowledge", "Maps", "AI models", "Programs",
-  ]);
-  await expect(folders.getByRole("button", { name: /^AI models/ })).toContainText(/4 add-ons/);
-  await folders.getByRole("button", { name: /^AI models/ }).click();
-  await expect(page).toHaveURL(/#addons\/models$/);
-  await expect(page.getByRole("heading", { name: "AI models", exact: true })).toBeVisible();
-  const crumbs = page.getByRole("navigation", { name: "Location" });
-  await expect(crumbs.locator('[aria-current="page"]')).toHaveText("AI models");
-  await expect(page.locator('[data-entry="qwen35-4b"]')).toContainText("Apache-2.0");
-  await expect(page.locator('[data-entry="kiwix-tools"]')).toHaveCount(0);
-  // A download the hub accepts without a body (202) is not an error.
-  let asked = false;
-  await page.route("**/api/packs/qwen35-08b/download", (route) => {
-    asked = true;
-    return route.fulfill({ status: 202, body: "" });
-  });
-  await page.locator('[data-entry="qwen35-08b"]').getByRole("button", { name: /^Download/ }).click();
-  await expect.poll(() => asked).toBe(true);
-  await page.waitForTimeout(300);
-  await expect(page.getByRole("alert")).toHaveCount(0);
-  await noHorizontalScroll(page);
-
+  await folders.getByRole("button", { name: /^Programs/ }).click();
+  await expect(page).toHaveURL(/#settings\/storage\/programs$/);
+  await expect(storagePlace(page)).toHaveText("Programs");
+  await expect(page.locator('[data-entry="kiwix-tools"]')).toBeVisible();
   // The breadcrumb goes back to the top.
-  await crumbs.getByRole("button", { name: "Add-ons" }).click();
-  await expect(page).toHaveURL(/#addons$/);
-  await expect(page.getByRole("heading", { name: "Add-ons", exact: true })).toBeVisible();
+  await page.getByRole("navigation", { name: "Location" }).getByRole("button", { name: "Storage & Downloads" }).click();
+  await expect(page).toHaveURL(/#settings\/storage$/);
   await expect(page.getByRole("button", { name: "Back", exact: true })).toBeDisabled();
   // So does Back...
-  await folders.getByRole("button", { name: /^Programs/ }).click();
-  await expect(page.locator('[data-entry="kiwix-tools"]')).toBeVisible();
+  await folders.getByRole("button", { name: /^AI models/ }).click();
+  await expect(storagePlace(page)).toHaveText("AI models");
   await page.getByRole("button", { name: "Back", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Add-ons", exact: true })).toBeVisible();
+  await expect(storagePlace(page)).toHaveText("Storage & Downloads");
   // ...and the browser's (or the phone's) Back.
-  await folders.getByRole("button", { name: /^Health and first aid/ }).click();
-  await expect(page.locator('[data-entry="wikimed-en"]')).toBeVisible();
+  await folders.getByRole("button", { name: /^Guides & books/ }).click();
+  await expect(storagePlace(page)).toHaveText("Guides & books");
   await page.goBack();
-  await expect(page.getByRole("heading", { name: "Add-ons", exact: true })).toBeVisible();
-
+  await expect(page).toHaveURL(/#settings\/storage$/);
+  await expect(storagePlace(page)).toHaveText("Storage & Downloads");
   // The hub's drive opens with what is on it.
   await page.locator(".drive-grid button.drive-tile").first().click();
-  await expect(page).toHaveURL(/#addons\/library$/);
+  await expect(page).toHaveURL(/#settings\/storage\/disk$/);
   await expect(page.getByText(/Everything Zaklon keeps on this drive/)).toBeVisible();
   await page.getByRole("button", { name: "Back", exact: true }).click();
-  await expect(page).toHaveURL(/#addons$/);
-
-  // Straight into a folder from elsewhere: Back goes up to Add-ons, not away from it.
-  await page.goto("/#addons/programs");
-  await expect(page.getByRole("heading", { name: "Programs", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/#settings\/storage$/);
+  // Straight into a folder from elsewhere: Back goes up to the top, not away from it.
+  await page.goto("/#home");
+  await page.goto("/#settings/storage/programs");
+  await expect(storagePlace(page)).toHaveText("Programs");
   await page.getByRole("button", { name: "Back", exact: true }).click();
-  await expect(page).toHaveURL(/#addons$/);
-  await expect(page.getByRole("heading", { name: "Add-ons", exact: true })).toBeVisible();
-});
-
-test("add-ons: the search finds packs and countries in every folder", async ({ page }) => {
-  await ensureSetUp(page);
-  await page.goto("/#addons/models");
-  const search = page.getByRole("searchbox", { name: "Search add-ons" });
-  await search.fill("wikipedia");
-  await expect(page.getByRole("heading", { name: /^Search results/ })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Location" }).locator('[aria-current="page"]')).toHaveText("Search results");
-  await expect(page.locator('[data-entry="wikipedia-sr-maxi"]')).toBeVisible();
-  // Medical Wikipedia is in another folder, and says so.
-  await expect(page.locator('[data-entry="wikimed-en"]')).toContainText("Health and first aid");
-  await expect(page.locator('[data-entry="qwen35-2b"]')).toHaveCount(0);
-  // Serbian titles, words in any order, and countries by name (in either language).
-  await search.fill("srpskom vikipedija");
-  await expect(page.locator('[data-entry="wikipedia-sr-maxi"]')).toBeVisible();
-  await search.fill("crna gora");
-  await expect(page.locator('[data-entry="map:Montenegro"]')).toBeVisible();
-  await search.fill("zzzz-nowhere");
-  await expect(page.getByText("Nothing found.")).toBeVisible();
+  await expect(page).toHaveURL(/#settings\/storage$/);
+  await expect(storagePlace(page)).toHaveText("Storage & Downloads");
   await noHorizontalScroll(page);
-  // Back ends the search, where it started.
-  await page.getByRole("button", { name: "Back", exact: true }).click();
-  await expect(search).toHaveValue("");
-  await expect(page.getByRole("heading", { name: "AI models", exact: true })).toBeVisible();
 });
 
-test("add-ons: tiles or details, remembered on this device", async ({ page }) => {
+test("storage: tiles or details, remembered on this device", async ({ page }) => {
   await ensureSetUp(page);
-  await page.goto("/#addons");
+  await page.goto("/#settings/storage");
   const view = page.getByRole("group", { name: "View" });
   await expect(view.getByRole("button", { name: "Tiles" })).toHaveAttribute("aria-pressed", "true");
   await view.getByRole("button", { name: "Details" }).click();
@@ -720,95 +896,77 @@ test("add-ons: tiles or details, remembered on this device", async ({ page }) =>
   const table = page.getByRole("table", { name: "Folders" });
   await expect(table.getByRole("columnheader", { name: "Items", includeHidden: true })).toHaveCount(1);
   await noHorizontalScroll(page);
-  await table.getByRole("button", { name: /^Knowledge/ }).click();
-  const row = page.getByRole("table", { name: "Knowledge", exact: true }).getByRole("row").filter({ hasText: "Wikipedia in Serbian (with pictures)" });
-  await expect(row).toContainText("CC BY-SA 4.0");
+  await table.getByRole("button", { name: /^Programs/ }).click();
+  const row = page.getByRole("table", { name: "Programs", exact: true }).getByRole("row").filter({ hasText: "Library engine (Kiwix)" });
   await expect(row).toContainText("Not downloaded");
   await expect(row.getByRole("button", { name: /^Download/ })).toBeVisible();
   await noHorizontalScroll(page);
   // Still details after a reload; back to tiles.
   await page.reload();
-  await expect(page.getByRole("table", { name: "Knowledge", exact: true })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Programs", exact: true })).toBeVisible();
   await page.getByRole("group", { name: "View" }).getByRole("button", { name: "Tiles" }).click();
-  await expect(page.getByRole("list", { name: "Knowledge", exact: true })).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem("zaklon.addonsView"))).toBe("tiles");
+  await expect(page.getByRole("list", { name: "Programs", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("zaklon.storageView"))).toBe("tiles");
 });
 
-test("add-ons: a pack about several topics is in the folder of each, and counted in each", async ({ page }) => {
+test("old addresses: Add-ons, the Tools topics and the old topic names lead to their new places", async ({ page }) => {
   await ensureSetUp(page);
-  const catalog = await (await page.request.get("/api/catalog")).json();
-  const about = (topic: string) => catalog.packs.filter((p: { topics?: string[] }) => p.topics?.includes(topic)).length;
-  const water = '[data-entry="zimgit-water-en"]';
-  // The safe water guides are about water and health.
-  for (const [id, name] of [["water", "Water"], ["health", "Health and first aid"]]) {
-    await page.goto(`/#addons/${id}`);
-    await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
-    await expect(page.locator(water)).toContainText("Safe water guides (English)");
-    // Everything about the topic, nothing else.
-    await expect(page.locator("[data-entry]")).toHaveCount(about(id));
+  const h1 = (name: string) => page.getByRole("heading", { name, level: 1 });
+  const cases: [string, RegExp, string][] = [
+    ["/#addons", /#settings\/storage$/, "Storage & Downloads"],
+    ["/#addons/health", /#library\/health$/, "Health and first aid"],
+    ["/#addons/water", /#library\/water$/, "Water"],
+    ["/#addons/knowledge", /#library\/reference$/, "Encyclopedias & dictionaries"],
+    ["/#addons/reference", /#library\/reference$/, "Encyclopedias & dictionaries"],
+    ["/#addons/skills", /#library\/build$/, "Build and install"],
+    ["/#addons/maps", /#maps$/, "Maps"],
+    ["/#addons/models", /#settings\/assistant\/model$/, "AI assistant"],
+    ["/#addons/programs", /#settings\/storage\/programs$/, "Storage & Downloads"],
+    ["/#addons/library", /#settings\/storage\/disk$/, "Storage & Downloads"],
+    ["/#tools/water", /#library\/water$/, "Water"],
+    ["/#tools/knowledge", /#library\/reference$/, "Encyclopedias & dictionaries"],
+    ["/#tools/maps", /#maps$/, "Maps"],
+    ["/#tools/supplies", /#supplies$/, "Supplies"],
+    ["/#library/knowledge", /#library\/reference$/, "Encyclopedias & dictionaries"],
+    ["/#help/addons", /#help\/storage$/, "Storage & Downloads"],
+    ["/#help/addons/usb-copy", /#help\/storage\/usb-copy$/, "Storage & Downloads"],
+  ];
+  for (const [old, now, heading] of cases) {
+    await page.goto(old);
+    await expect(page, old).toHaveURL(now);
+    await expect(h1(heading), old).toBeVisible();
   }
-  // The sustainable living answers: power, water, garden, and building and installing.
-  for (const id of ["power", "water", "garden", "build"]) {
-    await page.goto(`/#addons/${id}`);
-    await expect(page.locator('[data-entry="stackexchange-sustainability-en"]')).toBeVisible();
-  }
-  await page.goto("/#addons/knowledge");
-  await expect(page.locator('[data-entry="wikipedia-sr-maxi"]')).toBeVisible();
-  await expect(page.locator('[data-entry="stackexchange-sustainability-en"]')).toHaveCount(0);
-  // Each folder counts all it holds, so a pack counts in each of its folders.
-  await page.goto("/#addons");
-  const folders = page.getByRole("list", { name: "Folders" });
-  expect(about("water")).toBeGreaterThan(1);
-  for (const [id, name] of [["water", "Water"], ["health", "Health and first aid"], ["power", "Power"]]) {
-    const n = about(id);
-    await expect(folders.getByRole("button", { name: new RegExp(`^${name}`) })).toContainText(`${n} ${n === 1 ? "add-on" : "add-ons"} ·`);
-  }
-  // The search lists it once, with every folder it is in.
-  await page.getByRole("searchbox", { name: "Search add-ons" }).fill("safe water");
-  await expect(page.locator(water)).toHaveCount(1);
-  await expect(page.locator(water)).toContainText("Water, Health and first aid");
-  await noHorizontalScroll(page);
-});
-
-test("add-ons: the addresses of the folders from before the topics lead to the new folders", async ({ page }) => {
-  await ensureSetUp(page);
-  // "Wikipedia and books" is Knowledge now, "Repair and skills" Build and install.
-  await page.goto("/#addons/reference");
-  await expect(page).toHaveURL(/#addons\/knowledge$/);
-  await expect(page.getByRole("heading", { name: "Knowledge", level: 1 })).toBeVisible();
-  await expect(page.locator('[data-entry="wikipedia-sr-maxi"]')).toBeVisible();
-  await page.goto("/#addons/skills");
-  await expect(page).toHaveURL(/#addons\/build$/);
-  await expect(page.getByRole("heading", { name: "Build and install", level: 1 })).toBeVisible();
-  await expect(page.locator('[data-entry="ifixit-en"]')).toBeVisible();
-  // The others kept their addresses ("Other knowledge" was #addons/knowledge).
-  for (const [id, name, pack] of [
-    ["health", "Health and first aid", "wikimed-en"],
-    ["garden", "Garden", "gardenology-en"],
-    ["knowledge", "Knowledge", "wikibooks-sr"],
-    ["models", "AI models", "qwen35-4b"],
-    ["programs", "Programs", "kiwix-tools"],
-  ]) {
-    await page.goto(`/#addons/${id}`);
-    await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
-    await expect(page.locator(`[data-entry="${pack}"]`)).toBeVisible();
-  }
-  // A link inside the app to an old address, and the app opened fresh at one.
+  await expect(page.getByRole("heading", { name: "Copy to a USB drive", level: 2 })).toBeInViewport();
+  // A tool opened with what to fill in stays the tool.
+  await page.goto("/#tools/power?items=fridge:1&days=2");
+  await expect(h1("Power calculator")).toBeVisible();
+  await expect(page.getByText("Opened from a link.")).toBeVisible();
+  // A link inside the app to an old address, and the app opened fresh at one; Back goes through the new ones.
+  await page.goto("/#library");
   await page.evaluate(() => {
     location.hash = "addons/skills";
   });
-  await expect(page).toHaveURL(/#addons\/build$/);
-  await expect(page.getByRole("heading", { name: "Build and install", level: 1 })).toBeVisible();
+  await expect(page).toHaveURL(/#library\/build$/);
+  await expect(h1("Build and install")).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/#library$/);
   await page.goto("about:blank");
   await page.goto("/#addons/reference");
-  await expect(page).toHaveURL(/#addons\/knowledge$/);
-  await expect(page.getByRole("heading", { name: "Knowledge", level: 1 })).toBeVisible();
-  // Back goes up to Add-ons, not away from it.
-  await page.getByRole("button", { name: "Back", exact: true }).click();
-  await expect(page).toHaveURL(/#addons$/);
+  await expect(page).toHaveURL(/#library\/reference$/);
+  await expect(h1("Encyclopedias & dictionaries")).toBeVisible();
+  // A tool pinned before that is no tool any more (the Library, Add-ons): nothing is pinned.
+  for (const tool of ["library", "addons"]) {
+    await page.request.post("/api/pinned-tool", { data: { tool } });
+    await page.goto("/#tools");
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Tools", level: 1 })).toBeVisible();
+    expect(await barItems(page)).toEqual(["Home", "Assistant", "Library", "Tools", "Settings"]);
+    await expect(page.locator(".tool-card.pinned")).toHaveCount(0);
+  }
+  await page.request.post("/api/pinned-tool", { data: { tool: null } });
 });
 
-test("add-ons: packs people download themselves are apart, say why, and ask to confirm their license (requests intercepted)", async ({ page }) => {
+test("library: guides people download themselves are apart, say why, and ask to confirm their license (requests intercepted)", async ({ page }) => {
   await ensureSetUp(page);
   // The hub itself refuses one without the confirmation (nothing is downloaded).
   const refused = await page.request.post("/api/packs/ifixit-en/download");
@@ -819,7 +977,7 @@ test("add-ons: packs people download themselves are apart, say why, and ask to c
     asked.push(new URL(r.request().url()).pathname + new URL(r.request().url()).search);
     return r.fulfill({ status: 202, body: "" });
   });
-  await page.goto("/#addons/build");
+  await page.goto("/#library/build");
   await expect(page.getByRole("heading", { name: "Build and install", level: 1 })).toBeVisible();
   // Offered to everyone first; iFixit (non-commercial) at the bottom, in a group of its own, with the reason.
   const group = page.getByRole("region", { name: "You download these yourself" });
@@ -852,28 +1010,22 @@ test("add-ons: packs people download themselves are apart, say why, and ask to c
   await ifixit.getByRole("button", { name: /^Download/ }).click();
   await ifixit.getByRole("button", { name: /^Accept and download/ }).click();
   await expect.poll(() => asked).toEqual(["/api/packs/ifixit-en/download?accept_license=true"]);
-  // A pack offered to everyone downloads straight away.
+  // A guide offered to everyone downloads straight away.
   await page.locator('[data-entry="restarters-en"]').getByRole("button", { name: /^Download/ }).click();
   await expect.poll(() => asked.length).toBe(2);
   expect(asked[1]).toBe("/api/packs/restarters-en/download");
 
-  // The same in the details table, and in Serbian.
-  await page.getByRole("group", { name: "View" }).getByRole("button", { name: "Details" }).click();
-  const table = page.getByRole("table", { name: "You download these yourself" });
-  await table.getByRole("button", { name: /^Download: iFixit/ }).click();
-  await expect(table.locator(".license-ask")).toContainText("CC BY-NC-SA 3.0");
-  await noHorizontalScroll(page);
-  await page.getByRole("group", { name: "View" }).getByRole("button", { name: "Tiles" }).click();
+  // In Serbian.
   await setLanguage(page, "sr");
-  await page.goto("/#addons/food");
+  await page.goto("/#library/food");
   const grupa = page.getByRole("region", { name: "Ove preuzimaš sam" });
   await expect(grupa.locator('[data-entry="grimgrains-en"]')).toContainText("Besplatno samo za nekomercijalnu upotrebu (CC BY-NC-SA 4.0)");
-  await page.goto("/#addons/water");
+  await page.goto("/#library/water");
   await expect(page.getByRole("region", { name: "Ove preuzimaš sam" }).locator('[data-entry="zimgit-water-en"]')).toContainText("Mešovite licence");
   await setLanguage(page, "en");
 });
 
-test("add-ons: the starter set holds only packs offered to everyone", async ({ page }) => {
+test("the starter set holds only packs offered to everyone, in Storage & Downloads and in an empty Library", async ({ page }) => {
   await ensureSetUp(page);
   const catalog = await (await page.request.get("/api/catalog")).json();
   const offer = new Map<string, string>(catalog.packs.map((p: { id: string; offer: string }) => [p.id, p.offer]));
@@ -891,12 +1043,15 @@ test("add-ons: the starter set holds only packs offered to everyone", async ({ p
     asked.push(new URL(r.request().url()).pathname);
     return r.fulfill({ status: 202, body: "" });
   });
-  await page.goto("/#addons");
+  for (const where of ["/#library", "/#settings/storage"]) {
+    await page.goto(where);
+    const panel = page.locator(".starter");
+    await expect(panel.getByRole("heading", { name: "English essentials" })).toBeVisible();
+    await expect(panel).toContainText("First aid and field medicine manuals (English)");
+    await expect(panel).not.toContainText("iFixit");
+    await expect(panel).not.toContainText("Safe water");
+  }
   const panel = page.locator(".starter");
-  await expect(panel.getByRole("heading", { name: "English essentials" })).toBeVisible();
-  await expect(panel).toContainText("First aid and field medicine manuals (English)");
-  await expect(panel).not.toContainText("iFixit");
-  await expect(panel).not.toContainText("Safe water");
   await expect(panel.getByRole("button", { name: "Download all" })).toBeEnabled();
   const lines = await panel.getByRole("listitem").count();
   await panel.getByRole("button", { name: "Download all" }).click();
@@ -908,9 +1063,9 @@ test("add-ons: the starter set holds only packs offered to everyone", async ({ p
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
-test("add-ons: a pack Zaklon no longer offers stays listed, usable and removable (states simulated)", async ({ page }) => {
+test("a guide Zaklon no longer offers stays in the Library, readable and removable (states simulated)", async ({ page }) => {
   await ensureSetUp(page);
-  // As the hub lists a pack it has that the catalog withdrew.
+  // As the hub lists a pack it has that the catalog withdrew, and the library reads it.
   await page.route("**/api/catalog", async (r) => {
     const json = await (await r.fetch()).json();
     json.packs.push({
@@ -932,25 +1087,31 @@ test("add-ons: a pack Zaklon no longer offers stays listed, usable and removable
     });
     return r.fulfill({ json });
   });
+  const book = {
+    name: "zimgit-medicine_en", pack_id: "zimgit-medicine-en", title_en: "First aid and medicine guides (English)", title_sr: "Vodiči za prvu pomoć i medicinu (engleski)",
+    languages: ["eng"], home: "/kiwix/content/zimgit-medicine_en/", topics: ["health"],
+  };
+  await page.route("**/api/library", (r) => r.fulfill({ json: { engine: "running", books: [book] } }));
   let removed = false;
   await page.route("**/api/packs/zimgit-medicine-en", (r) => {
     removed = r.request().method() === "DELETE";
     return r.fulfill({ status: 204, body: "" });
   });
-  await page.goto("/#addons/health");
+  await page.goto("/#library/health");
+  const guide = page.getByRole("list", { name: "Your guides" }).locator('[data-entry="zimgit-medicine-en"]');
+  await expect(guide).toContainText("No longer offered by Zaklon");
+  await expect(guide.getByRole("button", { name: "Read: First aid and medicine guides (English)" })).toBeVisible();
+  // Nothing to download or update, and not among the guides to get.
+  await expect(guide.getByRole("button", { name: /^(Download|Update|Resume|Retry)/ })).toHaveCount(0);
+  await expect(page.getByRole("list", { name: "Get more: Health and first aid" }).locator('[data-entry="zimgit-medicine-en"]')).toHaveCount(0);
+  // In Storage & Downloads with the other guides; not among what can be copied to USB.
+  await page.goto("/#settings/storage");
+  await expect(page.getByRole("heading", { name: "Copy to USB" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /First aid and medicine guides/ })).toHaveCount(0);
+  await page.goto("/#settings/storage/guides");
   const pack = page.locator('[data-entry="zimgit-medicine-en"]');
   await expect(pack).toContainText("No longer offered by Zaklon");
   await expect(pack).toContainText("Installed");
-  // Nothing to download or update; it can be removed on the laptop.
-  await expect(pack.getByRole("button", { name: /^(Download|Update|Resume|Retry)/ })).toHaveCount(0);
-  await expect(page.getByRole("region", { name: "You download these yourself" }).locator('[data-entry="zimgit-medicine-en"]')).toHaveCount(0);
-  // On the library's drive, with what else is there; not among what can be copied to USB.
-  await page.goto("/#addons/library");
-  await expect(page.locator('[data-entry="zimgit-medicine-en"]')).toContainText("No longer offered by Zaklon");
-  await page.goto("/#addons");
-  await expect(page.getByRole("heading", { name: "Copy to USB" })).toBeVisible();
-  await expect(page.getByRole("checkbox", { name: /First aid and medicine guides/ })).toHaveCount(0);
-  await page.goto("/#addons/health");
   await pack.getByRole("button", { name: "Remove: First aid and medicine guides (English)" }).click();
   await pack.getByRole("button", { name: "Yes, remove" }).click();
   await expect.poll(() => removed).toBe(true);
@@ -959,7 +1120,7 @@ test("add-ons: a pack Zaklon no longer offers stays listed, usable and removable
   await noHorizontalScroll(page);
 });
 
-test("add-ons: the world map names the build it offers, and a newer one as an update (states simulated)", async ({ page }) => {
+test("maps: the world map names the build it offers, and a newer one as an update (states simulated)", async ({ page }) => {
   await ensureSetUp(page);
   const GB = 1024 ** 3;
   // As the hub describes the world map: the build Protomaps' list offers, and the one on the hub.
@@ -993,8 +1154,8 @@ test("add-ons: the world map names the build it offers, and a newer one as an up
     asked.push(r.request().postDataJSON());
     return r.fulfill({ status: 202, body: "" });
   });
-  await page.goto("/#addons/maps");
-  await expect.poll(() => checked, { message: "opening Add-ons lets the hub look for a newer build" }).toBeGreaterThan(0);
+  await page.goto("/#maps/world");
+  await expect.poll(() => checked, { message: "opening Maps lets the hub look for a newer build" }).toBeGreaterThan(0);
   const entry = page.locator('[data-entry="world-map"]');
   await expect(entry).toContainText("Map data of 11 Aug 2026");
   await expect(entry).toContainText("Not downloaded");
@@ -1029,6 +1190,12 @@ test("add-ons: the world map names the build it offers, and a newer one as an up
   await page.reload();
   await expect(entry).toContainText("The current map is used until the new one is downloaded and checked");
   await expect(entry.getByRole("button", { name: /^Pause/ })).toBeVisible();
+  // In Storage & Downloads too, with the space it takes, its update and Remove (on the laptop).
+  state = { status: "installed", bytes_done: 139 * GB, bytes_total: 139 * GB, speed: 0, update_available: true };
+  await page.goto("/#settings/storage/maps");
+  await expect(entry).toContainText("128 GB");
+  await expect(entry).toContainText("A newer world map is available (19 Oct 2026, 139 GB)");
+  await expect(entry.getByRole("button", { name: "Remove: World map (towns, streets and buildings)" })).toBeVisible();
   // The screen asks again every few seconds: stop the made-up answers before the page closes.
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
@@ -1056,10 +1223,43 @@ test("assistant: without a model it offers the one that fits this computer", asy
   await expect(page.getByRole("heading", { name: "The assistant needs an AI model" })).toBeVisible();
   await expect(page.getByText(/Recommended for this computer with/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Download" })).toBeVisible();
+  // The other models are in Settings › AI assistant, the one place for them.
   await page.getByRole("button", { name: "Other models" }).click();
-  await expect(page.getByRole("heading", { name: "Add-ons" })).toBeVisible();
-  await page.getByRole("list", { name: "Folders" }).getByRole("button", { name: /^Programs/ }).click();
-  await expect(page.getByText("AI engine (llama.cpp)")).toBeVisible();
+  await expect(page).toHaveURL(/#settings\/assistant\/model$/);
+  await expect(page.getByRole("heading", { name: "AI assistant", level: 1 })).toBeVisible();
+  await expect(page.getByRole("list", { name: "AI models" }).locator("[data-entry]")).toHaveCount(4);
+  await expect(page.getByText(/The assistant needs an AI model\. Download one below/)).toBeVisible();
+});
+
+test("settings: AI models are chosen, downloaded and removed in Settings › AI assistant (requests intercepted)", async ({ page }) => {
+  await ensureSetUp(page);
+  await page.route("**/api/assistant", (route) => route.fulfill({ json: EIGHT_GB }));
+  // The 2B and the 9B are on the hub, as the assistant says.
+  await page.route("**/api/catalog", async (r) => {
+    const json = await (await r.fetch()).json();
+    for (const p of json.packs) if (["qwen35-2b", "qwen35-9b"].includes(p.id)) p.state = { ...p.state, status: "installed", bytes_done: p.size, bytes_total: p.size };
+    return r.fulfill({ json });
+  });
+  const asked: string[] = [];
+  await page.route(/\/api\/packs\/qwen35-[\w-]+(\/download)?$/, (r) => {
+    asked.push(`${r.request().method()} ${new URL(r.request().url()).pathname}`);
+    return r.fulfill({ status: r.request().method() === "DELETE" ? 204 : 202, body: "" });
+  });
+  await page.goto("/#settings/assistant");
+  const list = page.getByRole("list", { name: "AI models" });
+  await expect(list.locator("[data-entry]")).toHaveCount(4);
+  // The one recommended for this computer's memory, and the one it has no memory for.
+  await expect(list.locator('[data-entry="qwen35-2b"]')).toContainText("recommended");
+  await expect(list.locator('[data-entry="qwen35-4b"]')).not.toContainText("recommended");
+  await expect(list.locator('[data-entry="qwen35-9b"]')).toContainText("Needs more memory than this computer has.");
+  await expect(list.locator('[data-entry="qwen35-4b"]')).not.toContainText("Needs more memory");
+  await noHorizontalScroll(page);
+  await list.locator('[data-entry="qwen35-4b"]').getByRole("button", { name: "Download: AI model for laptops (Qwen3.5 4B)" }).click();
+  await expect.poll(() => asked).toEqual(["POST /api/packs/qwen35-4b/download"]);
+  await list.locator('[data-entry="qwen35-9b"]').getByRole("button", { name: "Remove: AI model for 16 GB computers (Qwen3.5 9B)" }).click();
+  await list.locator('[data-entry="qwen35-9b"]').getByRole("button", { name: "Yes, remove" }).click();
+  await expect.poll(() => asked).toContain("DELETE /api/packs/qwen35-9b");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 /** The hub's assistant on an 8 GB computer with the 2B and the 9B model installed; the 9B does not fit. */
@@ -1100,8 +1300,7 @@ test("assistant: a model that needs more memory than the computer has is marked 
   await expect(page.getByText(/Recommended for this computer with .*: AI model for phones \(Qwen3\.5 2B\)/)).toBeVisible();
   expect(chosen).toBeNull();
 
-  // And in Add-ons, where models are downloaded.
-  await page.goto("/#addons/models");
+  // And in the list of models below it, where they are downloaded.
   await expect(page.locator('[data-entry="qwen35-9b"]')).toContainText("Needs more memory than this computer has.");
   await expect(page.locator('[data-entry="qwen35-4b"]')).not.toContainText("Needs more memory");
   await noHorizontalScroll(page);
@@ -1375,7 +1574,7 @@ test("home: the hub at the top, the supplies in three columns, and the tools not
 
   // The tools not in the bar, and Help.
   const tools = page.getByRole("region", { name: "Quick access" });
-  await expect(tools.getByRole("link")).toHaveText(["Supplies", "Library", "Maps", "Power calculator", "Water calculator", "Add-ons", "Help"]);
+  await expect(tools.getByRole("link")).toHaveText(["Supplies", "Maps", "Power calculator", "Water calculator", "Help"]);
   await noHorizontalScroll(page);
 
   const box = async (name: string) => (await page.getByRole("region", { name, exact: true }).boundingBox())!;
@@ -1384,7 +1583,7 @@ test("home: the hub at the top, the supplies in three columns, and the tools not
     // by side, half the width each, sharing the height that is left; the library and the tools
     // below them, just above the bar.
     await page.setViewportSize({ width: 1400, height: 1200 });
-    const [ask, sup, map, lib, quick] = [await box("Assistant"), await box("Supplies"), await box("Home on the map"), await box("Library and add-ons"), await box("Quick access")];
+    const [ask, sup, map, lib, quick] = [await box("Assistant"), await box("Supplies"), await box("Home on the map"), await box("Storage & Downloads"), await box("Quick access")];
     expect(ask.width).toBeGreaterThan(1250);
     expect(Math.abs(sup.y - map.y)).toBeLessThan(2);
     expect(Math.abs(sup.height - map.height)).toBeLessThan(2);
@@ -1407,7 +1606,7 @@ test("home: the hub at the top, the supplies in three columns, and the tools not
     await noHorizontalScroll(page);
   } else {
     // A phone: one card under the other, and everything to tap a fingertip wide.
-    const [sup, lib] = [await box("Supplies"), await box("Library and add-ons")];
+    const [sup, lib] = [await box("Supplies"), await box("Storage & Downloads")];
     expect(lib.y).toBeGreaterThanOrEqual(sup.y + sup.height);
     // The supplies' columns one under the other, each the card's width.
     const [c1, c2, c3] = [(await expiring.boundingBox())!, (await low.boundingBox())!, (await buy.boundingBox())!];
@@ -1437,7 +1636,7 @@ test("home: the hub at the top, the supplies in three columns, and the tools not
   await page.request.post("/api/pinned-tool", { data: { tool: "maps" } });
   await page.goto("/#home");
   await page.reload();
-  await expect(tools.getByRole("link")).toHaveText(["Supplies", "Library", "Power calculator", "Water calculator", "Add-ons", "Help"]);
+  await expect(tools.getByRole("link")).toHaveText(["Supplies", "Power calculator", "Water calculator", "Help"]);
   await page.request.post("/api/pinned-tool", { data: { tool: null } });
 });
 
@@ -1672,7 +1871,7 @@ test("home: what downloads, new versions and the library's drive (states simulat
     return r.fulfill({ json });
   });
   await page.goto("/#home");
-  const card = page.getByRole("region", { name: "Library and add-ons" });
+  const card = page.getByRole("region", { name: "Storage & Downloads" });
   // Both downloads, with how far each is.
   const downloads = card.getByRole("region", { name: /^Downloads/ });
   await expect(downloads.getByRole("heading")).toHaveText("Downloads 2");
@@ -1680,17 +1879,18 @@ test("home: what downloads, new versions and the library's drive (states simulat
   await expect(downloads.getByRole("progressbar", { name: "Maps: Serbia" })).toBeVisible();
   await expect(downloads).toContainText(/3\sMB\/s/);
   // What waits, and the library's drive.
-  await expect(card.getByRole("link", { name: "New version available: 1" })).toHaveAttribute("href", "#addons/library");
+  await expect(card.getByRole("link", { name: "New version available: 1" })).toHaveAttribute("href", "#settings/storage/downloads");
   await expect(card.getByRole("link", { name: "Paused: 1" })).toBeVisible();
   await expect(card).toContainText(/120\sGB free of 500\sGB/);
   await expect(card).toContainText("Zaklon library");
   await noHorizontalScroll(page);
   await card.getByRole("button", { name: /The hub's disk \(D:\)/ }).click();
-  await expect(page).toHaveURL(/#addons\/library$/);
+  await expect(page).toHaveURL(/#settings\/storage\/disk$/);
+  await expect(page.getByText(/Everything Zaklon keeps on this drive/)).toBeVisible();
   await page.goBack();
-  await card.getByRole("link", { name: "Open Add-ons" }).click();
-  await expect(page).toHaveURL(/#addons$/);
-  await expect(page.getByRole("heading", { name: "Add-ons", exact: true })).toBeVisible();
+  await card.getByRole("link", { name: "Open Storage & Downloads" }).click();
+  await expect(page).toHaveURL(/#settings\/storage$/);
+  await expect(page.getByRole("heading", { name: "Storage & Downloads", level: 1 })).toBeVisible();
   // A screen showing downloads asks again every few seconds: stop the made-up answers before the page closes.
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
@@ -1801,7 +2001,7 @@ test("settings: the laptop can offer its own Wi-Fi network (simulated, never rea
   await noHorizontalScroll(page);
 });
 
-test("add-ons: the starter set downloads the recommended packs in one go (requests intercepted)", async ({ page }) => {
+test("library: the recommended set downloads in one go from the empty Library (requests intercepted)", async ({ page }) => {
   await ensureSetUp(page);
   // Whatever this computer's disk holds, the set fits.
   await page.route("**/api/catalog", async (r) => {
@@ -1818,7 +2018,7 @@ test("add-ons: the starter set downloads the recommended packs in one go (reques
     asked.push(new URL(r.request().url()).pathname);
     return r.fulfill({ status: 202, body: "" });
   });
-  await page.goto("/#addons");
+  await page.goto("/#library");
   const panel = page.locator(".starter");
   await expect(panel.getByRole("heading", { name: "English essentials" })).toBeVisible();
   await expect(panel.getByText(/Still to download/)).toBeVisible();
@@ -1907,7 +2107,7 @@ test("settings: a laptop opens on Devices with the categories beside it; a phone
   const categories = page.getByRole("navigation", { name: "Categories" });
   const links = categories.getByRole("link");
   // Every category, and Help at the end.
-  await expect(links).toHaveText([/^Devices/, /^Network/, /^Backups/, /^Privacy & security/, /^Appearance/, /^Language/, /^AI assistant/, /^Updates/, /^About/, /^Help/]);
+  await expect(links).toHaveText([/^Devices/, /^Storage & Downloads/, /^Network/, /^Backups/, /^Privacy & security/, /^Appearance/, /^Language/, /^AI assistant/, /^Updates/, /^About/, /^Help/]);
   await expect(links.last()).toHaveAttribute("href", "#help");
   const search = page.getByRole("searchbox", { name: "Find a setting" });
   await expect(search).toBeVisible();

@@ -47,8 +47,8 @@ test("water: drinking water to store, saved for the whole household", async ({ p
   // Nothing saved yet, whatever ran before.
   await page.request.put("/api/water", { data: { plan: null } });
   await page.goto("/#tools");
-  // Under Water (and Garden).
-  await page.getByRole("region", { name: "Water", exact: true }).getByRole("button", { name: /^Water calculator/ }).click();
+  // A tile of its own, once.
+  await page.locator('[data-tool="water"]').getByRole("button", { name: /^Water calculator/ }).click();
   await expect(page).toHaveURL(/#water$/);
   await expect(page.getByRole("heading", { name: "Water calculator", level: 1 })).toBeVisible();
   await expect(page.locator("nav").getByRole("button", { name: "Tools" })).toHaveAttribute("aria-current", "true");
