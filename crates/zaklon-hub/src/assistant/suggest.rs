@@ -17,7 +17,7 @@ pub(super) const MAX_SUGGESTIONS: usize = 3;
 const MAX_TOOLS: usize = 2;
 
 /// One suggestion under an answer: a tool of the app, or the guides of a
-/// topic (its folder in Add-ons).
+/// topic (its page in the Library).
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct Suggestion {
     /// "tool" or "guides".
@@ -25,7 +25,7 @@ pub struct Suggestion {
     /// The tool (its id in ui/src/tools.ts), or for guides the topic.
     pub id: &'static str,
     pub topic: &'static str,
-    /// The app's address it opens: "#power?items=fridge:1&days=3", "#addons/garden".
+    /// The app's address it opens: "#power?items=fridge:1&days=3", "#library/garden".
     pub link: String,
     /// Its text in the app (ui/src/i18n.ts); "{topic}" in it is the topic's name.
     pub label_key: &'static str,
@@ -122,7 +122,6 @@ fn suggest(topics: &[&'static str], said: &[&str]) -> Vec<Suggestion> {
             "power" => power_suggestion(said, sizing),
             "water" | "garden" => water_suggestion(topic, &all, sizing),
             "food" if has_any(now, STORING) => Some(tool("supplies", "food", "#supplies".into(), "supplies")),
-            "knowledge" => Some(tool("library", "knowledge", "#library".into(), "library")),
             "maps" => Some(tool("maps", "maps", "#maps".into(), "maps")),
             _ => None,
         };
@@ -136,8 +135,13 @@ fn suggest(topics: &[&'static str], said: &[&str]) -> Vec<Suggestion> {
         if out.len() >= MAX_SUGGESTIONS {
             break;
         }
-        let label_key = if topic == "maps" { "topicMapsGuides" } else { "aiSugGuides" };
-        out.push(Suggestion { kind: "guides", id: topic, topic, link: format!("#addons/{topic}"), label_key });
+        // The maps are a tool (Tools › Maps), not a topic of the Library.
+        if topic == "maps" {
+            continue;
+        }
+        // Encyclopedias and dictionaries: looking it up there.
+        let label_key = if topic == "reference" { "aiSugLookUp" } else { "aiSugGuides" };
+        out.push(Suggestion { kind: "guides", id: topic, topic, link: format!("#library/{topic}"), label_key });
     }
     out.truncate(MAX_SUGGESTIONS);
     out
@@ -692,62 +696,92 @@ mod tests {
         let (topics, s) = read_question("a fridge, 6 LED bulbs and a laptop for 3 days", &[]);
         assert_eq!(topics, vec!["power"], "the appliances are enough");
         assert_eq!(s[0], Suggestion { kind: "tool", id: "power", topic: "power", link: "#power?items=fridge:1,lights-led:6,laptop:1&days=3".into(), label_key: "aiSugPowerList" });
-        assert_eq!(s[1], Suggestion { kind: "guides", id: "power", topic: "power", link: "#addons/power".into(), label_key: "aiSugGuides" });
+        assert_eq!(s[1], Suggestion { kind: "guides", id: "power", topic: "power", link: "#library/power".into(), label_key: "aiSugGuides" });
         assert_eq!(s.len(), 2);
-        assert_eq!(links("koliko baterija mi treba za frižider 3 dana", &[]), vec!["#power?items=fridge:1&days=3", "#addons/power"]);
+        assert_eq!(links("koliko baterija mi treba za frižider 3 dana", &[]), vec!["#power?items=fridge:1&days=3", "#library/power"]);
         // Asking how much without a list: the calculator as it is.
-        assert_eq!(links("How big a solar panel do I need?", &[]), vec!["#power", "#addons/power"]);
-        assert_eq!(links("koliko baterija za 3 dana", &[]), vec!["#power?days=3", "#addons/power"]);
+        assert_eq!(links("How big a solar panel do I need?", &[]), vec!["#power", "#library/power"]);
+        assert_eq!(links("koliko baterija za 3 dana", &[]), vec!["#power?days=3", "#library/power"]);
         // About power, but nothing to size: the guides only.
-        assert_eq!(links("kako radi invertor", &[]), vec!["#addons/power"]);
+        assert_eq!(links("kako radi invertor", &[]), vec!["#library/power"]);
         // A fridge in a food question is not a power question.
         assert_eq!(read_question("Can I keep milk in the fridge for 3 days?", &[]).0, vec!["food"]);
     }
 
     #[test]
     fn a_follow_up_takes_the_list_from_the_question_before() {
-        assert_eq!(links("A za 5 dana?", &["Koliko baterija za frižider i ruter?"]), vec!["#power?items=fridge:1,router:1&days=5", "#addons/power"]);
-        assert_eq!(links("and with two fridges?", &["a fridge and a laptop for 3 days"]), vec!["#power?items=fridge:2,laptop:1&days=3", "#addons/power"]);
+        assert_eq!(links("A za 5 dana?", &["Koliko baterija za frižider i ruter?"]), vec!["#power?items=fridge:1,router:1&days=5", "#library/power"]);
+        assert_eq!(links("and with two fridges?", &["a fridge and a laptop for 3 days"]), vec!["#power?items=fridge:2,laptop:1&days=3", "#library/power"]);
         // A new question starts afresh; small talk gets nothing.
-        assert_eq!(links("kako se čuva brašno?", &["Koliko baterija za frižider i ruter?"]), vec!["#supplies", "#addons/food"]);
+        assert_eq!(links("kako se čuva brašno?", &["Koliko baterija za frižider i ruter?"]), vec!["#supplies", "#library/food"]);
         assert!(links("Hvala!", &["Koliko baterija za frižider i ruter?"]).is_empty());
         assert!(links("Ko je napisao Na Drini ćuprija?", &["Koliko baterija za frižider i ruter?"]).is_empty(), "no topic and not a follow-up");
     }
 
     #[test]
     fn water_questions_get_the_water_calculator() {
-        assert_eq!(links("Koliko vode treba za 4 osobe za 7 dana?", &[]), vec!["#tools/water?people=4&days=7", "#addons/water"]);
-        assert_eq!(links("How much water should a family of four store for two weeks?", &[]), vec!["#tools/water?people=4&days=14", "#addons/water"]);
-        assert_eq!(links("koliko vode da čuvamo nas petoro", &[]), vec!["#tools/water?people=5", "#addons/water"]);
-        assert_eq!(links("koliko pijaće vode za 2 odrasla i 2 deteta, 3 dana", &[]), vec!["#tools/water?people=4&days=3", "#addons/water"]);
-        assert_eq!(links("How much water does one person need a day?", &[]), vec!["#tools/water?people=1&days=1", "#addons/water"]);
-        assert_eq!(links("How much water should we store?", &[]), vec!["#water", "#addons/water"], "how much, without numbers");
-        assert_eq!(links("kako da prečistim vodu za piće", &[]), vec!["#addons/water"], "nothing to size");
+        assert_eq!(links("Koliko vode treba za 4 osobe za 7 dana?", &[]), vec!["#tools/water?people=4&days=7", "#library/water"]);
+        assert_eq!(links("How much water should a family of four store for two weeks?", &[]), vec!["#tools/water?people=4&days=14", "#library/water"]);
+        assert_eq!(links("koliko vode da čuvamo nas petoro", &[]), vec!["#tools/water?people=5", "#library/water"]);
+        assert_eq!(links("koliko pijaće vode za 2 odrasla i 2 deteta, 3 dana", &[]), vec!["#tools/water?people=4&days=3", "#library/water"]);
+        assert_eq!(links("How much water does one person need a day?", &[]), vec!["#tools/water?people=1&days=1", "#library/water"]);
+        assert_eq!(links("How much water should we store?", &[]), vec!["#water", "#library/water"], "how much, without numbers");
+        assert_eq!(links("kako da prečistim vodu za piće", &[]), vec!["#library/water"], "nothing to size");
         // Drip irrigation: the beds, their crops and the place.
         assert_eq!(
             links("kap po kap za 2 leje 3x1,2 m paradajz i jednu 2x1 salata, Novi Sad", &[]),
-            vec!["#tools/water?part=drip&beds=3x1.2:tomatoes,3x1.2:tomatoes,2x1:greens&lat=45.3", "#addons/garden", "#addons/water"]
+            vec!["#tools/water?part=drip&beds=3x1.2:tomatoes,3x1.2:tomatoes,2x1:greens&lat=45.3", "#library/garden", "#library/water"]
         );
-        assert_eq!(links("kap po kap za 10 m2 paradajza", &[]), vec!["#tools/water?part=drip&beds=10x1:tomatoes", "#addons/garden", "#addons/water"]);
-        assert_eq!(links("drip irrigation for two 3x1 m beds of strawberries", &[]), vec!["#tools/water?part=drip&beds=3x1:strawberries,3x1:strawberries", "#addons/garden", "#addons/water"]);
-        assert_eq!(links("kako da postavim navodnjavanje kap po kap", &[]), vec!["#tools/water?part=drip", "#addons/water", "#addons/garden"]);
+        assert_eq!(links("kap po kap za 10 m2 paradajza", &[]), vec!["#tools/water?part=drip&beds=10x1:tomatoes", "#library/garden", "#library/water"]);
+        assert_eq!(links("drip irrigation for two 3x1 m beds of strawberries", &[]), vec!["#tools/water?part=drip&beds=3x1:strawberries,3x1:strawberries", "#library/garden", "#library/water"]);
+        assert_eq!(links("kako da postavim navodnjavanje kap po kap", &[]), vec!["#tools/water?part=drip", "#library/water", "#library/garden"]);
         // A garden question without watering: the guides.
-        assert_eq!(links("kada se sadi krompir", &[]), vec!["#addons/garden"]);
+        assert_eq!(links("kada se sadi krompir", &[]), vec!["#library/garden"]);
     }
 
     #[test]
     fn other_topics_get_their_tools_and_guides() {
         let got = read_question("šta da radim kod opekotine", &[]).1;
-        assert_eq!(got, vec![Suggestion { kind: "guides", id: "health", topic: "health", link: "#addons/health".into(), label_key: "aiSugGuides" }]);
-        assert_eq!(links("kako da stignem do najbliže bolnice", &[]), vec!["#maps", "#addons/maps", "#addons/health"]);
-        assert_eq!(read_question("Where is a map of the hiking trails?", &[]).1[1].label_key, "topicMapsGuides");
-        assert_eq!(links("kad je poceo prvi srpski ustanak", &[]), vec!["#library", "#addons/knowledge"]);
-        assert_eq!(links("Kako da napravim zalihe hrane za zimu?", &[]), vec!["#supplies", "#addons/food"]);
-        assert_eq!(links("recept za hleb bez kvasca", &[]), vec!["#addons/food"]);
-        assert_eq!(links("curi mi slavina u kupatilu", &[]), vec!["#addons/build"]);
+        assert_eq!(got, vec![Suggestion { kind: "guides", id: "health", topic: "health", link: "#library/health".into(), label_key: "aiSugGuides" }]);
+        // The maps are a tool, not a topic of the Library: no guides for them.
+        assert_eq!(links("kako da stignem do najbliže bolnice", &[]), vec!["#maps", "#library/health"]);
+        assert_eq!(links("Where is a map of the hiking trails?", &[]), vec!["#maps"]);
+        // Encyclopedias and dictionaries: looked up in the Library's topic.
+        let got = read_question("kad je poceo prvi srpski ustanak", &[]).1;
+        assert_eq!(got, vec![Suggestion { kind: "guides", id: "reference", topic: "reference", link: "#library/reference".into(), label_key: "aiSugLookUp" }]);
+        assert_eq!(links("Kako da napravim zalihe hrane za zimu?", &[]), vec!["#supplies", "#library/food"]);
+        assert_eq!(links("recept za hleb bez kvasca", &[]), vec!["#library/food"]);
+        assert_eq!(links("curi mi slavina u kupatilu", &[]), vec!["#library/build"]);
         // Never more than three.
         let many = read_question("koliko vode i struje treba za baštu, frižider i pumpu u Nišu, gde je najbliža mapa", &[]).1;
         assert!(many.len() <= MAX_SUGGESTIONS && many.iter().filter(|s| s.kind == "tool").count() <= MAX_TOOLS, "{many:?}");
+    }
+
+    #[test]
+    fn every_link_is_a_tool_or_a_topic_of_the_library() {
+        // The tools of ui/src/tools.ts, and the Library's topics (the maps are a tool).
+        let tools = ["#supplies", "#maps", "#power", "#water", "#tools/water?"];
+        let library: Vec<String> = zaklon_core::catalog::TOPICS.iter().filter(|t| **t != "maps").map(|t| format!("#library/{t}")).collect();
+        for q in [
+            "a fridge, 6 LED bulbs and a laptop for 3 days",
+            "Koliko vode treba za 4 osobe za 7 dana?",
+            "kap po kap za 2 leje 3x1,2 m paradajz",
+            "šta da radim kod opekotine",
+            "kako da stignem do najbliže bolnice",
+            "Where is a map of the hiking trails?",
+            "Who was Nikola Tesla?",
+            "Kako da napravim zalihe hrane za zimu?",
+            "curi mi slavina u kupatilu",
+            "koliko vode i struje treba za baštu, frižider i pumpu u Nišu, gde je najbliža mapa",
+        ] {
+            for s in read_question(q, &[]).1 {
+                match s.kind {
+                    "tool" => assert!(tools.iter().any(|t| s.link == *t || s.link.starts_with(&format!("{t}?")) || (t.ends_with('?') && s.link.starts_with(t))), "{q}: {s:?}"),
+                    _ => assert!(library.contains(&s.link) && s.link == format!("#library/{}", s.topic), "{q}: {s:?}"),
+                }
+                assert!(!s.link.contains("addons"), "{q}: {s:?}");
+            }
+        }
     }
 
     #[test]
