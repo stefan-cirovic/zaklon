@@ -3,7 +3,7 @@ import type { CategoryId } from "../settings";
 import { Icon, IconFrame } from "./Icon";
 
 /** Settings' line icons: one for each category, and the search, back and "open" marks. */
-export type SettingsIconName = Exclude<CategoryId, "assistant"> | "search" | "back" | "chevron";
+export type SettingsIconName = Exclude<CategoryId, "assistant" | "storage"> | "search" | "back" | "chevron";
 
 const dot = (cx: number, cy: number, r = 1) => <circle cx={cx} cy={cy} r={r} fill="currentColor" stroke="none" />;
 
@@ -80,8 +80,8 @@ const SHAPES: Record<SettingsIconName, ReactNode> = {
   chevron: <path d="m9.5 6 6 6-6 6" />,
 };
 
-export function SettingsIcon({ name, size = 22 }: { name: SettingsIconName | "assistant"; size?: number }) {
-  // The assistant looks the same as in the bar.
-  if (name === "assistant") return <Icon name="assistant" size={size} />;
+export function SettingsIcon({ name, size = 22 }: { name: SettingsIconName | "assistant" | "storage"; size?: number }) {
+  // The assistant looks the same as in the bar, Storage & Downloads as on Home.
+  if (name === "assistant" || name === "storage") return <Icon name={name} size={size} />;
   return <IconFrame size={size}>{SHAPES[name]}</IconFrame>;
 }

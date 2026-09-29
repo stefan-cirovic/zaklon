@@ -1,5 +1,6 @@
 import { makeT, type Key } from "./i18n";
-import { upgradedFolder } from "./addons";
+import { isTopicId, upgradedTopic } from "./topics";
+import { isToolId } from "./tools";
 
 /**
  * Settings is laid out like Windows Settings: the categories in a list on the
@@ -10,7 +11,7 @@ import { upgradedFolder } from "./addons";
  * Settings gets an entry in SETTINGS, and an element with the id
  * "set-<setting id>" on its page.
  */
-export type CategoryId = "devices" | "network" | "backups" | "privacy" | "appearance" | "language" | "assistant" | "updates" | "about";
+export type CategoryId = "devices" | "storage" | "network" | "backups" | "privacy" | "appearance" | "language" | "assistant" | "updates" | "about";
 
 export type Category = {
   id: CategoryId;
@@ -25,6 +26,7 @@ export type Category = {
 /** In the order of the list; the first opens when Settings does (laptop). */
 export const CATEGORIES: readonly Category[] = [
   { id: "devices", title: "devices", desc: "catDevicesDesc", descPhone: "catDevicesDescPhone" },
+  { id: "storage", title: "storage", desc: "catStorageDesc", descPhone: "catStorageDescPhone" },
   { id: "network", title: "catNetwork", desc: "catNetworkDesc", hubOnly: true },
   { id: "backups", title: "backups", desc: "catBackupsDesc", hubOnly: true },
   { id: "privacy", title: "catPrivacy", desc: "catPrivacyDesc", descPhone: "catPrivacyDescPhone" },
@@ -49,6 +51,11 @@ export const SETTINGS: readonly Setting[] = [
   { id: "add-phone", cat: "devices", title: "addDevice", kw: "kwAddPhone", only: "hub" },
   { id: "hub-link", cat: "devices", title: "forgetHub", kw: "kwHubLink", only: "phone" },
   { id: "paired", cat: "devices", title: "pairedDevices", kw: "kwPaired" },
+  { id: "drives", cat: "storage", title: "devicesAndDrives", kw: "kwDrives" },
+  { id: "downloads", cat: "storage", title: "downloads", kw: "kwDownloads" },
+  { id: "starter", cat: "storage", title: "starterSet", kw: "kwStarter", only: "hub" },
+  { id: "copy-usb", cat: "storage", title: "copyToUsb", kw: "kwCopyUsb", only: "hub" },
+  { id: "import", cat: "storage", title: "importTitle", kw: "kwImport", only: "hub" },
   { id: "hotspot", cat: "network", title: "hotspotTitle", kw: "kwHotspot" },
   { id: "firewall", cat: "network", title: "firewallName", kw: "kwFirewall" },
   { id: "addresses", cat: "network", title: "networkAddresses", kw: "kwAddresses" },
@@ -97,16 +104,50 @@ export function settingsRoute(hash: string): { cat: string | null; setting: stri
 }
 
 /**
- * Settings was called Household, at #household/... (its help page at
- * #help/household/...), and two Add-ons folders had other names before the
- * folders became the topics (#addons/reference, #addons/skills). An old
- * address, from a bookmark or a link, leads to the same place under the new name.
+ * Where an old address of Add-ons leads now that its parts are in three
+ * places: a topic's guides in the Library, the maps in Tools › Maps, the AI
+ * models in Settings › AI assistant, and the rest (the drives, what is on
+ * the hub, USB) in Settings › Storage & Downloads.
+ */
+function fromAddons(place: string, rest: string): string {
+  if (!place) return "#settings/storage";
+  if (place === "maps") return "#maps";
+  if (place === "models") return "#settings/assistant/model";
+  if (place === "programs") return "#settings/storage/programs";
+  // The hub's drive, and another drive (#addons/drive/E).
+  if (place === "library") return "#settings/storage/disk";
+  const letter = /^\/([A-Za-z])$/.exec(rest)?.[1];
+  if (place === "drive" && letter) return `#settings/storage/drive-${letter.toUpperCase()}`;
+  const topic = upgradedTopic(place);
+  return isTopicId(topic) ? `#library/${topic}` : "#settings/storage";
+}
+
+/**
+ * Old addresses, from a bookmark, a link or an answer saved before, lead to
+ * the same place under its new name:
+ * - Settings was called Household (#household/..., its help #help/household/...);
+ * - Add-ons became the Library's topics, Storage & Downloads and more (see
+ *   `fromAddons`; its help page is #help/storage);
+ * - the Tools screen was sorted by topic (#tools/water is the Library's
+ *   Water; a tool opened with what to fill in, #tools/water?people=4, stays);
+ * - a topic of the Library had another name (#library/knowledge).
  */
 export function upgradedHash(hash: string): string {
-  return hash
+  const h = hash
     .replace(/^#household(?=\/|$)/, "#settings")
     .replace(/^#help\/household(?=\/|$)/, "#help/settings")
-    .replace(/^#addons\/([\w-]+)/, (_, folder: string) => `#addons/${upgradedFolder(folder)}`);
+    .replace(/^#help\/addons(?=\/|$)/, "#help/storage");
+  const m = /^#(addons|tools|library)(?:\/([\w-]+))?(.*)$/.exec(h);
+  if (!m) return h;
+  const [, screen, place = "", rest] = m;
+  if (screen === "addons") return fromAddons(place, rest);
+  if (!place || rest.startsWith("?")) return h;
+  const topic = upgradedTopic(place);
+  if (screen === "library") return isTopicId(topic) ? `#library/${topic}${rest}` : "#library";
+  if (isTopicId(topic)) return `#library/${topic}`;
+  if (place === "maps" || isToolId(place)) return `#${place}`;
+  if (place === "downloads") return "#settings/storage";
+  return "#tools";
 }
 
 /** Replace an old address in the address bar (without a new step in the history). */

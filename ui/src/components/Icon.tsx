@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 /** Line icons for the bar, the Tools screen and the assistant, drawn on a 24 px grid in the text color. */
 export type IconName =
-  | "home" | "assistant" | "tools" | "settings" | "supplies" | "library" | "maps" | "addons" | "pin"
+  | "home" | "assistant" | "tools" | "settings" | "supplies" | "library" | "maps" | "storage" | "pin"
   | "plus" | "list" | "more" | "close" | "send" | "stop" | "memory" | "shared"
   | "help" | "phone" | "offline" | "wrench" | "check" | "cart" | "power" | "water";
 
@@ -54,10 +54,12 @@ const SHAPES: Record<IconName, ReactNode> = {
       <path d="M9 4.5v13M15 6.5v13" />
     </>
   ),
-  addons: (
+  // A drive with a download arrow: Storage & Downloads.
+  storage: (
     <>
-      <path d="M12 4v10.5M7.5 10 12 14.5l4.5-4.5" />
-      <path d="M4.5 15v4.5h15V15" />
+      <path d="M12 3.5v8M8.5 8 12 11.5 15.5 8" />
+      <rect x="3.5" y="14" width="17" height="6.5" rx="1.5" />
+      <path d="M7 17.3h.01" />
     </>
   ),
   pin: (

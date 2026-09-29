@@ -10,7 +10,6 @@ import ConfirmButton from "./components/ConfirmButton";
 import Home from "./screens/Home";
 import Settings from "./screens/Settings";
 import Connect from "./screens/Connect";
-import Addons from "./screens/Addons";
 import Library from "./screens/Library";
 import Supplies from "./screens/Supplies";
 import Maps from "./screens/Maps";
@@ -25,10 +24,15 @@ import { Icon, type IconName } from "./components/Icon";
 import { isToolId, toolOf, TOOLS, type ToolId } from "./tools";
 import { ACCENTS, type Accent, type Look } from "./screens/SettingsMore";
 
-/** The bar: these four, and the tool the household pinned (after Assistant). Every tool is on the Tools screen. */
+/**
+ * The bar: these five, and the tool the household pinned (before Tools).
+ * What there is to read is in the Library, every tool on the Tools screen,
+ * and what is on the hub (downloads, space, USB) in Settings.
+ */
 const NAV: { id: string; key: Key; icon: IconName }[] = [
   { id: "home", key: "home", icon: "home" },
   { id: "assistant", key: "assistant", icon: "assistant" },
+  { id: "library", key: "library", icon: "library" },
   { id: "tools", key: "tools", icon: "tools" },
   { id: "settings", key: "settings", icon: "settings" },
 ];
@@ -61,9 +65,10 @@ function writePref(key: string, value: string) {
 
 /**
  * The screen in the address; a screen may add a place of its own after a
- * slash ("#addons/maps", "#settings/backups") and what to open it with after
- * a "?" ("#power?items=fridge:1", see power.ts). A tool with such a query may
- * also be named under Tools ("#tools/power?items=...").
+ * slash ("#library/water", "#settings/storage") and what to open it with
+ * after a "?" ("#power?items=fridge:1", see power.ts). A tool with such a
+ * query may also be named under Tools ("#tools/power?items=..."). Old
+ * addresses have been made new ones already (see upgradedHash in settings.ts).
  */
 function tabFromHash(): string {
   const hash = typeof location !== "undefined" ? location.hash.replace("#", "") : "";
@@ -145,7 +150,7 @@ export default function App() {
   // Stable between renders so screens can safely depend on it.
   const t = useMemo(() => makeT(lang), [lang]);
 
-  /** Open a screen, or a place in it ("addons/models"). */
+  /** Open a screen, or a place in it ("settings/storage"). */
   const setTab = (id: string) => {
     setTabState(id.split("/")[0]);
     if (location.hash !== `#${id}`) location.hash = id;
@@ -327,7 +332,7 @@ export default function App() {
     setPinned(r?.tool ?? null);
     pinnedAt.current = Date.now();
   };
-  const bar: typeof NAV = pinned ? [NAV[0], NAV[1], { id: pinned, key: toolOf(pinned).title, icon: pinned }, NAV[2], NAV[3]] : NAV;
+  const bar: typeof NAV = pinned ? [...NAV.slice(0, 3), { id: pinned, key: toolOf(pinned).short, icon: pinned }, ...NAV.slice(3)] : NAV;
   // A tool that is not in the bar belongs under Tools there; Help is in Settings.
   const barTab = isToolId(tab) && tab !== pinned ? "tools" : tab === "help" ? "settings" : tab;
   // Setup comes first: until then there is nothing to go to.
@@ -428,20 +433,19 @@ export default function App() {
           />
         )}
         {tab === "tools" && <Tools t={t} go={setTab} pinned={pinned} pin={isHub ? pin : null} />}
-        {tab === "library" && <Library t={t} lang={lang} go={setTab} />}
+        {tab === "library" && <Library t={t} lang={lang} isHub={isHub} />}
         {tab === "maps" && <Maps t={t} lang={lang} isHub={isHub} />}
         {tab === "supplies" && <Supplies t={t} />}
         {tab === "power" && <Power t={t} lang={lang} />}
         {tab === "water" && <Water t={t} lang={lang} />}
         {tab === "assistant" && <Assistant t={t} lang={lang} isHub={isHub} go={setTab} />}
-        {tab === "addons" && <Addons t={t} lang={lang} isHub={isHub} />}
         {tab === "help" && <Help t={t} lang={lang} />}
         {status?.version && !fill && <p className="muted footer-note">Zaklon {status.version}</p>}
       </main>
       {!setupOnly && (
         <nav className="nav" aria-label={t("mainNav")}>
           <BrandLink label={t("zaklonWebsite")} />
-          <div className={"nav-items" + (bar.length > 4 ? " five" : "")}>
+          <div className={"nav-items" + (bar.length > 5 ? " six" : "")}>
             {bar.map((x) => (
               <button
                 key={x.id}

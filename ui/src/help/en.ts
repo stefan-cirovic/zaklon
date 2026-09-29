@@ -50,7 +50,7 @@ const en: HelpContent = {
             steps: [
               "**Set up the household.** The first time Zaklon opens, choose the language, a name for the hub and a household password (at least 8 characters).",
               "**Pair the phones.** On the laptop, choose **Add a phone** on [Home](#home), or open [Settings › Devices](#settings/devices) and choose it there. See [Pairing a phone](#help/pairing).",
-              "**Get the content.** In [Add-ons](#addons), the starter set downloads knowledge, first-aid and repair guides and the AI model that fits this computer with one button. This needs internet once; after that, everything works without it.",
+              "**Get the content.** The [Library](#library) starts with the recommended set: one button downloads encyclopedias, first-aid, water and repair guides and the AI model that fits this computer. This needs internet once; after that, everything works without it.",
               "**Add your supplies** in [Supplies](#supplies), and ask the [Assistant](#assistant) anything.",
             ],
           },
@@ -67,8 +67,9 @@ const en: HelpContent = {
             list: [
               "**Home**: the hub's state and what needs attention, such as supplies that expire soon or run low.",
               "**Assistant**: ask questions in plain words.",
-              "**Tools**: every tool, sorted by topic, such as [Supplies](#supplies), [Library](#library), [Maps](#maps) and [Add-ons](#addons).",
-              "**Settings**: phones, network, backups and the other settings, and this help at the end of its list.",
+              "**Library**: everything to read, sorted by topic.",
+              "**Tools**: [Supplies](#supplies), [Maps](#maps), the [power calculator](#power) and the [water calculator](#water).",
+              "**Settings**: phones, storage and downloads, network, backups and the other settings, and this help at the end of its list.",
             ],
           },
           { p: "On the laptop, one tool can be pinned to the bar from the [Tools](#tools) screen. It then shows in the bar on every device in the household." },
@@ -76,23 +77,19 @@ const en: HelpContent = {
         ],
       },
       {
-        id: "topics",
-        title: "Everything sorted by topic",
+        id: "places",
+        title: "Read, use, manage",
         body: [
-          { p: "Zaklon sorts its tools and guides into the same topics on the [Tools](#tools) screen and in the folders of [Add-ons](#addons):" },
+          { p: "Everything in Zaklon has one place, chosen by what you do with it:" },
           {
             list: [
-              "**Health and first aid**: first aid, medicines and staying healthy.",
-              "**Water**: finding, cleaning and storing drinking water.",
-              "**Food**: recipes, storing food, canning and preserving.",
-              "**Garden**: growing vegetables, fruit, herbs and microgreens, and watering them.",
-              "**Power**: small solar setups, batteries and how much power you need.",
-              "**Build and install**: setting up solar, drip irrigation, rainwater tanks and pumps, and repair guides.",
-              "**Knowledge**: Wikipedia, books and dictionaries.",
-              "**Maps**: maps of every country.",
+              "**Read** in the [Library](#library): guides, encyclopedias, dictionaries and books. Each topic also lists the guides you can still download.",
+              "**Use** under [Tools](#tools): Supplies, Maps, the power calculator and the water calculator.",
+              "**Manage** in [Settings › Storage & Downloads](#settings/storage): what is on the hub, how much space it takes, what is downloading, and copies to and from a USB drive.",
             ],
           },
-          { p: "On the Tools screen, each topic shows its tools and a **Guides for this topic** link, which opens the topic's folder in Add-ons, so the tools and the guides for a topic are in one place. A tool or a guide about more than one topic is under each of them." },
+          { p: "The Library's topics are Health and first aid, Water, Food, Garden, Power, Build and install, and Encyclopedias & dictionaries. A guide about more than one topic is under each of them. Maps are downloaded in [Tools › Maps](#maps), and AI models in [Settings › AI assistant](#settings/assistant/model)." },
+          { note: "Downloads used to be on a screen called Add-ons. Its guides are now in the Library's topics, its maps in Tools › Maps, its AI models in Settings › AI assistant, and the rest in Settings › Storage & Downloads." },
         ],
       },
     ],
@@ -203,7 +200,7 @@ const en: HelpContent = {
 
   home: {
     title: "Home",
-    summary: "The household at a glance: the hub, what needs attention, the assistant, the supplies and the add-ons.",
+    summary: "The household at a glance: the hub, what needs attention, the assistant, the supplies and the downloads.",
     open: { href: "#home", label: "Open Home" },
     sections: [
       {
@@ -265,10 +262,10 @@ const en: HelpContent = {
         ],
       },
       {
-        id: "addons",
-        title: "Library and add-ons",
+        id: "storage",
+        title: "Storage & Downloads",
         body: [
-          { p: "How full the library's drive is, what is downloading right now, and how many add-ons have a new version, are paused or did not finish. Open [Add-ons](#addons) to manage them." },
+          { p: "How full the library's drive is, what is downloading right now, and how many downloads have a new version, are paused or did not finish. Open [Storage & Downloads](#settings/storage) to manage them." },
         ],
       },
       {
@@ -309,7 +306,7 @@ const en: HelpContent = {
         id: "sources",
         title: "Sources and citations",
         body: [
-          { p: "The assistant answers from the knowledge packs in your [Library](#library). Numbers in the answer, like [1], point to the articles listed under **Sources**. Tap one to read the article." },
+          { p: "The assistant answers from the guides in your [Library](#library). Numbers in the answer, like [1], point to the articles listed under **Sources**. Tap one to read the article." },
           {
             list: [
               "When the library has nothing about the question, the answer says so. It then comes from the model's general knowledge and may be wrong.",
@@ -324,7 +321,7 @@ const en: HelpContent = {
         id: "tools",
         title: "Tools and guides",
         body: [
-          { p: "The assistant points to tools and guides. Under an answer it offers what else in Zaklon helps with the question: a tool, such as the [Power calculator](#power), and the guides for its topic in [Add-ons](#addons). Tap one to open it; **Back to the conversation** (or the back button) returns to the answer." },
+          { p: "The assistant points to tools and guides. Under an answer it offers what else in Zaklon helps with the question: a tool, such as the [Power calculator](#power), and the guides for its topic in the [Library](#library). Tap one to open it; **Back to the conversation** (or the back button) returns to the answer." },
           { p: "When you ask how much you need, for example “a fridge, 6 LED bulbs and a laptop for 3 days”, the button opens the calculator with that list already filled in. The answer may give rough numbers; the calculator does the exact sizing. A list opened this way is not saved until you choose to save it." },
         ],
       },
@@ -400,7 +397,7 @@ const en: HelpContent = {
         id: "model",
         title: "The AI model",
         body: [
-          { p: "The assistant needs an AI model, downloaded once on the laptop. When there is none, the assistant offers the one recommended for this computer. Larger models answer better but are slower and need more memory. Change the model in the Assistant itself (the **Model** box) or in [Settings › AI assistant](#settings/assistant)." },
+          { p: "The assistant needs an AI model, downloaded once. When there is none, the assistant offers the one recommended for this computer. AI models are chosen, downloaded and removed in [Settings › AI assistant](#settings/assistant/model): which model the assistant uses, the one recommended for this computer's memory, and every model with its size. Larger models answer better but are slower and need more memory. The **Model** box in the Assistant itself changes the model too." },
           { p: "A model that needs more memory than this computer has is marked **needs more memory** and cannot be chosen: it would make the whole computer slow. When no model fits, the assistant is not available on this computer, and the library, maps, supplies and phones still work. When the AI says there is not enough free memory right now, close some programs and ask again." },
           { p: "The AI starts with the first question and stops by itself after 20 minutes without questions. On the laptop, **free the memory now** stops it at once." },
         ],
@@ -418,6 +415,139 @@ const en: HelpContent = {
             ],
           },
           { p: "Away from the hub, the phone's own AI answers by itself. It is smaller and does not look in the library, so check what it says." },
+        ],
+      },
+    ],
+  },
+
+  library: {
+    title: "Library",
+    summary: "Everything to read without internet, sorted by topic: guides, encyclopedias, dictionaries and books.",
+    open: { href: "#library", label: "Open Library" },
+    sections: [
+      {
+        id: "what",
+        title: "What is in the Library",
+        body: [
+          { p: "The Library holds everything Zaklon has to read: first-aid and medicine guides, guides on water, food, gardens, solar power and repairs, Wikipedia, dictionaries and books. Each guide is downloaded once and then works without internet." },
+          { p: "It is sorted into topics: **Health and first aid**, **Water**, **Food**, **Garden**, **Power**, **Build and install**, and **Encyclopedias & dictionaries**. A guide about more than one topic is under each of them." },
+          { note: "The Library is for reading. The tools are under [Tools](#tools), and what is on the hub and how much space it takes is in [Settings › Storage & Downloads](#settings/storage)." },
+        ],
+      },
+      {
+        id: "start",
+        title: "The first guides",
+        body: [
+          { p: "While the Library is empty, it starts with the recommended set, **Basic pack for Serbia** or **English essentials** (by the app's language). On the laptop, **Download all** downloads it in one go: encyclopedias, first-aid, water, solar and repair guides, the AI model that fits this computer and, in the Serbian set, the map of Serbia. It holds only guides that are free for any use." },
+          { p: "Or open a topic and choose the guides you want. The guides show up under their topics as soon as they are downloaded and checked." },
+        ],
+      },
+      {
+        id: "topics",
+        title: "A topic's page",
+        body: [
+          {
+            list: [
+              "**Your guides**: the topic's guides on the hub. Tap one to read it.",
+              "**Get more**: the guides you can still download, each with its size and license. Choose **Download**; the hub downloads it, even when you started it on a phone. The ones recommended for the app's language come first.",
+              "A topic with a tool links to it at the top: Water and Garden to the [water calculator](#water), Power to the [power calculator](#power), Food and Health to [Supplies](#supplies).",
+            ],
+          },
+        ],
+      },
+      {
+        id: "read",
+        title: "Reading",
+        body: [
+          { p: "A guide opens at its start page; follow links as on a website. **Back** returns to the Library." },
+        ],
+      },
+      {
+        id: "search",
+        title: "Searching",
+        body: [
+          { p: "**Search the library…** at the top of the Library searches every guide at once; **Search these guides…** on a topic's page searches only that topic's. Each result shows a piece of the article and the guide it comes from." },
+        ],
+      },
+      {
+        id: "yourself",
+        title: "Guides you download yourself",
+        body: [
+          { p: "Most guides are free for any use. A few, such as the iFixit repair guides, are free for non-commercial use only, or collect documents that each have their own license. Zaklon never downloads these for you: they are at the bottom of their topic, under **You download these yourself**, each with a line on why." },
+          {
+            steps: [
+              "Choose **Download** on the guide.",
+              "Read the question that opens: it names the guide's license and what it allows.",
+              "Choose **Accept and download**, or **Cancel**.",
+            ],
+          },
+          { note: "They are never part of the recommended set and never marked as recommended. Use them for yourself and your household, and do not sell them or copies of them." },
+        ],
+      },
+      {
+        id: "withdrawn",
+        title: "Guides Zaklon no longer offers",
+        body: [
+          { p: "Zaklon stops offering a guide when the rights to some of its content turn out to be unclear, or when the app has a better way to do the same (the maps that opened in the Library, now that there are the Zaklon map and CoMaps). If you downloaded it before, nothing is taken away: it stays in the Library, marked **No longer offered by Zaklon**, until you remove it in [Settings › Storage & Downloads](#settings/storage/guides) on the laptop. It is not updated any more." },
+        ],
+      },
+      {
+        id: "latin",
+        title: "Serbian articles in Latin script",
+        body: [
+          { p: "Serbian Wikipedia is written in Cyrillic. To read it in Latin script, switch on **Latin script for Serbian articles** in [Settings › Language](#settings/language/latin). It applies to this device only." },
+        ],
+      },
+      {
+        id: "assistant",
+        title: "The library and the assistant",
+        body: [
+          { p: "The [Assistant](#assistant) searches the same guides and names the articles it used. The more guides you have, the more it can answer." },
+          { note: "Phones read the library from the hub, so they need to be on the home Wi-Fi." },
+        ],
+      },
+    ],
+  },
+
+  tools: {
+    title: "Tools",
+    summary: "Supplies, Maps and the calculators, each once; one of them can be pinned to the bar.",
+    open: { href: "#tools", label: "Open Tools" },
+    sections: [
+      {
+        id: "list",
+        title: "The tools",
+        body: [
+          {
+            list: [
+              "**Supplies**: what you have at home, where it is and when it expires, with a shopping list. See [Supplies](#help/supplies).",
+              "**Maps**: the Zaklon map with your home on it, the world map to download, and CoMaps for phones. See [Maps](#help/maps).",
+              "**Power calculator**: how much battery and solar you need in a power cut. See [Power calculator](#help/power).",
+              "**Water calculator**: how much drinking water to store, and drip irrigation for a garden. See [Water calculator](#help/water).",
+            ],
+          },
+          { p: "Under a tool, **Guides** leads to the Library's topics it helps with, such as Water and Garden for the water calculator." },
+        ],
+      },
+      {
+        id: "pin",
+        title: "Pin a tool to the bar",
+        body: [
+          { p: "On the laptop, **Pin to the bar** puts one tool in the bar at the bottom, before **Tools**, on every device in the household. Pinning another tool replaces it, and **Unpin** takes it away. Nothing is pinned at first." },
+        ],
+      },
+      {
+        id: "elsewhere",
+        title: "What is not here",
+        body: [
+          {
+            list: [
+              "Guides and books to read are in the [Library](#library).",
+              "Downloads, disk space and USB copies are in [Settings › Storage & Downloads](#settings/storage).",
+              "AI models are in [Settings › AI assistant](#settings/assistant/model).",
+              "Help is at the end of the list in [Settings](#settings).",
+            ],
+          },
         ],
       },
     ],
@@ -511,51 +641,6 @@ const en: HelpContent = {
     ],
   },
 
-  library: {
-    title: "Library",
-    summary: "Read and search knowledge packs such as Wikipedia, without internet.",
-    open: { href: "#library", label: "Open Library" },
-    sections: [
-      {
-        id: "packs",
-        title: "Knowledge packs",
-        body: [
-          { p: "The library holds **knowledge packs**: Wikipedia, a dictionary, medical articles, first-aid, repair and gardening guides and more. Each pack is downloaded once in [Add-ons](#addons) (or imported from a USB drive), and then works without internet." },
-          { p: "Until there is a pack, the Library says so and offers **Open Add-ons**." },
-        ],
-      },
-      {
-        id: "read",
-        title: "Reading",
-        body: [
-          { p: "**Books** lists the packs on the hub. Tap one to open its start page, then follow links as on a website. **Back** returns to the Library." },
-        ],
-      },
-      {
-        id: "search",
-        title: "Searching",
-        body: [
-          { p: "Type in **Search the library…** to search every pack at once. Each result shows a piece of the article and the pack it comes from." },
-        ],
-      },
-      {
-        id: "latin",
-        title: "Serbian articles in Latin script",
-        body: [
-          { p: "Serbian Wikipedia is written in Cyrillic. To read it in Latin script, switch on **Latin script for Serbian articles** in [Settings › Language](#settings/language/latin). It applies to this device only." },
-        ],
-      },
-      {
-        id: "assistant",
-        title: "The library and the assistant",
-        body: [
-          { p: "The [Assistant](#assistant) searches the same packs and names the articles it used. The more packs you have, the more it can answer." },
-          { note: "Phones read the library from the hub, so they need to be on the home Wi-Fi." },
-        ],
-      },
-    ],
-  },
-
   maps: {
     title: "Maps",
     summary: "The Zaklon map of the world with your home on it, and CoMaps for finding the way on phones.",
@@ -573,7 +658,7 @@ const en: HelpContent = {
         title: "The Zaklon map",
         body: [
           { p: "Drag the map to move it, and zoom with the mouse wheel, two fingers or the **+** and **−** buttons. The house button goes back to your home; the globe shows the whole world. Labels are in the app's language where the map has names in it." },
-          { p: "Zaklon comes with an overview of the whole world: countries, borders and larger cities. A phone carries it too, so away from home its map still shows the world (with the home it saw last). For towns, streets and buildings, download **the world map** in the Maps folder of [Add-ons](#addons/maps). It is very large (about 140 GB), so it needs a big disk and time; the download continues after interruptions and restarts, and the map shows it as soon as it is checked." },
+          { p: "Zaklon comes with an overview of the whole world: countries, borders and larger cities. A phone carries it too, so away from home its map still shows the world (with the home it saw last). For towns, streets and buildings, download **the world map** under [World map](#maps/world), beside the map (below it on a phone). It is very large (about 140 GB), so it needs a big disk and time; the download continues after interruptions and restarts, and the map shows it as soon as it is checked." },
           { note: "Map data © OpenStreetMap contributors. The credit in the map's corner leads to the details. The map never asks the internet for anything: everything it shows comes from the hub." },
         ],
       },
@@ -581,9 +666,9 @@ const en: HelpContent = {
         id: "world-map",
         title: "Where the world map comes from, and its updates",
         body: [
-          { p: "The world map is made by **Protomaps** from OpenStreetMap. Protomaps builds a new one every day, keeps those daily builds for about a week, and keeps some builds for good. Zaklon offers the newest build that is at least a week old, so the build is still there for as long as its download takes. Add-ons shows its date." },
-          { p: "When Add-ons is opened, the hub asks Protomaps for its list of builds, at most about once a day. Without internet it offers the last build it knew. Every download is checked against the checksum Protomaps publishes for that build before the map uses it; a damaged download is thrown away." },
-          { p: "When a newer build is out, the world map in [Add-ons](#addons/maps) says **A newer world map is available**, with its date and size. Nothing changes until you choose **Update the map** on the laptop:" },
+          { p: "The world map is made by **Protomaps** from OpenStreetMap. Protomaps builds a new one every day, keeps those daily builds for about a week, and keeps some builds for good. Zaklon offers the newest build that is at least a week old, so the build is still there for as long as its download takes. **World map** shows its date." },
+          { p: "When Maps (or Storage & Downloads) is opened, the hub asks Protomaps for its list of builds, at most about once a day. Without internet it offers the last build it knew. Every download is checked against the checksum Protomaps publishes for that build before the map uses it; a damaged download is thrown away." },
+          { p: "When a newer build is out, [World map](#maps/world) says **A newer world map is available**, with its date and size. Nothing changes until you choose **Update the map** on the laptop:" },
           {
             steps: [
               "The newer map downloads next to the one you have. The map keeps showing the old one meanwhile.",
@@ -591,7 +676,7 @@ const en: HelpContent = {
               "If the disk has no room for both, Zaklon says so and asks whether to remove the old map first. Until the new one is ready, the map then shows only the overview of the world.",
             ],
           },
-          { note: "Your map is never taken away: an older build stays until you update it or remove it. If Protomaps no longer has the build being downloaded, the download stops with a message; open Add-ons with internet and choose **Retry** to download the current build." },
+          { note: "Your map is never taken away: an older build stays until you update it or remove it. If Protomaps no longer has the build being downloaded, the download stops with a message; open Maps with internet and choose **Retry** to download the current build. How much space the map takes, and removing it, is in [Settings › Storage & Downloads](#settings/storage/maps)." },
         ],
       },
       {
@@ -621,7 +706,7 @@ const en: HelpContent = {
               "Downloads continue after interruptions. On the laptop, **Remove** deletes a map.",
             ],
           },
-          { p: "The same maps are also in the **Maps** folder of [Add-ons](#addons/maps)." },
+          { p: "How much space the maps take on the hub is in the **Maps** folder of [Settings › Storage & Downloads](#settings/storage/maps)." },
         ],
       },
       {
@@ -787,54 +872,33 @@ const en: HelpContent = {
     ],
   },
 
-  addons: {
-    title: "Add-ons",
-    summary: "Download knowledge packs, AI models and maps, and copy them to or from a USB drive.",
-    open: { href: "#addons", label: "Open Add-ons" },
+  storage: {
+    title: "Storage & Downloads",
+    summary: "What is on the hub and how much space it takes, what is downloading, and copies to and from a USB drive.",
+    open: { href: "#settings/storage", label: "Open Storage & Downloads" },
     sections: [
+      {
+        id: "where",
+        title: "What it is for",
+        body: [
+          { p: "[Settings › Storage & Downloads](#settings/storage) is where you manage what the hub keeps. New things are downloaded where they are used: guides in the [Library](#library), maps in [Tools › Maps](#maps) and AI models in [Settings › AI assistant](#settings/assistant/model)." },
+          { note: "This used to be part of a screen called Add-ons." },
+        ],
+      },
       {
         id: "layout",
         title: "Drives and folders",
         body: [
-          { p: "Add-ons looks like “This PC” in File Explorer." },
+          { p: "It looks like “This PC” in File Explorer." },
           {
             list: [
-              "**Devices and drives** shows the drive Zaklon keeps its library on (**Zaklon library**), how full it is and how much the add-ons take. Open it to see what is on it, largest first. Its bar turns red when the drive is nearly full.",
+              "**Devices and drives** shows the drive Zaklon keeps its library on (**Zaklon library**), how full it is and how much Zaklon uses. Open it to see what is on it, largest first. Its bar turns red when the drive is nearly full.",
               "On the laptop, other drives, such as a USB drive, open with copying and importing set to that drive.",
-              "**Folders** hold the add-ons by topic, the same topics as on the [Tools](#tools) screen: Health and first aid, Water, Food, Garden, Power, Build and install, Knowledge and Maps, then AI models and Programs. A guide about more than one topic is in the folder of each.",
-              "The search box finds add-ons and countries in every folder. The buttons next to it switch between tiles and a details table.",
-              "**License and credit** on a pack shows its license, who made it and where it comes from.",
+              "**Folders** hold what is on the hub by kind: **Guides & books**, **Maps**, **AI models** and **Programs**.",
+              "The buttons next to where you are switch between tiles and a details table.",
+              "**License and credit** on a guide shows its license, who made it and where it comes from.",
             ],
           },
-        ],
-      },
-      {
-        id: "starter",
-        title: "The starter set",
-        body: [
-          { p: "On the laptop, the starter set (**Basic pack for Serbia** or **English essentials**, by the app's language) downloads what a household needs to start with one button, **Download all**: knowledge, first-aid, water, solar and repair guides, the AI model that fits this computer and, in the Serbian set, the map of Serbia. It holds only packs that are free for any use." },
-        ],
-      },
-      {
-        id: "yourself",
-        title: "Packs you download yourself",
-        body: [
-          { p: "Most add-ons are free for any use. A few, such as the iFixit repair guides, are free for non-commercial use only, or collect documents that each have their own license. Zaklon never downloads these for you: they are at the bottom of their folder, under **You download these yourself**, each with a line on why." },
-          {
-            steps: [
-              "Choose **Download** on the pack.",
-              "Read the question that opens: it names the pack's license and what it allows.",
-              "Choose **Accept and download**, or **Cancel**.",
-            ],
-          },
-          { note: "They are never part of the starter set and never marked as recommended. Use them for yourself and your household, and do not sell them or copies of them." },
-        ],
-      },
-      {
-        id: "withdrawn",
-        title: "Packs Zaklon no longer offers",
-        body: [
-          { p: "Zaklon stops offering a pack when the rights to some of its content turn out to be unclear. If you downloaded it before, nothing is taken away: it stays in the [Library](#library) and in its folder, marked **No longer offered by Zaklon**, until you remove it on the laptop. It is not updated any more." },
         ],
       },
       {
@@ -843,7 +907,7 @@ const en: HelpContent = {
         body: [
           {
             list: [
-              "Choose **Download** on an add-on. The hub downloads it, even when you started it on a phone.",
+              "**Downloads** lists what is downloading, what is paused or did not finish, and what has a new version.",
               "A download can be paused and resumed. After an interruption it continues where it stopped instead of starting over.",
               "Every file is checked before it is used. A damaged file is thrown away; choose **Retry**.",
               "Downloads need at least 50% battery or the charger, and enough free disk space.",
@@ -856,22 +920,30 @@ const en: HelpContent = {
         id: "updates",
         title: "New versions and removing",
         body: [
-          { p: "When a newer version of an installed pack or map is out, it shows **New version available** and an **Update** button. The world map says **A newer world map is available** instead, and is updated on the laptop with **Update the map**; see [The world map and its updates](#help/maps/world-map). On the laptop, **Remove** deletes an add-on, or an unfinished download, and frees its space." },
+          { p: "When a newer version of a guide, map or program is out, it shows **New version available** and an **Update** button. The world map says **A newer world map is available** instead, and is updated on the laptop with **Update the map**; see [The world map and its updates](#help/maps/world-map)." },
+          { p: "On the laptop, **Remove** deletes a guide, a map or a program, or an unfinished download, and frees its space. AI models are removed in [Settings › AI assistant](#settings/assistant/model)." },
+        ],
+      },
+      {
+        id: "starter",
+        title: "The starter set",
+        body: [
+          { p: "On the laptop, the starter set (**Basic pack for Serbia** or **English essentials**, by the app's language) downloads what a household needs to start with one button, **Download all**: encyclopedias, first-aid, water, solar and repair guides, the AI model that fits this computer and, in the Serbian set, the map of Serbia. It holds only guides that are free for any use. It is here while something of it is missing, and in the [Library](#library) while the Library is empty." },
         ],
       },
       {
         id: "usb-copy",
         title: "Copy to a USB drive",
         body: [
-          { p: "To set up another Zaklon without internet, copy your add-ons to a USB drive. On the laptop:" },
+          { p: "To set up another Zaklon without internet, copy what you have to a USB drive. On the laptop:" },
           {
             steps: [
-              "Plug in the USB drive and open it under **Devices and drives**, or use **Copy to USB** at the bottom of Add-ons.",
-              "Choose the add-ons to copy. You can also put Zaklon itself on the drive (the Windows installer and the phone app) for someone starting from scratch.",
+              "Plug in the USB drive and open it under **Devices and drives**, or use **Copy to USB** at the bottom of Storage & Downloads.",
+              "Choose what to copy. You can also put Zaklon itself on the drive (the Windows installer and the phone app) for someone starting from scratch.",
               "Choose **Copy** and wait until it says **Copied to**.",
             ],
           },
-          { note: "A FAT32 drive cannot hold files of 4 GB or more. For large packs, use a drive formatted as exFAT or NTFS." },
+          { note: "A FAT32 drive cannot hold files of 4 GB or more. For large guides and maps, use a drive formatted as exFAT or NTFS." },
         ],
       },
       {
@@ -882,7 +954,7 @@ const en: HelpContent = {
             steps: [
               "On the laptop, open the USB drive under **Devices and drives**, or use **Import from a USB stick or folder**.",
               "Pick the folder with the pack files (or its **zaklon-packs** subfolder) and choose **Import**.",
-              "Each pack shows its progress in its folder. The files are checked before they are used.",
+              "Each one shows its progress under **Downloads**. The files are checked before they are used.",
             ],
           },
         ],
@@ -891,7 +963,7 @@ const en: HelpContent = {
         id: "phone",
         title: "On a phone",
         body: [
-          { p: "A phone shows the same add-ons and can start downloads on the hub. The starter set, removing and the USB copies are on the laptop." },
+          { p: "A phone shows the hub's drive, what is on it and what is downloading, and can pause or resume downloads. Removing, the starter set and USB copies are on the laptop." },
         ],
       },
     ],
@@ -899,7 +971,7 @@ const en: HelpContent = {
 
   settings: {
     title: "Settings",
-    summary: "Phones, the network, backups, the password and the other settings, category by category.",
+    summary: "Phones, storage and downloads, the network, backups, the password and the other settings, category by category.",
     open: { href: "#settings", label: "Open Settings" },
     sections: [
       {
@@ -915,6 +987,13 @@ const en: HelpContent = {
         title: "Devices",
         body: [
           { p: "Add a phone, and see the paired phones with when each was last seen; **Add a phone** on [Home](#home) leads here too. When Windows Firewall would keep phones out, its warning shows here as well. On a phone, **Forget this hub** is here too. See [Pairing a phone](#help/pairing)." },
+        ],
+      },
+      {
+        id: "storage",
+        title: "Storage & Downloads",
+        body: [
+          { p: "What is on the hub and how much space it takes, what is downloading, the starter set, and copies to and from a USB drive. See [Storage & Downloads](#help/storage)." },
         ],
       },
       {
@@ -955,7 +1034,7 @@ const en: HelpContent = {
           {
             list: [
               "**Household password** (laptop): change it here. It is needed to pair a phone and to open an encrypted backup. Phones already paired stay connected.",
-              "**Privacy**: everything stays on the hub and your phones. Zaklon goes online only when you start something that needs it, such as a download or online research, once a day to look for a new version, which can be switched off, and, when Add-ons is opened, at most once a day to ask Protomaps which world map builds it has.",
+              "**Privacy**: everything stays on the hub and your phones. Zaklon goes online only when you start something that needs it, such as a download or online research, once a day to look for a new version, which can be switched off, and, when Maps or Storage & Downloads is opened, at most once a day to ask Protomaps which world map builds it has.",
             ],
           },
         ],
@@ -978,7 +1057,7 @@ const en: HelpContent = {
         id: "assistant",
         title: "AI assistant",
         body: [
-          { p: "Choose which downloaded AI model the assistant uses; the one that fits this computer is marked recommended. Models are downloaded on the laptop, in [Add-ons](#addons/models). **What the assistant remembers** is here too." },
+          { p: "The one place for AI models: choose which downloaded model the assistant uses, and download, pause or (on the laptop) remove models. Each is listed with its size; the one that fits this computer's memory is marked recommended, and one that needs more memory than the computer has says so. **What the assistant remembers** is here too." },
         ],
       },
       {
@@ -1016,7 +1095,7 @@ const en: HelpContent = {
         title: "No internet",
         body: [
           { p: "Zaklon is made for this. At home, everything works without internet as long as the laptop is on and the phones are on the same Wi-Fi: the supplies, the library, the maps and the assistant." },
-          { p: "Internet is needed only to download add-ons, for the assistant's online research and for the daily check for a new version." },
+          { p: "Internet is needed only to download guides, maps and AI models, for the assistant's online research and for the daily check for a new version." },
         ],
       },
       {
@@ -1104,7 +1183,7 @@ const en: HelpContent = {
           {
             list: [
               "The first question after a break starts the AI, which takes up to a minute.",
-              "A smaller AI model answers faster. Choose one in [Settings › AI assistant](#settings/assistant) or download one in [Add-ons](#addons/models).",
+              "A smaller AI model answers faster. Choose or download one in [Settings › AI assistant](#settings/assistant/model).",
               "The speed is shown under each answer. If the laptop has little free memory, close other programs.",
               "An answer that takes too long is stopped. Ask again, or use a smaller model.",
               "If the AI stops while it loads, the computer may not have enough free memory: try a smaller model.",
@@ -1118,8 +1197,8 @@ const en: HelpContent = {
         body: [
           {
             list: [
-              "In [Add-ons](#addons), the bar of the Zaklon library drive turns red when it is nearly full. Open the drive to see what takes the most space.",
-              "On the laptop, **Remove** the packs, maps and models you do not need. Paused and unfinished downloads take space too.",
+              "In [Settings › Storage & Downloads](#settings/storage), the bar of the Zaklon library drive turns red when it is nearly full. Open the drive to see what takes the most space.",
+              "On the laptop, **Remove** the guides, maps and programs you do not need there, and AI models in [Settings › AI assistant](#settings/assistant/model). Paused and unfinished downloads take space too.",
               "A download that does not fit says **Not enough free disk space**.",
               "On a phone, unfinished copies of an AI model take space until you copy the model again or discard them.",
             ],
@@ -1130,7 +1209,7 @@ const en: HelpContent = {
         id: "library",
         title: "The library does not start",
         body: [
-          { p: "If the Library says its engine could not start, open [Add-ons › Programs](#addons/programs), remove **Library engine (Kiwix)** and download it again." },
+          { p: "If the Library says its engine could not start, open [Settings › Storage & Downloads › Programs](#settings/storage/programs), remove **Library engine (Kiwix)** and download it again." },
         ],
       },
       {

@@ -28,6 +28,7 @@ import SidePanel from "../components/SidePanel";
 import HelpLink from "../components/HelpLink";
 import { Icon } from "../components/Icon";
 import Suggestions from "../components/Suggestions";
+import RichText from "../components/RichText";
 
 type T = (k: Key) => string;
 type EngineState = "missing" | "no_model" | "stopped" | "starting" | "ready" | "failed";
@@ -622,7 +623,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
         return (
           <div className="row wrap">
             <button className="btn" onClick={() => download(rec.id)}>{t("download")}</button>
-            <button className="btn secondary" onClick={() => go("addons")}>{t("aiOtherModels")}</button>
+            <button className="btn secondary" onClick={() => go("settings/assistant/model")}>{t("aiOtherModels")}</button>
           </div>
         );
       })()}
@@ -676,7 +677,7 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
           {needsModel}
           {hubReady && ov?.books === 0 && (
             <p className="warn" style={{ margin: 0, fontSize: 14 }}>
-              {t("aiNoLibraryLong")} <a href="#addons">{t("addonsIn")}</a>.
+              <RichText text={t("aiNoLibraryLong")} />
             </p>
           )}
           {narrow && modelLine && <div className="start-model">{modelLine}</div>}

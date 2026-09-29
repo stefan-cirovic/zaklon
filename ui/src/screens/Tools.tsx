@@ -1,9 +1,11 @@
-import { useId, useState } from "react";
+import { useState } from "react";
 import type { Key } from "../i18n";
 import { errText } from "../errors";
 import { Icon } from "../components/Icon";
-import { GlyphIcon, ToolIcon } from "../components/ExplorerIcons";
-import { TOOL_SECTIONS, TOOLS, toolCategories, type ToolId } from "../tools";
+import HelpLink from "../components/HelpLink";
+import RichText from "../components/RichText";
+import { TOOLS, type ToolId } from "../tools";
+import { topicOf, type TopicId } from "../topics";
 
 type T = (k: Key) => string;
 type Props = {
@@ -15,15 +17,14 @@ type Props = {
   pin: ((id: ToolId | null) => Promise<void>) | null;
 };
 
-type Section = (typeof TOOL_SECTIONS)[number];
 type Tool = (typeof TOOLS)[number];
 
 /**
- * Every tool, sorted by topic (the same categories as the Add-ons folders):
- * each topic with what it is about, its tools, and a link to its guides in
- * Add-ons, so the tools and the guides for a topic are in one place. A tool
- * about several topics is under each. Each tool opens its screen, and one
- * can be pinned to the bar.
+ * The tools, each once, as a grid of tiles: each opens its screen, and one
+ * can be pinned to the bar. A tool about topics of the Library has a quiet
+ * line to their guides. What there is to read is in the Library, and what
+ * is on the hub in Settings › Storage & Downloads: the line at the bottom
+ * says so.
  */
 export default function Tools({ t, go, pinned, pin }: Props) {
   const [busy, setBusy] = useState(false);
@@ -45,75 +46,23 @@ export default function Tools({ t, go, pinned, pin }: Props) {
   return (
     <div className="stack">
       <div className="page-head">
-        <h1>{t("tools")}</h1>
+        <div className="title-line">
+          <h1>{t("tools")}</h1>
+          <HelpLink t={t} topic="tools" />
+        </div>
         <p className="muted">{t("toolsIntro")}</p>
       </div>
       {err && <p className="error" role="alert">{err}</p>}
-      <div className="topic-grid">
-        {TOOL_SECTIONS.map((s) => (
-          <TopicSection
-            key={s.id}
-            t={t}
-            section={s}
-            tools={TOOLS.filter((tool) => toolCategories(tool).includes(s.id))}
-            go={go}
-            pinned={pinned}
-            toggle={pin ? toggle : null}
-            busy={busy}
-          />
+      <ul className="tool-grid" aria-label={t("tools")}>
+        {TOOLS.map((tool) => (
+          <ToolCard key={tool.id} t={t} tool={tool} on={pinned === tool.id} go={go} toggle={pin ? toggle : null} busy={busy} />
         ))}
-      </div>
+      </ul>
       <p className="muted tools-note">{pin ? t("pinForHousehold") : t("pinOnLaptop")}</p>
+      <p className="muted tools-note">
+        <RichText text={t("toolsElsewhere")} />
+      </p>
     </div>
-  );
-}
-
-function TopicSection({
-  t,
-  section,
-  tools,
-  go,
-  pinned,
-  toggle,
-  busy,
-}: {
-  t: T;
-  section: Section;
-  tools: Tool[];
-  go: (tab: string) => void;
-  pinned: ToolId | null;
-  toggle: ((id: ToolId) => void) | null;
-  busy: boolean;
-}) {
-  const id = useId();
-  const name = t(section.name);
-  // Every topic has its folder in Add-ons; Downloads is Add-ons itself.
-  const guides = section.id === "downloads" ? null : t(section.id === "maps" ? "topicMapsGuides" : "topicGuides");
-  return (
-    <section className="topic-panel" aria-labelledby={id}>
-      <div className="topic-head">
-        <span className="topic-icon">
-          <GlyphIcon glyph={section.glyph} size={28} />
-        </span>
-        <div className="topic-text">
-          <h2 id={id}>{name}</h2>
-          <p className="muted">{t(section.desc)}</p>
-        </div>
-      </div>
-      {tools.length > 0 && (
-        <ul className="topic-tools">
-          {tools.map((tool) => (
-            <ToolCard key={tool.id} t={t} tool={tool} on={pinned === tool.id} go={go} toggle={toggle} busy={busy} />
-          ))}
-        </ul>
-      )}
-      {guides && (
-        <a className="topic-guides" href={`#addons/${section.id}`} aria-label={`${guides}: ${name}`}>
-          <span>{guides}</span>
-          <ToolIcon name="chevron" size={16} />
-        </a>
-      )}
-    </section>
   );
 }
 
@@ -133,8 +82,9 @@ function ToolCard({
   busy: boolean;
 }) {
   const title = t(tool.title);
+  const topics = tool.topics as readonly TopicId[];
   return (
-    <li className={"tool-card" + (on ? " pinned" : "")}>
+    <li className={"tool-card" + (on ? " pinned" : "")} data-tool={tool.id}>
       <button className="tool-open" onClick={() => go(tool.id)}>
         <span className="tool-icon">
           <Icon name={tool.id} size={26} />
@@ -151,17 +101,32 @@ function ToolCard({
           <span className="tool-desc">{t(tool.desc)}</span>
         </span>
       </button>
-      {toggle && (
+      {(topics.length > 0 || toggle) && (
         <div className="tool-actions">
-          <button
-            className="btn secondary small"
-            aria-label={`${on ? t("unpin") : t("pinToBar")}: ${title}`}
-            onClick={() => toggle(tool.id)}
-            disabled={busy}
-          >
-            <Icon name="pin" size={16} />
-            {on ? t("unpin") : t("pinToBar")}
-          </button>
+          {topics.length > 0 && (
+            <p className="tool-guides">
+              {t("toolGuides")}:{" "}
+              {topics.map((id, i) => (
+                <span key={id}>
+                  {i > 0 && " · "}
+                  <a href={`#library/${id}`} aria-label={`${t("toolGuides")}: ${t(topicOf(id).name)}`}>
+                    {t(topicOf(id).name)}
+                  </a>
+                </span>
+              ))}
+            </p>
+          )}
+          {toggle && (
+            <button
+              className="btn secondary small"
+              aria-label={`${on ? t("unpin") : t("pinToBar")}: ${title}`}
+              onClick={() => toggle(tool.id)}
+              disabled={busy}
+            >
+              <Icon name="pin" size={16} />
+              {on ? t("unpin") : t("pinToBar")}
+            </button>
+          )}
         </div>
       )}
     </li>

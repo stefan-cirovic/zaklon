@@ -1,18 +1,26 @@
 import type { ReactNode } from "react";
 
 /**
- * Icons of the Add-ons screen, which looks like a file explorer: folders with
- * what is inside drawn on them, drives, and the toolbar's line icons. Drawn on
- * a 24 px grid like components/Icon.tsx. The glyphs of the topics (see
- * topics.ts) mark the same categories on the Tools screen.
+ * Icons of the packs: the Library's topics (see topics.ts), and Storage &
+ * Downloads, which looks like a file explorer: folders with what is inside
+ * drawn on them, drives, and the toolbar's line icons. Drawn on a 24 px
+ * grid like components/Icon.tsx.
  */
-export type Glyph = "book" | "health" | "water" | "food" | "garden" | "power" | "build" | "chip" | "map" | "program" | "download";
+export type Glyph = "book" | "reference" | "health" | "water" | "food" | "garden" | "power" | "build" | "chip" | "map" | "program" | "download";
 
 const GLYPHS: Record<Glyph, ReactNode> = {
   book: (
     <>
       <path d="M12 6.5C10.5 5 8 4.5 4 4.5v13c4 0 6.5.5 8 2 1.5-1.5 4-2 8-2v-13c-4 0-6.5.5-8 2z" />
       <path d="M12 6.5v13" />
+    </>
+  ),
+  // Books on a shelf, one leaning: encyclopedias and dictionaries.
+  reference: (
+    <>
+      <path d="M4.5 19.5v-14h3.5v14zM8 19.5v-12h3.5v12z" />
+      <path d="m13.2 8.6 3.3-1 3.6 12.2-3.3 1z" />
+      <path d="M3.5 20.5h17" />
     </>
   ),
   health: <path d="M9.5 4.5h5v5h5v5h-5v5h-5v-5h-5v-5h5z" />,

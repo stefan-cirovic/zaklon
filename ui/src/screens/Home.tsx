@@ -5,7 +5,7 @@ import { offlineState, onBackOnline, onOfflineChange } from "../offline";
 import { useVisiblePoll } from "../poll";
 import { fmtBytes, fmtDateTime } from "../format";
 import { askInAssistant, fromText, openInAssistant, type Summary as Chat } from "../conversations";
-import { BUSY, rootName, type CatalogReply, type Localized } from "../addons";
+import { BUSY, rootName, type CatalogReply, type Localized } from "../packs";
 import { countryState, type MapsReply } from "../maps";
 import { TOOLS, type ToolId } from "../tools";
 import { askForPairing } from "../settings";
@@ -14,7 +14,7 @@ import SuppliesCard, { type ShoppingEntry, type SuppliesSummary } from "../compo
 import HelpLink from "../components/HelpLink";
 import Firewall from "../components/Firewall";
 import { UpdateBanner } from "../components/Updates";
-import { DriveTile } from "../components/AddonViews";
+import { DriveTile } from "../components/PackViews";
 import { Icon, type IconName } from "../components/Icon";
 import ZaklonMap from "../components/ZaklonMap";
 import { homeText, useMapInfo } from "../components/MapPart";
@@ -35,7 +35,7 @@ type Props = {
   pinned: ToolId | null;
 };
 
-/** Supplies, the shopping list, the conversations and the add-ons are asked for again this often (never while the app is in the background). */
+/** Supplies, the shopping list, the conversations and the packs are asked for again this often (never while the app is in the background). */
 const EVERY = 30_000;
 /** While something downloads, its bar moves this often. */
 const BUSY_EVERY = 2_000;
@@ -48,8 +48,8 @@ const RECENT = 3;
 /**
  * Home: the household at a glance, using the whole window. The hub in one
  * line at the top, then the assistant, the supplies (what expires, what runs
- * low, what to buy) with the home on the map beside it, the library and
- * add-ons, and the tools. A phone away from home shows its copy of the
+ * low, what to buy) with the home on the map beside it, storage and
+ * downloads, and the tools. A phone away from home shows its copy of the
  * supplies and conversations, marked as old.
  */
 export default function Home({ status, statusAt, error, t, lang, go, phone, pinned }: Props) {
@@ -103,7 +103,7 @@ export default function Home({ status, statusAt, error, t, lang, go, phone, pinn
   }, canLoad ? EVERY : null);
   useEffect(() => onBackOnline(reload), [reload]);
 
-  // Add-ons (with the hub's battery and disk), and the maps, which have their own list.
+  // The packs (with the hub's battery and disk), and the maps, which have their own list.
   const [cat, setCat] = useState<CatalogReply | null>(null);
   const [catFailed, setCatFailed] = useState(false);
   const [maps, setMaps] = useState<MapsReply | null>(null);
@@ -170,7 +170,7 @@ export default function Home({ status, statusAt, error, t, lang, go, phone, pinn
         <AssistantCard t={t} go={go} chats={chats} failed={chatsFailed} saved={chatsSaved} />
         <SuppliesCard t={t} sum={sum} shop={shop} unavailable={unavailable} note={suppliesNote} reload={reload} />
         <HomeMapCard t={t} lang={lang} info={mapInfo} unreachable={!!mapErr && !mapInfo} />
-        <AddonsCard t={t} lang={lang} cat={cat} maps={maps} failed={catFailed} away={away} go={go} />
+        <StorageCard t={t} lang={lang} cat={cat} maps={maps} failed={catFailed} away={away} go={go} />
         <QuickAccess t={t} pinned={pinned} />
       </div>
     </div>
@@ -315,8 +315,8 @@ function AssistantCard({ t, go, chats, failed, saved }: { t: T; go: (tab: string
 
 type Download = { key: string; name: string; status: string; pct: number; detail: string };
 
-/** The library's drive, what is downloading (with bars), and what waits: new versions, paused and failed downloads. */
-function AddonsCard({
+/** Storage & Downloads in short: the library's drive, what is downloading (with bars), and what waits: new versions, paused and failed downloads. */
+function StorageCard({
   t,
   lang,
   cat,
@@ -335,10 +335,10 @@ function AddonsCard({
 }) {
   const id = useId();
   const dlId = useId();
-  const head = <CardHead id={id} icon="addons" title={t("homeLibraryAddons")} href="#addons" link={t("goToAddons")} />;
+  const head = <CardHead id={id} icon="storage" title={t("storage")} href="#settings/storage" link={t("storageOpen")} />;
   if (!cat) {
     return (
-      <section className="panel left home-card home-addons" aria-labelledby={id}>
+      <section className="panel left home-card home-storage" aria-labelledby={id}>
         {head}
         <p className={(failed || away ? "warn" : "muted") + " home-empty"}>{failed || away ? t("unavailable") : t("aiLoading")}</p>
       </section>
@@ -383,9 +383,9 @@ function AddonsCard({
   }
   const root = cat.library_drive ?? "";
   const libName = `${t("hubDisk")}${/^[A-Za-z]:/.test(root) ? ` (${rootName(root)})` : ""}`;
-  const addonsBytes = cat.packs.reduce((s, p) => s + (p.state.status === "installed" ? p.size : 0), 0) + (maps?.installed_bytes ?? 0);
+  const usedBytes = cat.packs.reduce((s, p) => s + (p.state.status === "installed" ? p.size : 0), 0) + (maps?.installed_bytes ?? 0);
   return (
-    <section className="panel left home-card home-addons" aria-labelledby={id}>
+    <section className="panel left home-card home-storage" aria-labelledby={id}>
       {head}
       <DriveTile
         t={t}
@@ -396,14 +396,14 @@ function AddonsCard({
         total={cat.system.disk_total}
         note={
           <span className="muted">
-            {addonsBytes > 0 ? `${t("addonsUse")}: ${fmtBytes(addonsBytes)}` : t("nothingInstalled")}
+            {usedBytes > 0 ? `${t("storageUse")}: ${fmtBytes(usedBytes)}` : t("nothingInstalled")}
           </span>
         }
-        open={() => go("addons/library")}
+        open={() => go("settings/storage/disk")}
       />
       <section className="home-part" aria-labelledby={dlId}>
         <h3 id={dlId} className="home-sub">
-          {t("homeDownloads")} <span className="home-count">{downloads.length}</span>
+          {t("downloads")} <span className="home-count">{downloads.length}</span>
         </h3>
         {downloads.length === 0 ? (
           <p className="muted home-empty">{t("homeNoDownloads")}</p>
@@ -424,24 +424,24 @@ function AddonsCard({
           </ul>
         )}
         {downloads.length > SHOW && (
-          <a className="home-link" href="#addons/library">{t("homeMoreN").replace("{n}", String(downloads.length - SHOW))}</a>
+          <a className="home-link" href="#settings/storage/downloads">{t("homeMoreN").replace("{n}", String(downloads.length - SHOW))}</a>
         )}
       </section>
       {(updates > 0 || paused > 0 || broken > 0) && (
         <ul className="home-notes">
           {updates > 0 && (
             <li>
-              <a className="home-link" href="#addons/library">{t("packUpdateAvailable")}: {updates}</a>
+              <a className="home-link" href="#settings/storage/downloads">{t("packUpdateAvailable")}: {updates}</a>
             </li>
           )}
           {paused > 0 && (
             <li>
-              <a className="home-link" href="#addons/library">{t("pausedStatus")}: {paused}</a>
+              <a className="home-link" href="#settings/storage/downloads">{t("pausedStatus")}: {paused}</a>
             </li>
           )}
           {broken > 0 && (
             <li>
-              <a className="home-link warn" href="#addons/library">{t("failedStatus")}: {broken}</a>
+              <a className="home-link warn" href="#settings/storage/downloads">{t("failedStatus")}: {broken}</a>
             </li>
           )}
         </ul>

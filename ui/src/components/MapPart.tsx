@@ -7,6 +7,7 @@ import { fmtDateTime } from "../format";
 import { coords, distanceKm, hasTiles, phoneMapInfo, placeLabel, rememberHome, wrapLon, type FoundPlace, type HomePlace, type LatLon, type MapInfo } from "../map/info";
 import ConfirmButton from "./ConfirmButton";
 import ZaklonMap, { type ZaklonMapHandle } from "./ZaklonMap";
+import WorldMap, { showWorldMap } from "./WorldMap";
 
 type T = (k: Key) => string;
 
@@ -50,8 +51,8 @@ export function useMapInfo(t: T, enabled = true) {
 
 /**
  * One line over the map about how much of it there is: only the world
- * overview (with the way to the world map in Add-ons), the world map on its
- * way or being checked, or no map at all.
+ * overview (with the way to the world map beside the map), the world map on
+ * its way or being checked, or no map at all.
  */
 export function MapNote({ t, info, err }: { t: T; info: MapInfo | null; err: string | null }) {
   if (err && !info) return <p className="zmap-note warn">{t("mapUnreachable")}</p>;
@@ -59,16 +60,18 @@ export function MapNote({ t, info, err }: { t: T; info: MapInfo | null; err: str
   if (info.phone) return <p className="zmap-note">{t("mapPhoneOverview")}</p>;
   const w = info.world;
   const pct = w && w.bytes_total ? Math.min(100, Math.floor((w.bytes_done / w.bytes_total) * 100)) : 0;
-  // The way to the world map, where this hub's catalog offers one.
-  const addons = w && (
-    <a className="zmap-note-link" href="#addons/maps">
-      {t("mapWorldInAddons")}
-    </a>
-  );
+  // The way to the world map beside the map, where this hub's catalog offers one.
+  const toWorld = (label: Key) =>
+    w && (
+      <a className="zmap-note-link" href="#maps/world" onClick={showWorldMap}>
+        {t(label)}
+      </a>
+    );
+  const getWorld = toWorld("mapWorldGet");
   if (!hasTiles(info)) {
     return (
       <p className="zmap-note">
-        {t("mapNoData")} {addons}
+        {t("mapNoData")} {getWorld}
       </p>
     );
   }
@@ -81,13 +84,13 @@ export function MapNote({ t, info, err }: { t: T; info: MapInfo | null; err: str
   if (w && ["queued", "downloading", "paused"].includes(w.status)) {
     return (
       <p className="zmap-note">
-        {t("mapWorldDownloading").replace("{n}", String(pct))} {addons}
+        {t("mapWorldDownloading").replace("{n}", String(pct))} {toWorld("mapWorldFollow")}
       </p>
     );
   }
   return (
     <p className="zmap-note">
-      {t("mapOverviewOnly")} {addons}
+      {t("mapOverviewOnly")} {getWorld}
     </p>
   );
 }
@@ -103,10 +106,10 @@ export function homeText(home: HomePlace): string {
 /**
  * The Zaklon map part of the Maps screen: the map as large as the window
  * allows, and beside it (below it on a phone) the household's home location
- * and the ways to set it: the phone's location, a town found by name, a tap
- * on the map.
+ * and the ways to set it (the phone's location, a town found by name, a tap
+ * on the map), and the world map to download or update.
  */
-export default function MapPart({ t, lang, isHub, homeOpen }: { t: T; lang: Lang; isHub: boolean; homeOpen: boolean }) {
+export default function MapPart({ t, lang, isHub, homeOpen, worldOpen }: { t: T; lang: Lang; isHub: boolean; homeOpen: boolean; worldOpen: boolean }) {
   const { info, err, reload } = useMapInfo(t);
   const map = useRef<ZaklonMapHandle>(null);
   const [editing, setEditing] = useState(homeOpen);
@@ -132,26 +135,30 @@ export default function MapPart({ t, lang, isHub, homeOpen }: { t: T; lang: Lang
       <ZaklonMap ref={map} t={t} lang={lang} info={info} home={home} pending={editing ? chosen : null} onPick={editing ? pick : undefined} start="home" label={t("mapsZaklonMap")}>
         <MapNote t={t} info={info} err={err} />
       </ZaklonMap>
-      <HomeLocation
-        t={t}
-        lang={lang}
-        phone={!isHub}
-        info={info}
-        home={home}
-        editing={editing}
-        setEditing={(on) => {
-          setEditing(on);
-          if (!on) setChosen(null);
-        }}
-        chosen={chosen}
-        choose={choose}
-        saved={() => {
-          setChosen(null);
-          setEditing(false);
-          reload();
-        }}
-        showHome={() => home && map.current?.flyTo(home)}
-      />
+      <div className="map-side">
+        <HomeLocation
+          t={t}
+          lang={lang}
+          phone={!isHub}
+          info={info}
+          home={home}
+          editing={editing}
+          setEditing={(on) => {
+            setEditing(on);
+            if (!on) setChosen(null);
+          }}
+          chosen={chosen}
+          choose={choose}
+          saved={() => {
+            setChosen(null);
+            setEditing(false);
+            reload();
+          }}
+          showHome={() => home && map.current?.flyTo(home)}
+        />
+        {/* A phone away from the hub has nothing to download from. */}
+        {!info?.phone && <WorldMap t={t} lang={lang} isHub={isHub} open={worldOpen} />}
+      </div>
     </div>
   );
 }

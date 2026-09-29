@@ -1,6 +1,6 @@
 import type { Lang } from "./i18n";
 
-// What /api/maps says about the world's maps, shared by the Maps and Add-ons screens.
+// What /api/maps says about the world's maps, shared by Maps and Storage & Downloads.
 
 export type MapStatus = "not_installed" | "queued" | "downloading" | "paused" | "verifying" | "installed" | "failed";
 export type Region = { id: string; name: string; name_sr: string; size: number; status: MapStatus; bytes_done: number; error?: string; update?: boolean };

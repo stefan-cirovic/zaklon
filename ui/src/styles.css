@@ -114,8 +114,9 @@ p { margin: 0 0 12px; }
   .nav-brand { width: 44px; }
   .nav-brand .mark { width: 28px; height: 28px; }
   .nav-brand .wordmark { display: none; }
-  /* Five items and the logo on a phone: a smaller label keeps "Domaćinstvo" whole. */
-  .nav-items.five button { font-size: 11px; padding-left: 0; padding-right: 0; }
+  /* Five items (six with a pinned tool) and the logo on a phone: all as wide, except that a long
+     name ("Podešavanja", "Biblioteka") takes a little more rather than being cut short. */
+  .nav-items button { flex: 1 1 0; min-width: min-content; font-size: 11px; padding-left: 2px; padding-right: 2px; }
 }
 @media (min-width: 900px) {
   /* Laptop: the logo well inside the left end, the items in the middle of the bar. */
@@ -134,7 +135,7 @@ p { margin: 0 0 12px; }
 @media (prefers-reduced-motion: reduce) {
   .nav-brand .mark, .nav-brand .wordmark { transition: none; }
 }
-@media (max-width: 380px) { .nav-items button { font-size: 11px; } .nav-items.five button { font-size: 10px; } .nav-brand { width: 40px; } }
+@media (max-width: 380px) { .nav-items button { font-size: 10px; } .nav-brand { width: 36px; } }
 
 /* Panels and controls */
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
@@ -451,39 +452,84 @@ ul.plain { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 6px; font-si
 .tool-title { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 15px; font-weight: 600; color: #e7e7e7; }
 .tool-desc { color: var(--muted); font-size: 13px; }
 .tool-pinned { display: inline-flex; align-items: center; gap: 3px; font-weight: 400; }
-.tool-actions { padding: 0 16px 14px 74px; }
+/* Under a tool: the Library's topics it helps with (quiet), and the pin. */
+.tool-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 0 16px 14px 74px; }
+.tool-guides { margin: 0; font-size: 13px; color: var(--muted); }
 .tools-note { font-size: 13px; margin: 0; }
-@media (max-width: 899px) { .tool-actions { padding: 0 12px 12px; } .tool-actions .btn { width: 100%; } .tools-note { text-align: center; } }
-
-/* Tools by topic: a panel per topic with a big heading, what it is about, its tools (inset
-   cards) and, at the bottom, the link to its guides in Add-ons. */
-.topic-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); }
-.topic-panel {
-  display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 18px;
-  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+@media (max-width: 899px) {
+  .tool-actions { padding: 0 12px 12px; }
+  .tool-actions .btn { width: 100%; }
+  .tool-guides a { display: inline-flex; align-items: center; min-height: 44px; }
+  .tools-note { text-align: center; }
 }
-.topic-head { display: flex; align-items: flex-start; gap: 14px; }
-.topic-icon {
+
+/* The Library: the topics as big entries, each with its icon, what it is about and what of it
+   is on the hub; a topic's page with its tool, the guides to read and the ones to get. */
+.lib-topics { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+.lib-topics > li { display: flex; min-width: 0; }
+.lib-topic {
+  flex: 1; display: flex; align-items: center; gap: 14px; min-width: 0; padding: 16px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); color: inherit;
+}
+.lib-topic:hover { background: var(--hover); border-color: var(--line-2); text-decoration: none; }
+.lib-topic:focus-visible { outline-offset: -2px; }
+.lib-topic-icon, .lib-tool .tool-icon {
   flex: 0 0 auto; width: 48px; height: 48px; border-radius: 10px; display: grid; place-items: center;
   background: color-mix(in srgb, var(--accent) 14%, var(--panel)); color: var(--accent);
 }
-.topic-text { min-width: 0; display: grid; gap: 2px; }
-.topic-text h2 { margin: 0; font-size: 19px; line-height: 1.3; }
-.topic-text p { margin: 0; font-size: 14px; }
-.topic-tools { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-.topic-tools .tool-card { background: var(--bg); }
-.topic-guides {
-  margin-top: auto; align-self: flex-start; display: inline-flex; align-items: center; gap: 6px;
-  min-height: 34px; font-size: 15px; font-weight: 600;
+.lib-topic-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.lib-topic-name { font-size: 16px; font-weight: 600; color: #e7e7e7; }
+.lib-topic-desc { font-size: 13px; color: var(--muted); }
+.lib-topic-count { font-size: 13px; color: var(--muted); }
+.lib-topic-count.ok { color: var(--ok); }
+.lib-topic-go { flex: 0 0 auto; display: flex; color: var(--muted); }
+.lib-start h3 { margin: 4px 0 0; font-size: 15px; color: #e7e7e7; }
+.lib-head { margin-bottom: 0; }
+.lib-head .set-crumbs { font-size: 22px; }
+.lib-topic-intro { margin: -4px 0 0; }
+.lib-tool {
+  display: flex; align-items: center; gap: 12px; align-self: start; max-width: 520px; padding: 10px 14px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); color: inherit;
 }
+.lib-tool:hover { background: var(--hover); border-color: var(--line-2); text-decoration: none; }
+.lib-tool .tool-icon { width: 40px; height: 40px; border-radius: 8px; }
+.lib-tool-text { flex: 1; min-width: 0; display: grid; }
+.lib-tool-label { font-size: 12px; }
+.lib-tool-name { font-weight: 600; color: #e7e7e7; }
+.lib-tool .icon:last-child { color: var(--muted); }
+.lib-section { gap: 10px; margin-top: 8px; }
+.lib-section > h2 { margin: 0; }
+.lib-books { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); }
+.lib-book { display: flex; flex-direction: column; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.lib-book-open {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 10px 14px;
+  background: none; border: 0; border-radius: var(--radius); color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.lib-book-open:hover:not(:disabled) { background: var(--hover); }
+.lib-book-open:disabled { cursor: default; opacity: 0.7; }
+.lib-book-open:focus-visible { outline-offset: -2px; }
+.lib-book-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.lib-book-read { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; color: var(--accent); font-weight: 600; font-size: 14px; }
+.lib-book-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 14px 12px 66px; }
 @media (max-width: 899px) {
-  .topic-panel { padding: 14px 12px; gap: 12px; }
-  .topic-guides { min-height: 44px; }
+  .lib-topic { padding: 12px; }
+  .lib-topic-icon { width: 44px; height: 44px; }
+  .lib-head .set-crumbs { font-size: 15px; }
+  .lib-tool { align-self: stretch; max-width: none; min-height: 56px; }
+  .lib-book-actions { padding: 0 12px 12px; }
+  .lib-book-actions .btn { flex: 1 1 auto; }
 }
 
-/* Add-ons: a file explorer. A bar with Back, where you are, search and the view; the drives
-   with how full they are; the folders as big tiles or as rows of a table. */
-.addons h1:focus { outline: none; }
+/* Maps: beside the Zaklon map (below it on a phone), the home location and the world map. */
+.map-side { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.world-map { display: grid; gap: 10px; }
+.world-map .entry-tile { display: flex; }
+.world-map-manage { margin: 0; font-size: 13px; }
+
+/* Storage & Downloads: a file explorer. A bar with Back, where you are and the view; the
+   drives with how full they are, what is downloading, then the folders as big tiles or as
+   rows of a table. */
+.storage-intro { margin: 0; }
 .explorer-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .icon-btn { padding: 0; width: 34px; min-width: 34px; flex: 0 0 auto; }
 .btn.small.icon-btn { width: 30px; min-width: 30px; padding: 0; }
@@ -967,12 +1013,12 @@ select.lang-pick { width: auto; margin-top: 4px; }
   .home-grid {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-rows: auto 1fr auto;
-    grid-template-areas: "ask ask" "supplies map" "addons tools";
+    grid-template-areas: "ask ask" "supplies map" "storage tools";
   }
   .home-ask { grid-area: ask; }
   .home-supplies { grid-area: supplies; }
   .home-map { grid-area: map; }
-  .home-addons { grid-area: addons; }
+  .home-storage { grid-area: storage; }
   .home-tools { grid-area: tools; }
 }
 /* A laptop window: the cards reach down to the bar, whatever its height. */

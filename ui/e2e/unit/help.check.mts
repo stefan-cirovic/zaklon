@@ -3,8 +3,10 @@
 // The user guide in English and Serbian must match: the same topics (the
 // types already make sure of that), the same sections in the same order, the
 // same kinds of blocks with the same number of steps, and the same links.
-// Every link must lead somewhere: a screen, a Settings category or setting,
-// an Add-ons folder, or a help page and section that exist.
+// Every link must lead somewhere: a screen, a topic of the Library, a
+// Settings category or setting (or a place in Storage & Downloads), a part
+// of Maps, or a help page and section that exist. No link leads to an
+// address from before (Add-ons).
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
@@ -15,17 +17,19 @@ const sr = (await import("../../src/help/sr.ts")).default;
 const src = (file: string) => readFileSync(new URL(`../../src/${file}`, import.meta.url), "utf8");
 
 // What the addresses may name, read from the app's own lists.
-const SCREENS = ["home", "assistant", "tools", "settings", "help", ...[...src("tools.ts").matchAll(/\{ id: "(\w+)", title:/g)].map((m) => m[1])];
+const SCREENS = ["home", "assistant", "library", "tools", "settings", "help", ...[...src("tools.ts").matchAll(/\{ id: "(\w+)", title:/g)].map((m) => m[1])];
 const CATEGORIES = [...src("settings.ts").matchAll(/\{ id: "([\w-]+)", title: "\w+", desc:/g)].map((m) => m[1]);
 const SETTINGS = [...src("settings.ts").matchAll(/\{ id: "([\w-]+)", cat: "([\w-]+)"/g)].map((m) => `${m[2]}/${m[1]}`);
-// The Add-ons folders: the topics (topics.ts), then AI models and programs (addons.ts).
-const FOLDERS = ["topics.ts", "addons.ts"].flatMap((f) => [...src(f).matchAll(/\{ id: "(\w+)", name: "\w+", desc:/g)].map((m) => m[1]));
+// The Library's topics (topics.ts).
+const TOPICS = [...src("topics.ts").matchAll(/\{ id: "(\w+)", name: "\w+", desc:/g)].map((m) => m[1]);
+// The places of Storage & Downloads: its folders by kind (packs.ts) and the hub's drive.
+const STORAGE_PLACES = [...[...src("packs.ts").matchAll(/\{ id: "(\w+)", name: "\w+", glyph:/g)].map((m) => m[1]), "disk"];
 assert.ok(
-  SCREENS.includes("supplies") && CATEGORIES.includes("backups") && SETTINGS.includes("network/hotspot") && FOLDERS.includes("health") && FOLDERS.includes("models"),
+  SCREENS.includes("supplies") && !SCREENS.includes("addons") && CATEGORIES.includes("storage") && SETTINGS.includes("network/hotspot") && TOPICS.includes("reference") && STORAGE_PLACES.includes("models"),
   "the app's lists were read",
 );
 const MAPS_PARTS = [...src("screens/Maps.tsx").matchAll(/sub === "(\w+)"/g)].map((m) => m[1]);
-assert.deepEqual(MAPS_PARTS.sort(), ["home", "navigation"], "the parts of the Maps screen were read");
+assert.deepEqual(MAPS_PARTS.sort(), ["home", "navigation", "world"], "the parts of the Maps screen were read");
 
 type Block = { p: string } | { steps: string[] } | { list: string[] } | { note: string } | { warn: string };
 type Section = { id: string; title: string; body: Block[] };
@@ -50,10 +54,11 @@ function checkHref(href: string, where: string) {
   } else if (tab === "settings") {
     if (a === undefined) return;
     assert.ok(CATEGORIES.includes(a), `${where}: no Settings category "${a}" (${href})`);
-    if (b !== undefined) assert.ok(SETTINGS.includes(`${a}/${b}`), `${where}: no setting "${b}" in Settings › ${a}`);
-  } else if (tab === "addons") {
+    const place = a === "storage" && b !== undefined && STORAGE_PLACES.includes(b);
+    if (b !== undefined) assert.ok(place || SETTINGS.includes(`${a}/${b}`), `${where}: no setting "${b}" in Settings › ${a}`);
+  } else if (tab === "library") {
     assert.equal(b, undefined, `${where}: ${href}`);
-    if (a !== undefined) assert.ok(FOLDERS.includes(a), `${where}: no Add-ons folder "${a}" (${href})`);
+    if (a !== undefined) assert.ok(TOPICS.includes(a), `${where}: no topic "${a}" in the Library (${href})`);
   } else if (tab === "maps") {
     // The parts of the Maps screen (routeOf in screens/Maps.tsx).
     assert.equal(b, undefined, `${where}: ${href}`);

@@ -1,35 +1,20 @@
 import type { Key } from "./i18n";
-import type { Glyph } from "./components/ExplorerIcons";
-import { TOPICS, type TopicId } from "./topics";
-
-/** Where a tool is listed on the Tools screen: a topic, or Downloads (Add-ons, which serves every topic). */
-export type ToolCategory = TopicId | "downloads";
+import type { TopicId } from "./topics";
 
 /**
- * The sections of the Tools screen, in this order: the topics (the same
- * categories as the folders of Add-ons, each with a link to its folder),
- * then Downloads.
- */
-export const TOOL_SECTIONS = [
-  ...TOPICS,
-  { id: "downloads", name: "topicDownloads", desc: "topicDownloadsDesc", glyph: "download" },
-] as const satisfies readonly { id: ToolCategory; name: Key; desc: Key; glyph: Glyph }[];
-
-/**
- * Every tool of the app, as listed on the Tools screen. The id is also the
- * tool's address (#supplies) and what the hub keeps as the pinned tool. The
- * category, one or a list, is the section (or sections) of the Tools screen
- * the tool is listed in. A new screen that is a tool is added here, with its
- * icon in components/Icon.tsx.
+ * Every tool of the app, each once, in the order of the Tools screen. The id
+ * is also the tool's address (#supplies) and what the hub keeps as the
+ * pinned tool; `short` is its name in the bar. `topics` are the Library's
+ * topics the tool helps with: the tool shows a quiet link to their guides,
+ * and each topic's page links back to the tool. A new screen that is a tool
+ * is added here, with its icon in components/Icon.tsx.
  */
 export const TOOLS = [
-  { id: "supplies", title: "supplies", desc: "toolSuppliesDesc", category: ["food", "health"] },
-  { id: "library", title: "library", desc: "toolLibraryDesc", category: "knowledge" },
-  { id: "maps", title: "maps", desc: "toolMapsDesc", category: "maps" },
-  { id: "power", title: "powerCalc", desc: "toolPowerDesc", category: "power" },
-  { id: "water", title: "waterCalc", desc: "toolWaterDesc", category: ["water", "garden"] },
-  { id: "addons", title: "addons", desc: "toolAddonsDesc", category: "downloads" },
-] as const satisfies readonly { id: string; title: Key; desc: Key; category: ToolCategory | readonly ToolCategory[] }[];
+  { id: "supplies", title: "supplies", short: "supplies", desc: "toolSuppliesDesc", topics: ["food", "health"] },
+  { id: "maps", title: "maps", short: "maps", desc: "toolMapsDesc", topics: [] },
+  { id: "power", title: "powerCalc", short: "powerShort", desc: "toolPowerDesc", topics: ["power"] },
+  { id: "water", title: "waterCalc", short: "waterShort", desc: "toolWaterDesc", topics: ["water", "garden"] },
+] as const satisfies readonly { id: string; title: Key; short: Key; desc: Key; topics: readonly TopicId[] }[];
 
 export type ToolId = (typeof TOOLS)[number]["id"];
 
@@ -41,7 +26,7 @@ export function toolOf(id: ToolId) {
   return TOOLS.find((x) => x.id === id)!;
 }
 
-/** The sections a tool is listed in. */
-export function toolCategories(tool: { category: ToolCategory | readonly ToolCategory[] }): readonly ToolCategory[] {
-  return typeof tool.category === "string" ? [tool.category] : tool.category;
+/** The tools that help with a topic of the Library (Water: the water calculator). */
+export function toolsFor(topic: TopicId) {
+  return TOOLS.filter((x) => (x.topics as readonly TopicId[]).includes(topic));
 }

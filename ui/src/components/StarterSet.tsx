@@ -3,7 +3,7 @@ import { api } from "../api";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
 import { fmtBytes } from "../format";
-import { downloadedByUser, type StarterSetDef } from "../addons";
+import { downloadedByUser, type StarterSetDef } from "../packs";
 
 type T = (k: Key) => string;
 type Pack = { id: string; title: { en: string; sr: string }; size: number; offer?: string; withdrawn?: boolean; state: { status: string } };
@@ -26,6 +26,7 @@ export default function StarterSet({
   sets,
   freeBytes,
   onStarted,
+  embedded = false,
 }: {
   t: T;
   lang: Lang;
@@ -33,6 +34,8 @@ export default function StarterSet({
   sets: StarterSetDef[];
   freeBytes: number;
   onStarted: () => void;
+  /** Inside another panel (the Library's start): no panel of its own. */
+  embedded?: boolean;
 }) {
   const [model, setModel] = useState<string | null>(null);
   const [map, setMap] = useState<MapCountry | null>(null);
@@ -111,8 +114,8 @@ export default function StarterSet({
   };
 
   return (
-    <div className="panel stack left starter">
-      <h2>{lang === "sr" ? t("starterTitleSr") : t("starterTitleEn")}</h2>
+    <div className={(embedded ? "" : "panel ") + "stack left starter"}>
+      {embedded ? <h3>{lang === "sr" ? t("starterTitleSr") : t("starterTitleEn")}</h3> : <h2>{lang === "sr" ? t("starterTitleSr") : t("starterTitleEn")}</h2>}
       <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("starterIntro")}</p>
       <ul className="plain">
         {lines.map((l) => (

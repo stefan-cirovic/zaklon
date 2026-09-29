@@ -50,7 +50,7 @@ const sr: HelpContent = {
             steps: [
               "**Podesi domaćinstvo.** Kad se Zaklon prvi put otvori, izaberi jezik, ime huba i lozinku domaćinstva (najmanje 8 znakova).",
               "**Upari telefone.** Na laptopu izaberi **Dodaj telefon** na [Početnoj](#home), ili otvori [Podešavanja › Uređaji](#settings/devices) i izaberi ga tamo. Vidi [Uparivanje telefona](#help/pairing).",
-              "**Preuzmi sadržaj.** U [Dodacima](#addons) osnovni paket jednim dugmetom preuzima znanje, uputstva za prvu pomoć i popravke i AI model koji odgovara ovom računaru. Za to jednom treba internet; posle sve radi i bez njega.",
+              "**Preuzmi sadržaj.** [Biblioteka](#library) počinje preporučenim paketom: jedno dugme preuzima enciklopedije, vodiče za prvu pomoć, vodu i popravke i AI model koji odgovara ovom računaru. Za to jednom treba internet; posle sve radi i bez njega.",
               "**Unesi zalihe** u [Zalihama](#supplies) i pitaj [Asistenta](#assistant) šta god te zanima.",
             ],
           },
@@ -67,8 +67,9 @@ const sr: HelpContent = {
             list: [
               "**Početna**: stanje huba i ono što traži pažnju, na primer zalihe kojima uskoro ističe rok ili kojih ponestaje.",
               "**Asistent**: pitaj šta te zanima, običnim rečima.",
-              "**Alati**: svi alati, složeni po temama, na primer [Zalihe](#supplies), [Biblioteka](#library), [Mape](#maps) i [Dodaci](#addons).",
-              "**Podešavanja**: telefoni, mreža, rezervne kopije i ostala podešavanja, a na kraju spiska i ova pomoć.",
+              "**Biblioteka**: sve za čitanje, po temama.",
+              "**Alati**: [Zalihe](#supplies), [Mape](#maps), [kalkulator struje](#power) i [kalkulator vode](#water).",
+              "**Podešavanja**: telefoni, skladište i preuzimanja, mreža, rezervne kopije i ostala podešavanja, a na kraju spiska i ova pomoć.",
             ],
           },
           { p: "Na laptopu se na ekranu [Alati](#tools) jedan alat može prikačiti na traku. Tada se pojavljuje u traci na svim uređajima u domaćinstvu." },
@@ -76,23 +77,19 @@ const sr: HelpContent = {
         ],
       },
       {
-        id: "topics",
-        title: "Sve je složeno po temama",
+        id: "places",
+        title: "Čitaš, koristiš, upravljaš",
         body: [
-          { p: "Zaklon slaže alate i vodiče u iste teme na ekranu [Alati](#tools) i u folderima [Dodataka](#addons):" },
+          { p: "Sve u Zaklonu ima jedno mesto, prema tome šta s tim radiš:" },
           {
             list: [
-              "**Zdravlje i prva pomoć**: prva pomoć, lekovi i briga o zdravlju.",
-              "**Voda**: kako naći, prečistiti i čuvati vodu za piće.",
-              "**Hrana**: recepti, čuvanje hrane, zimnica i konzerviranje.",
-              "**Bašta**: gajenje povrća, voća, začinskog bilja i mikrozelenja, i zalivanje.",
-              "**Struja**: mali solarni sistemi, baterije i koliko ti struje treba.",
-              "**Ugradnja**: postavljanje solara, zalivanja kap po kap, sakupljanja kišnice i pumpi, i uputstva za popravke.",
-              "**Znanje**: Vikipedija, knjige i rečnici.",
-              "**Mape**: mape svih zemalja.",
+              "**Čitaš** u [Biblioteci](#library): vodiče, enciklopedije, rečnike i knjige. Svaka tema pokazuje i vodiče koje još možeš da preuzmeš.",
+              "**Koristiš** u [Alatima](#tools): Zalihe, Mape, kalkulator struje i kalkulator vode.",
+              "**Upravljaš** u [Podešavanjima › Skladište i preuzimanja](#settings/storage): šta je na hubu, koliko prostora zauzima, šta se preuzima i kopije na USB i sa njega.",
             ],
           },
-          { p: "Na ekranu Alati svaka tema prikazuje svoje alate i vezu **Vodiči za ovu temu**, koja otvara folder te teme u Dodacima, pa su alati i vodiči za jednu temu na istom mestu. Alat ili vodič koji se tiče više tema nalazi se pod svakom od njih." },
+          { p: "Teme Biblioteke su Zdravlje i prva pomoć, Voda, Hrana, Bašta, Struja, Ugradnja i Enciklopedije i rečnici. Vodič koji se tiče više tema nalazi se pod svakom od njih. Mape se preuzimaju u [Alatima › Mape](#maps), a AI modeli u [Podešavanjima › AI asistent](#settings/assistant/model)." },
+          { note: "Preuzimanja su ranije bila na ekranu Dodaci. Njegovi vodiči su sada u temama Biblioteke, mape u Alatima › Mape, AI modeli u Podešavanjima › AI asistent, a ostalo u Podešavanjima › Skladište i preuzimanja." },
         ],
       },
     ],
@@ -203,7 +200,7 @@ const sr: HelpContent = {
 
   home: {
     title: "Početna",
-    summary: "Domaćinstvo na prvi pogled: hub, ono što traži pažnju, asistent, zalihe i dodaci.",
+    summary: "Domaćinstvo na prvi pogled: hub, ono što traži pažnju, asistent, zalihe i preuzimanja.",
     open: { href: "#home", label: "Otvori Početnu" },
     sections: [
       {
@@ -265,10 +262,10 @@ const sr: HelpContent = {
         ],
       },
       {
-        id: "addons",
-        title: "Biblioteka i dodaci",
+        id: "storage",
+        title: "Skladište i preuzimanja",
         body: [
-          { p: "Koliko je pun disk sa bibliotekom, šta se upravo preuzima i koliko dodataka ima novu verziju, pauzirano je ili nije završeno. Njima upravljaš u [Dodacima](#addons)." },
+          { p: "Koliko je pun disk sa bibliotekom, šta se upravo preuzima i koliko preuzimanja ima novu verziju, pauzirano je ili nije završeno. Njima upravljaš u [Skladištu i preuzimanjima](#settings/storage)." },
         ],
       },
       {
@@ -309,7 +306,7 @@ const sr: HelpContent = {
         id: "sources",
         title: "Izvori i citati",
         body: [
-          { p: "Asistent odgovara iz paketa znanja u tvojoj [Biblioteci](#library). Brojevi u odgovoru, na primer [1], vode do članaka pod **Izvori**. Pritisni neki da pročitaš članak." },
+          { p: "Asistent odgovara iz vodiča u tvojoj [Biblioteci](#library). Brojevi u odgovoru, na primer [1], vode do članaka pod **Izvori**. Pritisni neki da pročitaš članak." },
           {
             list: [
               "Kad u biblioteci nema ničega o tom pitanju, odgovor to kaže. Tada dolazi iz opšteg znanja modela i može biti netačan.",
@@ -324,7 +321,7 @@ const sr: HelpContent = {
         id: "tools",
         title: "Alati i vodiči",
         body: [
-          { p: "Asistent upućuje na alate i vodiče. Ispod odgovora nudi šta još u Zaklonu pomaže oko pitanja: alat, na primer [Kalkulator struje](#power), i vodiče za tu temu u [Dodacima](#addons). Dodirni jedan da ga otvoriš; **Nazad na razgovor** (ili dugme za nazad) vraća te na odgovor." },
+          { p: "Asistent upućuje na alate i vodiče. Ispod odgovora nudi šta još u Zaklonu pomaže oko pitanja: alat, na primer [Kalkulator struje](#power), i vodiče za tu temu u [Biblioteci](#library). Dodirni jedan da ga otvoriš; **Nazad na razgovor** (ili dugme za nazad) vraća te na odgovor." },
           { p: "Kad pitaš koliko ti treba, na primer „frižider, 6 LED sijalica i laptop za 3 dana“, dugme otvara kalkulator sa tim spiskom već popunjenim. Odgovor može dati okvirne brojeve; tačan proračun radi kalkulator. Spisak otvoren ovako nije sačuvan dok ne izabereš da ga sačuvaš." },
         ],
       },
@@ -400,7 +397,7 @@ const sr: HelpContent = {
         id: "model",
         title: "AI model",
         body: [
-          { p: "Asistentu treba AI model, koji se jednom preuzme na laptopu. Kad ga nema, asistent nudi model preporučen za ovaj računar. Veći modeli bolje odgovaraju, ali su sporiji i traže više memorije. Model menjaš u samom Asistentu (polje **Model**) ili u [Podešavanjima › AI asistent](#settings/assistant)." },
+          { p: "Asistentu treba AI model, koji se jednom preuzme. Kad ga nema, asistent nudi model preporučen za ovaj računar. AI modeli se biraju, preuzimaju i uklanjaju u [Podešavanjima › AI asistent](#settings/assistant/model): koji model asistent koristi, koji je preporučen za memoriju ovog računara, i svi modeli sa svojom veličinom. Veći modeli bolje odgovaraju, ali su sporiji i traže više memorije. Model menja i polje **Model** u samom Asistentu." },
           { p: "Model kome treba više memorije nego što ovaj računar ima označen je sa **traži više memorije** i ne može da se izabere: usporio bi ceo računar. Kad nijedan model ne staje, asistent nije dostupan na ovom računaru, a biblioteka, mape, zalihe i telefoni i dalje rade. Kad AI kaže da trenutno nema dovoljno slobodne memorije, zatvori neke programe i pitaj ponovo." },
           { p: "AI se pokreće uz prvo pitanje i sam se gasi posle 20 minuta bez pitanja. Na laptopu možeš da ga ugasiš odmah, vezom **oslobodi memoriju sada**." },
         ],
@@ -418,6 +415,139 @@ const sr: HelpContent = {
             ],
           },
           { p: "Van dometa huba odgovara AI sa telefona. Manji je i ne traži u biblioteci, zato proveri ono što kaže." },
+        ],
+      },
+    ],
+  },
+
+  library: {
+    title: "Biblioteka",
+    summary: "Sve za čitanje bez interneta, po temama: vodiči, enciklopedije, rečnici i knjige.",
+    open: { href: "#library", label: "Otvori Biblioteku" },
+    sections: [
+      {
+        id: "what",
+        title: "Šta je u Biblioteci",
+        body: [
+          { p: "U Biblioteci je sve što Zaklon ima za čitanje: vodiči za prvu pomoć i lekove, vodiči o vodi, hrani, bašti, solarnoj struji i popravkama, Vikipedija, rečnici i knjige. Svaki vodič se jednom preuzme i posle radi bez interneta." },
+          { p: "Složena je po temama: **Zdravlje i prva pomoć**, **Voda**, **Hrana**, **Bašta**, **Struja**, **Ugradnja** i **Enciklopedije i rečnici**. Vodič koji se tiče više tema nalazi se pod svakom od njih." },
+          { note: "Biblioteka je za čitanje. Alati su u [Alatima](#tools), a šta je na hubu i koliko prostora zauzima u [Podešavanjima › Skladište i preuzimanja](#settings/storage)." },
+        ],
+      },
+      {
+        id: "start",
+        title: "Prvi vodiči",
+        body: [
+          { p: "Dok je Biblioteka prazna, počinje preporučenim paketom, **Osnovni paket za Srbiju** ili **Osnovni paket (engleski)** (prema jeziku aplikacije). Na laptopu ga **Preuzmi sve** preuzima odjednom: enciklopedije, vodiče za prvu pomoć, vodu, solarnu struju i popravke, AI model koji odgovara ovom računaru i, u srpskom paketu, mapu Srbije. U njemu su samo vodiči slobodni za svaku upotrebu." },
+          { p: "Ili otvori temu i izaberi vodiče koje želiš. Vodiči se pojavljuju pod svojim temama čim se preuzmu i provere." },
+        ],
+      },
+      {
+        id: "topics",
+        title: "Strana jedne teme",
+        body: [
+          {
+            list: [
+              "**Tvoji vodiči**: vodiči te teme koji su na hubu. Dodirni jedan da ga čitaš.",
+              "**Preuzmi još**: vodiči koje još možeš da preuzmeš, svaki sa veličinom i licencom. Izaberi **Preuzmi**; preuzima ga hub, i kad si preuzimanje pokrenuo sa telefona. Prvi su oni preporučeni za jezik aplikacije.",
+              "Tema koja ima svoj alat na vrhu vodi do njega: Voda i Bašta do [kalkulatora vode](#water), Struja do [kalkulatora struje](#power), Hrana i Zdravlje do [Zaliha](#supplies).",
+            ],
+          },
+        ],
+      },
+      {
+        id: "read",
+        title: "Čitanje",
+        body: [
+          { p: "Vodič se otvara na svojoj početnoj strani; prati veze kao na veb sajtu. **Nazad** vraća u Biblioteku." },
+        ],
+      },
+      {
+        id: "search",
+        title: "Pretraga",
+        body: [
+          { p: "**Pretraži biblioteku…** na vrhu Biblioteke pretražuje sve vodiče odjednom, a **Pretraži ove vodiče…** na strani teme samo vodiče te teme. Svaki rezultat prikazuje deo članka i vodič iz kog je." },
+        ],
+      },
+      {
+        id: "yourself",
+        title: "Vodiči koje preuzimaš sam",
+        body: [
+          { p: "Većina vodiča je slobodna za svaku upotrebu. Nekoliko njih, na primer iFixit uputstva za popravke, besplatno je samo za nekomercijalnu upotrebu, ili skuplja dokumente od kojih svaki ima svoju licencu. Zaklon njih nikad ne preuzima umesto tebe: nalaze se na dnu svoje teme, pod **Ove preuzimaš sam**, i uz svaki piše zašto." },
+          {
+            steps: [
+              "Izaberi **Preuzmi** na vodiču.",
+              "Pročitaj pitanje koje se otvori: u njemu piše licenca vodiča i šta ona dozvoljava.",
+              "Izaberi **Prihvati i preuzmi** ili **Otkaži**.",
+            ],
+          },
+          { note: "Nikad nisu deo preporučenog paketa i nikad nisu označeni kao preporučeni. Koristi ih za sebe i svoje domaćinstvo, i ne prodaj ni njih ni njihove kopije." },
+        ],
+      },
+      {
+        id: "withdrawn",
+        title: "Vodiči koje Zaklon više ne nudi",
+        body: [
+          { p: "Zaklon prestaje da nudi vodič kad se pokaže da prava na deo njegovog sadržaja nisu jasna, ili kad aplikacija isto radi na bolji način (mape koje su se otvarale u Biblioteci, sad kad postoje Zaklon mapa i CoMaps). Ako si ga ranije preuzeo, ništa ti se ne oduzima: ostaje u Biblioteci, sa oznakom **Zaklon ga više ne nudi**, dok ga na laptopu ne ukloniš u [Podešavanjima › Skladište i preuzimanja](#settings/storage/guides). Više se ne ažurira." },
+        ],
+      },
+      {
+        id: "latin",
+        title: "Srpski članci latinicom",
+        body: [
+          { p: "Srpska Vikipedija je pisana ćirilicom. Da je čitaš latinicom, uključi **Latinica za srpske članke** u [Podešavanjima › Jezik](#settings/language/latin). Važi samo za ovaj uređaj." },
+        ],
+      },
+      {
+        id: "assistant",
+        title: "Biblioteka i asistent",
+        body: [
+          { p: "[Asistent](#assistant) pretražuje iste vodiče i navodi članke koje je koristio. Što više vodiča imaš, na više pitanja može da odgovori." },
+          { note: "Telefoni čitaju biblioteku sa huba, pa moraju da budu na kućnoj WiFi mreži." },
+        ],
+      },
+    ],
+  },
+
+  tools: {
+    title: "Alati",
+    summary: "Zalihe, Mape i kalkulatori, svaki po jednom; jedan od njih može da se prikači na traku.",
+    open: { href: "#tools", label: "Otvori Alate" },
+    sections: [
+      {
+        id: "list",
+        title: "Alati",
+        body: [
+          {
+            list: [
+              "**Zalihe**: šta imaš u kući, gde stoji i kad ističe, sa listom za kupovinu. Vidi [Zalihe](#help/supplies).",
+              "**Mape**: Zaklon mapa sa tvojim domom na njoj, mapa sveta za preuzimanje i CoMaps za telefone. Vidi [Mape](#help/maps).",
+              "**Kalkulator struje**: koliko baterija i solara ti treba kad nestane struje. Vidi [Kalkulator struje](#help/power).",
+              "**Kalkulator vode**: koliko vode za piće da čuvaš, i zalivanje bašte kap po kap. Vidi [Kalkulator vode](#help/water).",
+            ],
+          },
+          { p: "Ispod alata, **Vodiči** vode do tema Biblioteke u kojima on pomaže, na primer Voda i Bašta za kalkulator vode." },
+        ],
+      },
+      {
+        id: "pin",
+        title: "Prikači alat na traku",
+        body: [
+          { p: "Na laptopu **Prikači na traku** stavlja jedan alat u traku na dnu, ispred **Alata**, na svim uređajima u domaćinstvu. Ako prikačiš drugi alat, on zamenjuje prethodni, a **Otkači** ga sklanja. Na početku ništa nije prikačeno." },
+        ],
+      },
+      {
+        id: "elsewhere",
+        title: "Šta nije ovde",
+        body: [
+          {
+            list: [
+              "Vodiči i knjige za čitanje su u [Biblioteci](#library).",
+              "Preuzimanja, prostor na disku i kopiranje na USB su u [Podešavanjima › Skladište i preuzimanja](#settings/storage).",
+              "AI modeli su u [Podešavanjima › AI asistent](#settings/assistant/model).",
+              "Pomoć je na kraju spiska u [Podešavanjima](#settings).",
+            ],
+          },
         ],
       },
     ],
@@ -511,51 +641,6 @@ const sr: HelpContent = {
     ],
   },
 
-  library: {
-    title: "Biblioteka",
-    summary: "Čitaj i pretražuj pakete znanja, poput Vikipedije, bez interneta.",
-    open: { href: "#library", label: "Otvori Biblioteku" },
-    sections: [
-      {
-        id: "packs",
-        title: "Paketi znanja",
-        body: [
-          { p: "U biblioteci su **paketi znanja**: Vikipedija, rečnik, medicinski članci, uputstva za prvu pomoć, popravke, baštu i još mnogo toga. Svaki paket se jednom preuzme u [Dodacima](#addons) (ili uveze sa USB-a) i posle radi bez interneta." },
-          { p: "Dok nema nijednog paketa, Biblioteka to kaže i nudi **Otvori Dodatke**." },
-        ],
-      },
-      {
-        id: "read",
-        title: "Čitanje",
-        body: [
-          { p: "**Knjige** su paketi na hubu. Pritisni jednu da otvoriš njenu početnu stranu, pa prati veze kao na veb sajtu. **Nazad** vraća u Biblioteku." },
-        ],
-      },
-      {
-        id: "search",
-        title: "Pretraga",
-        body: [
-          { p: "Upiši nešto u **Pretraži biblioteku…** da pretražiš sve pakete odjednom. Svaki rezultat prikazuje deo članka i paket iz kog je." },
-        ],
-      },
-      {
-        id: "latin",
-        title: "Srpski članci latinicom",
-        body: [
-          { p: "Srpska Vikipedija je pisana ćirilicom. Da je čitaš latinicom, uključi **Latinica za srpske članke** u [Podešavanjima › Jezik](#settings/language/latin). Važi samo za ovaj uređaj." },
-        ],
-      },
-      {
-        id: "assistant",
-        title: "Biblioteka i asistent",
-        body: [
-          { p: "[Asistent](#assistant) pretražuje iste pakete i navodi članke koje je koristio. Što više paketa imaš, na više pitanja može da odgovori." },
-          { note: "Telefoni čitaju biblioteku sa huba, pa moraju da budu na kućnoj WiFi mreži." },
-        ],
-      },
-    ],
-  },
-
   maps: {
     title: "Mape",
     summary: "Zaklon mapa sveta sa tvojim domom na njoj, i CoMaps za snalaženje na telefonima.",
@@ -573,7 +658,7 @@ const sr: HelpContent = {
         title: "Zaklon mapa",
         body: [
           { p: "Mapu pomeraš prevlačenjem, a uvećavaš i umanjuješ točkićem miša, sa dva prsta ili dugmadima **+** i **−**. Dugme s kućicom vraća mapu na tvoj dom, a globus prikazuje ceo svet. Nazivi su na jeziku aplikacije gde ih mapa ima." },
-          { p: "Uz Zaklon stiže pregled celog sveta: države, granice i veći gradovi. Nosi ga i telefon, pa i van kuće njegova mapa prikazuje svet (sa domom koji je poslednji video). Za mesta, ulice i zgrade preuzmi **mapu sveta** u folderu Mape u [Dodacima](#addons/maps). Veoma je velika (oko 140 GB), pa joj treba veliki disk i vreme; preuzimanje se nastavlja posle prekida i ponovnog pokretanja, a mapa je prikazuje čim je proverena." },
+          { p: "Uz Zaklon stiže pregled celog sveta: države, granice i veći gradovi. Nosi ga i telefon, pa i van kuće njegova mapa prikazuje svet (sa domom koji je poslednji video). Za mesta, ulice i zgrade preuzmi **mapu sveta** pod [Mapa sveta](#maps/world), pored mape (ispod nje na telefonu). Veoma je velika (oko 140 GB), pa joj treba veliki disk i vreme; preuzimanje se nastavlja posle prekida i ponovnog pokretanja, a mapa je prikazuje čim je proverena." },
           { note: "Podaci mapa © OpenStreetMap saradnici. Oznaka u uglu mape vodi do detalja. Mapa nikada ništa ne traži od interneta: sve što prikazuje stiže sa huba." },
         ],
       },
@@ -581,9 +666,9 @@ const sr: HelpContent = {
         id: "world-map",
         title: "Odakle stiže mapa sveta i kako se ažurira",
         body: [
-          { p: "Mapu sveta pravi **Protomaps** od podataka OpenStreetMap-a. Protomaps svaki dan pravi novu verziju, te dnevne verzije čuva oko nedelju dana, a neke čuva trajno. Zaklon nudi najnoviju verziju staru bar nedelju dana, pa ona postoji dokle god traje njeno preuzimanje. Dodaci prikazuju njen datum." },
-          { p: "Kad otvoriš Dodatke, hub pita Protomaps za spisak verzija, najviše otprilike jednom dnevno. Bez interneta nudi poslednju verziju za koju je znao. Svako preuzimanje se proverava kontrolnim zbirom koji Protomaps objavljuje za tu verziju pre nego što ga mapa koristi; oštećeno preuzimanje se baca." },
-          { p: "Kad izađe novija verzija, kod mape sveta u [Dodacima](#addons/maps) piše **Dostupna je novija mapa sveta**, sa datumom i veličinom. Ništa se ne menja dok na laptopu ne izabereš **Ažuriraj mapu**:" },
+          { p: "Mapu sveta pravi **Protomaps** od podataka OpenStreetMap-a. Protomaps svaki dan pravi novu verziju, te dnevne verzije čuva oko nedelju dana, a neke čuva trajno. Zaklon nudi najnoviju verziju staru bar nedelju dana, pa ona postoji dokle god traje njeno preuzimanje. **Mapa sveta** prikazuje njen datum." },
+          { p: "Kad otvoriš Mape (ili Skladište i preuzimanja), hub pita Protomaps za spisak verzija, najviše otprilike jednom dnevno. Bez interneta nudi poslednju verziju za koju je znao. Svako preuzimanje se proverava kontrolnim zbirom koji Protomaps objavljuje za tu verziju pre nego što ga mapa koristi; oštećeno preuzimanje se baca." },
+          { p: "Kad izađe novija verzija, pod [Mapa sveta](#maps/world) piše **Dostupna je novija mapa sveta**, sa datumom i veličinom. Ništa se ne menja dok na laptopu ne izabereš **Ažuriraj mapu**:" },
           {
             steps: [
               "Novija mapa se preuzima pored one koju imaš. Mapa za to vreme i dalje prikazuje staru.",
@@ -591,7 +676,7 @@ const sr: HelpContent = {
               "Ako na disku nema mesta za obe, Zaklon to kaže i pita da li da prvo ukloni staru mapu. Dok nova ne bude spremna, mapa tada prikazuje samo pregled sveta.",
             ],
           },
-          { note: "Tvoja mapa ti se nikad ne oduzima: starija verzija ostaje dok je ne ažuriraš ili ukloniš. Ako Protomaps više nema verziju koja se preuzima, preuzimanje staje uz poruku; otvori Dodatke uz internet i izaberi **Pokušaj ponovo** da preuzmeš aktuelnu verziju." },
+          { note: "Tvoja mapa ti se nikad ne oduzima: starija verzija ostaje dok je ne ažuriraš ili ukloniš. Ako Protomaps više nema verziju koja se preuzima, preuzimanje staje uz poruku; otvori Mape uz internet i izaberi **Pokušaj ponovo** da preuzmeš aktuelnu verziju. Koliko prostora zauzima vidiš u [Podešavanjima › Skladište i preuzimanja](#settings/storage/maps), gde se i uklanja." },
         ],
       },
       {
@@ -621,7 +706,7 @@ const sr: HelpContent = {
               "Preuzimanja se nastavljaju posle prekida. Na laptopu **Ukloni** briše mapu.",
             ],
           },
-          { p: "Iste mape su i u folderu **Mape** u [Dodacima](#addons/maps)." },
+          { p: "Koliko prostora mape zauzimaju na hubu vidi se u folderu **Mape** u [Podešavanjima › Skladište i preuzimanja](#settings/storage/maps)." },
         ],
       },
       {
@@ -787,54 +872,33 @@ const sr: HelpContent = {
     ],
   },
 
-  addons: {
-    title: "Dodaci",
-    summary: "Preuzimanje paketa znanja, AI modela i mapa, i njihovo kopiranje na USB ili sa njega.",
-    open: { href: "#addons", label: "Otvori Dodatke" },
+  storage: {
+    title: "Skladište i preuzimanja",
+    summary: "Šta je na hubu i koliko prostora zauzima, šta se preuzima, i kopiranje na USB i sa njega.",
+    open: { href: "#settings/storage", label: "Otvori Skladište i preuzimanja" },
     sections: [
+      {
+        id: "where",
+        title: "Čemu služi",
+        body: [
+          { p: "U [Podešavanjima › Skladište i preuzimanja](#settings/storage) upravljaš onim što hub čuva. Novo se preuzima tamo gde se koristi: vodiči u [Biblioteci](#library), mape u [Alatima › Mape](#maps), a AI modeli u [Podešavanjima › AI asistent](#settings/assistant/model)." },
+          { note: "Ovo je ranije bio deo ekrana Dodaci." },
+        ],
+      },
       {
         id: "layout",
         title: "Diskovi i folderi",
         body: [
-          { p: "Dodaci izgledaju kao „Ovaj računar“ u Windows Exploreru." },
+          { p: "Izgleda kao „Ovaj računar“ u Windows Exploreru." },
           {
             list: [
-              "**Uređaji i diskovi** prikazuju disk na kom Zaklon drži biblioteku (**Zaklon biblioteka**), koliko je pun i koliko zauzimaju dodaci. Otvori ga da vidiš šta je na njemu, od najvećeg. Traka postaje crvena kad je disk skoro pun.",
+              "**Uređaji i diskovi** prikazuju disk na kom Zaklon drži biblioteku (**Zaklon biblioteka**), koliko je pun i koliko Zaklon zauzima. Otvori ga da vidiš šta je na njemu, od najvećeg. Traka postaje crvena kad je disk skoro pun.",
               "Na laptopu se drugi diskovi, na primer USB, otvaraju sa kopiranjem i uvozom podešenim na taj disk.",
-              "U **Folderima** su dodaci po temama, istim kao na ekranu [Alati](#tools): Zdravlje i prva pomoć, Voda, Hrana, Bašta, Struja, Ugradnja, Znanje i Mape, a zatim AI modeli i Programi. Vodič koji se tiče više tema nalazi se u folderu svake od njih.",
-              "Polje za pretragu nalazi dodatke i države u svim folderima. Dugmad pored njega menjaju prikaz između pločica i tabele sa detaljima.",
-              "**Licenca i zasluge** na paketu pokazuje njegovu licencu, ko ga je napravio i odakle potiče.",
+              "U **Folderima** je ono što je na hubu, po vrsti: **Vodiči i knjige**, **Mape**, **AI modeli** i **Programi**.",
+              "Dugmad pored mesta gde se nalaziš menjaju prikaz između pločica i tabele sa detaljima.",
+              "**Licenca i zasluge** na vodiču pokazuje njegovu licencu, ko ga je napravio i odakle potiče.",
             ],
           },
-        ],
-      },
-      {
-        id: "starter",
-        title: "Osnovni paket",
-        body: [
-          { p: "Na laptopu osnovni paket (**Osnovni paket za Srbiju** ili **Osnovni paket (engleski)**, prema jeziku aplikacije) jednim dugmetom, **Preuzmi sve**, preuzima ono što domaćinstvu treba za početak: znanje, uputstva za prvu pomoć, vodu, solarnu struju i popravke, AI model koji odgovara ovom računaru i, u srpskom paketu, mapu Srbije. U njemu su samo paketi slobodni za svaku upotrebu." },
-        ],
-      },
-      {
-        id: "yourself",
-        title: "Paketi koje preuzimaš sam",
-        body: [
-          { p: "Većina dodataka je slobodna za svaku upotrebu. Nekoliko njih, na primer iFixit uputstva za popravke, besplatno je samo za nekomercijalnu upotrebu, ili skuplja dokumente od kojih svaki ima svoju licencu. Zaklon njih nikad ne preuzima umesto tebe: nalaze se na dnu svog foldera, pod **Ove preuzimaš sam**, i uz svaki piše zašto." },
-          {
-            steps: [
-              "Izaberi **Preuzmi** na paketu.",
-              "Pročitaj pitanje koje se otvori: u njemu piše licenca paketa i šta ona dozvoljava.",
-              "Izaberi **Prihvati i preuzmi** ili **Otkaži**.",
-            ],
-          },
-          { note: "Nikad nisu deo osnovnog paketa i nikad nisu označeni kao preporučeni. Koristi ih za sebe i svoje domaćinstvo, i ne prodaj ni njih ni njihove kopije." },
-        ],
-      },
-      {
-        id: "withdrawn",
-        title: "Paketi koje Zaklon više ne nudi",
-        body: [
-          { p: "Zaklon prestaje da nudi paket kad se pokaže da prava na deo njegovog sadržaja nisu jasna. Ako si ga ranije preuzeo, ništa ti se ne oduzima: ostaje u [Biblioteci](#library) i u svom folderu, sa oznakom **Zaklon ga više ne nudi**, dok ga ne ukloniš na laptopu. Više se ne ažurira." },
         ],
       },
       {
@@ -843,7 +907,7 @@ const sr: HelpContent = {
         body: [
           {
             list: [
-              "Izaberi **Preuzmi** na dodatku. Preuzima ga hub, i kad si preuzimanje pokrenuo sa telefona.",
+              "Pod **Preuzimanja** je ono što se preuzima, ono što je pauzirano ili nije završeno, i ono za šta postoji nova verzija.",
               "Preuzimanje može da se pauzira i nastavi. Posle prekida nastavlja od mesta gde je stalo, ne kreće iz početka.",
               "Svaki fajl se proverava pre upotrebe. Oštećen fajl se odbacuje; izaberi **Pokušaj ponovo**.",
               "Za preuzimanje treba bar 50% baterije ili punjač, i dovoljno mesta na disku.",
@@ -856,22 +920,30 @@ const sr: HelpContent = {
         id: "updates",
         title: "Nove verzije i uklanjanje",
         body: [
-          { p: "Kad izađe novija verzija instaliranog paketa ili mape, piše **Dostupna je nova verzija** i pojavi se dugme **Ažuriraj**. Kod mape sveta umesto toga piše **Dostupna je novija mapa sveta**, a ažurira se na laptopu dugmetom **Ažuriraj mapu**; vidi [Mapa sveta i njena ažuriranja](#help/maps/world-map). Na laptopu **Ukloni** briše dodatak, ili nedovršeno preuzimanje, i oslobađa mesto." },
+          { p: "Kad izađe novija verzija vodiča, mape ili programa, piše **Dostupna je nova verzija** i pojavi se dugme **Ažuriraj**. Kod mape sveta umesto toga piše **Dostupna je novija mapa sveta**, a ažurira se na laptopu dugmetom **Ažuriraj mapu**; vidi [Mapa sveta i njena ažuriranja](#help/maps/world-map)." },
+          { p: "Na laptopu **Ukloni** briše vodič, mapu ili program, ili nedovršeno preuzimanje, i oslobađa mesto. AI modeli se uklanjaju u [Podešavanjima › AI asistent](#settings/assistant/model)." },
+        ],
+      },
+      {
+        id: "starter",
+        title: "Osnovni paket",
+        body: [
+          { p: "Na laptopu osnovni paket (**Osnovni paket za Srbiju** ili **Osnovni paket (engleski)**, prema jeziku aplikacije) jednim dugmetom, **Preuzmi sve**, preuzima ono što domaćinstvu treba za početak: enciklopedije, vodiče za prvu pomoć, vodu, solarnu struju i popravke, AI model koji odgovara ovom računaru i, u srpskom paketu, mapu Srbije. U njemu su samo vodiči slobodni za svaku upotrebu. Ovde je dok mu nešto nedostaje, a u [Biblioteci](#library) dok je Biblioteka prazna." },
         ],
       },
       {
         id: "usb-copy",
         title: "Kopiranje na USB",
         body: [
-          { p: "Da podesiš drugi Zaklon bez interneta, kopiraj dodatke na USB. Na laptopu:" },
+          { p: "Da podesiš drugi Zaklon bez interneta, kopiraj ono što imaš na USB. Na laptopu:" },
           {
             steps: [
-              "Priključi USB i otvori ga pod **Uređaji i diskovi**, ili koristi **Kopiraj na USB** na dnu Dodataka.",
-              "Izaberi dodatke koje kopiraš. Na USB možeš da staviš i sam Zaklon (instalaciju za Windows i aplikaciju za telefon), za nekoga ko počinje od nule.",
+              "Priključi USB i otvori ga pod **Uređaji i diskovi**, ili koristi **Kopiraj na USB** na dnu Skladišta i preuzimanja.",
+              "Izaberi šta kopiraš. Na USB možeš da staviš i sam Zaklon (instalaciju za Windows i aplikaciju za telefon), za nekoga ko počinje od nule.",
               "Izaberi **Kopiraj** i sačekaj da piše **Kopirano u**.",
             ],
           },
-          { note: "Na FAT32 disk ne staju fajlovi od 4 GB i veći. Za velike pakete koristi disk formatiran kao exFAT ili NTFS." },
+          { note: "Na FAT32 disk ne staju fajlovi od 4 GB i veći. Za velike vodiče i mape koristi disk formatiran kao exFAT ili NTFS." },
         ],
       },
       {
@@ -882,7 +954,7 @@ const sr: HelpContent = {
             steps: [
               "Na laptopu otvori USB pod **Uređaji i diskovi**, ili koristi **Uvoz sa USB-a ili iz foldera**.",
               "Izaberi folder sa fajlovima paketa (ili njegov podfolder **zaklon-packs**) i izaberi **Uvezi**.",
-              "Svaki paket prikazuje napredak u svom folderu. Fajlovi se proveravaju pre upotrebe.",
+              "Svaki pokazuje napredak pod **Preuzimanja**. Fajlovi se proveravaju pre upotrebe.",
             ],
           },
         ],
@@ -891,7 +963,7 @@ const sr: HelpContent = {
         id: "phone",
         title: "Na telefonu",
         body: [
-          { p: "Telefon vidi iste dodatke i može da pokrene preuzimanje na hubu. Osnovni paket, uklanjanje i kopiranje na USB su na laptopu." },
+          { p: "Telefon vidi disk huba, šta je na njemu i šta se preuzima, i može da pauzira ili nastavi preuzimanja. Uklanjanje, osnovni paket i kopiranje na USB su na laptopu." },
         ],
       },
     ],
@@ -899,7 +971,7 @@ const sr: HelpContent = {
 
   settings: {
     title: "Podešavanja",
-    summary: "Telefoni, mreža, rezervne kopije, lozinka i ostala podešavanja, kategoriju po kategoriju.",
+    summary: "Telefoni, skladište i preuzimanja, mreža, rezervne kopije, lozinka i ostala podešavanja, kategoriju po kategoriju.",
     open: { href: "#settings", label: "Otvori Podešavanja" },
     sections: [
       {
@@ -915,6 +987,13 @@ const sr: HelpContent = {
         title: "Uređaji",
         body: [
           { p: "Dodaj telefon i vidi uparene telefone, i kad je koji poslednji put viđen; **Dodaj telefon** na [Početnoj](#home) takođe vodi ovde. Kad bi Windows zaštitni zid blokirao telefone, upozorenje se vidi i ovde. Na telefonu je ovde i **Zaboravi ovaj hub**. Vidi [Uparivanje telefona](#help/pairing)." },
+        ],
+      },
+      {
+        id: "storage",
+        title: "Skladište i preuzimanja",
+        body: [
+          { p: "Šta je na hubu i koliko prostora zauzima, šta se preuzima, osnovni paket, i kopiranje na USB i sa njega. Vidi [Skladište i preuzimanja](#help/storage)." },
         ],
       },
       {
@@ -955,7 +1034,7 @@ const sr: HelpContent = {
           {
             list: [
               "**Lozinka domaćinstva** (laptop): ovde se menja. Treba za uparivanje telefona i za otvaranje šifrovane kopije. Već upareni telefoni ostaju povezani.",
-              "**Privatnost**: sve ostaje na hubu i tvojim telefonima. Zaklon ide na internet samo kad pokreneš nešto što to traži, na primer preuzimanje ili pretragu na internetu, jednom dnevno da proveri da li postoji nova verzija, što može da se isključi, i, kad otvoriš Dodatke, najviše jednom dnevno da pita Protomaps koje verzije mape sveta ima.",
+              "**Privatnost**: sve ostaje na hubu i tvojim telefonima. Zaklon ide na internet samo kad pokreneš nešto što to traži, na primer preuzimanje ili pretragu na internetu, jednom dnevno da proveri da li postoji nova verzija, što može da se isključi, i, kad otvoriš Mape ili Skladište i preuzimanja, najviše jednom dnevno da pita Protomaps koje verzije mape sveta ima.",
             ],
           },
         ],
@@ -978,7 +1057,7 @@ const sr: HelpContent = {
         id: "assistant",
         title: "AI asistent",
         body: [
-          { p: "Izaberi koji od preuzetih AI modela asistent koristi; onaj koji odgovara ovom računaru označen je kao preporučen. Modeli se preuzimaju na laptopu, u [Dodacima](#addons/models). Ovde je i **Šta asistent pamti**." },
+          { p: "Jedino mesto za AI modele: izaberi koji od preuzetih modela asistent koristi, i preuzmi, pauziraj ili (na laptopu) ukloni modele. Uz svaki piše veličina; onaj koji odgovara memoriji ovog računara označen je kao preporučen, a kod onog kome treba više memorije nego što računar ima to i piše. Ovde je i **Šta asistent pamti**." },
         ],
       },
       {
@@ -1016,7 +1095,7 @@ const sr: HelpContent = {
         title: "Nema interneta",
         body: [
           { p: "Zaklon je napravljen baš za to. Kod kuće sve radi bez interneta dok je laptop uključen, a telefoni na istoj WiFi mreži: zalihe, biblioteka, mape i asistent." },
-          { p: "Internet treba samo za preuzimanje dodataka, za asistentovu pretragu na internetu i za dnevnu proveru nove verzije." },
+          { p: "Internet treba samo za preuzimanje vodiča, mapa i AI modela, za asistentovu pretragu na internetu i za dnevnu proveru nove verzije." },
         ],
       },
       {
@@ -1104,7 +1183,7 @@ const sr: HelpContent = {
           {
             list: [
               "Prvo pitanje posle pauze pokreće AI, što traje do jednog minuta.",
-              "Manji AI model odgovara brže. Izaberi ga u [Podešavanjima › AI asistent](#settings/assistant) ili ga preuzmi u [Dodacima](#addons/models).",
+              "Manji AI model odgovara brže. Izaberi ga ili preuzmi u [Podešavanjima › AI asistent](#settings/assistant/model).",
               "Brzina piše ispod svakog odgovora. Ako laptop ima malo slobodne memorije, zatvori druge programe.",
               "Odgovor koji traje predugo se zaustavlja. Pitaj ponovo, ili koristi manji model.",
               "Ako AI stane dok se učitava, računar možda nema dovoljno slobodne memorije: probaj manji model.",
@@ -1118,8 +1197,8 @@ const sr: HelpContent = {
         body: [
           {
             list: [
-              "U [Dodacima](#addons) traka diska sa Zaklon bibliotekom postaje crvena kad je skoro pun. Otvori disk da vidiš šta zauzima najviše mesta.",
-              "Na laptopu **Ukloni** pakete, mape i modele koji ti ne trebaju. I pauzirana i nedovršena preuzimanja zauzimaju mesto.",
+              "U [Podešavanjima › Skladište i preuzimanja](#settings/storage) traka diska sa Zaklon bibliotekom postaje crvena kad je skoro pun. Otvori disk da vidiš šta zauzima najviše mesta.",
+              "Na laptopu tamo **Ukloni** vodiče, mape i programe koji ti ne trebaju, a AI modele u [Podešavanjima › AI asistent](#settings/assistant/model). I pauzirana i nedovršena preuzimanja zauzimaju mesto.",
               "Preuzimanje koje ne staje javlja **Nema dovoljno slobodnog prostora na disku**.",
               "Na telefonu nedovršene kopije AI modela zauzimaju mesto dok ponovo ne kopiraš model ili ih ne odbaciš.",
             ],
@@ -1130,7 +1209,7 @@ const sr: HelpContent = {
         id: "library",
         title: "Biblioteka se ne pokreće",
         body: [
-          { p: "Ako Biblioteka javlja da njen motor ne može da se pokrene, otvori [Dodaci › Programi](#addons/programs), ukloni **Motor biblioteke (Kiwix)** i preuzmi ga ponovo." },
+          { p: "Ako Biblioteka javlja da njen motor ne može da se pokrene, otvori [Podešavanja › Skladište i preuzimanja › Programi](#settings/storage/programs), ukloni **Motor biblioteke (Kiwix)** i preuzmi ga ponovo." },
         ],
       },
       {

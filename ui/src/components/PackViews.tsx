@@ -1,22 +1,14 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import type { Key } from "../i18n";
 import { countWord, fmtBytes } from "../format";
-import { folderOf, type Entry, type FolderId, type FolderStat, type ViewMode } from "../addons";
-import { DriveIcon, FolderIcon, GlyphIcon, type DriveKind } from "./ExplorerIcons";
+import { kindOf, type Entry, type KindId, type KindStat, type ViewMode } from "../packs";
+import { DriveIcon, FolderIcon, GlyphIcon, type DriveKind, type Glyph } from "./ExplorerIcons";
 
 type T = (k: Key) => string;
 
-/** "7 add-ons · 88 GB" or "214 countries · 120 GB". */
-function countLine(t: T, s: FolderStat) {
-  const [one, few, many] = s.id === "maps" ? (["countryWord1", "countryWord2", "countryWord5"] as const) : (["addonWord1", "addonWord2", "addonWord5"] as const);
-  return `${s.count} ${countWord(s.count, [t(one), t(many)], [t(one), t(few), t(many)])} · ${fmtBytes(s.size)}`;
-}
-
-/** What of a folder is on the hub: "Downloading 45%", "On the hub: 2 · 14 GB", or nothing. */
-function onHubLine(t: T, s: FolderStat): { text: string; tone: "ok" | "muted" } | null {
-  if (s.busy) return { text: `${t("downloadingNow")}${s.progress !== null ? ` ${s.progress}%` : "…"}`, tone: "muted" };
-  if (s.installed > 0) return { text: `${t("colOnHub")}: ${s.installed} · ${fmtBytes(s.installedBytes)}`, tone: "ok" };
-  return null;
+/** "7 items · 88 GB". */
+function countLine(t: T, s: KindStat) {
+  return `${s.count} ${countWord(s.count, [t("itemWord1"), t("itemWord5")], [t("itemWord1"), t("itemWord2"), t("itemWord5")])} · ${fmtBytes(s.size)}`;
 }
 
 /** "https://www.appropedia.org/x" -> "appropedia.org". */
@@ -105,20 +97,25 @@ function Bar({ pct, label }: { pct: number; label: string }) {
   );
 }
 
-/** The folders: big tiles, or rows with their numbers. */
-export function Folders({ t, stats, view, open }: { t: T; stats: FolderStat[]; view: ViewMode; open: (id: FolderId) => void }) {
+/** What of a kind is on the hub: "Downloading 45%", or nothing. */
+function busyLine(t: T, s: KindStat): string | null {
+  return s.busy ? `${t("downloadingNow")}${s.progress !== null ? ` ${s.progress}%` : "…"}` : null;
+}
+
+/** The folders of Storage & Downloads, one for each kind: big tiles, or rows with their numbers. */
+export function Folders({ t, stats, view, open, label }: { t: T; stats: KindStat[]; view: ViewMode; open: (id: KindId) => void; label: string }) {
   if (view === "details") {
     return (
-      <div className="details folders" role="table" aria-label={t("addonsFolders")}>
+      <div className="details folders" role="table" aria-label={label}>
         <div className="d-row d-head" role="row">
           <div role="columnheader">{t("colName")}</div>
           <div role="columnheader" className="d-size">{t("colItems")}</div>
           <div role="columnheader" className="d-size">{t("colSize")}</div>
-          <div role="columnheader">{t("colOnHub")}</div>
+          <div role="columnheader">{t("colStatus")}</div>
         </div>
         {stats.map((s) => {
-          const f = folderOf(s.id);
-          const hub = onHubLine(t, s);
+          const k = kindOf(s.id);
+          const busy = busyLine(t, s);
           return (
             <div className="d-row clickable" role="row" key={s.id} onClick={() => open(s.id)}>
               <div className="d-name" role="cell">
@@ -129,16 +126,16 @@ export function Folders({ t, stats, view, open }: { t: T; stats: FolderStat[]; v
                     open(s.id);
                   }}
                 >
-                  <FolderIcon glyph={f.glyph} size={26} />
+                  <FolderIcon glyph={k.glyph} size={26} />
                   <span className="d-title">
-                    <span className="entry-name">{t(f.name)}</span>
+                    <span className="entry-name">{t(k.name)}</span>
                     <span className="muted d-sub phone-only">{countLine(t, s)}</span>
                   </span>
                 </button>
               </div>
               <div className="d-size" role="cell">{s.count}</div>
               <div className="d-size" role="cell">{fmtBytes(s.size)}</div>
-              <div role="cell" className={hub?.tone === "ok" ? "ok" : "muted"}>{hub ? hub.text : "–"}</div>
+              <div role="cell" className="muted">{busy ?? "–"}</div>
             </div>
           );
         })}
@@ -146,7 +143,7 @@ export function Folders({ t, stats, view, open }: { t: T; stats: FolderStat[]; v
     );
   }
   return (
-    <ul className="folder-grid" aria-label={t("addonsFolders")}>
+    <ul className="folder-grid" aria-label={label}>
       {stats.map((s) => (
         <li key={s.id}>
           <FolderTile t={t} s={s} open={open} />
@@ -156,18 +153,18 @@ export function Folders({ t, stats, view, open }: { t: T; stats: FolderStat[]; v
   );
 }
 
-function FolderTile({ t, s, open }: { t: T; s: FolderStat; open: (id: FolderId) => void }) {
-  const f = folderOf(s.id);
+function FolderTile({ t, s, open }: { t: T; s: KindStat; open: (id: KindId) => void }) {
+  const k = kindOf(s.id);
   const id = useId();
-  const hub = onHubLine(t, s);
+  const busy = busyLine(t, s);
   return (
     <button className="folder-tile" onClick={() => open(s.id)} aria-describedby={id}>
-      <FolderIcon glyph={f.glyph} />
+      <FolderIcon glyph={k.glyph} />
       <span className="folder-text">
-        <span className="folder-name">{t(f.name)}</span>
+        <span className="folder-name">{t(k.name)}</span>
         <span id={id} className="folder-meta">
-          <span className="muted">{countLine(t, s)}</span>
-          {hub && <span className={hub.tone}>{hub.text}</span>}
+          <span className="muted">{s.count > 0 ? countLine(t, s) : t("emptyFolder")}</span>
+          {busy && <span className="muted">{busy}</span>}
         </span>
         {s.busy && s.progress !== null && (
           <span className="bar thin" aria-hidden="true">
@@ -179,15 +176,66 @@ function FolderTile({ t, s, open }: { t: T; s: FolderStat; open: (id: FolderId) 
   );
 }
 
+/** One pack as a card: what it is, its size and license, its state and its buttons. */
+export function EntryTile({ t, e, glyph, where, as = "listitem" }: { t: T; e: Entry; glyph: Glyph; where?: string; as?: "listitem" | "group" }) {
+  return (
+    <div className="item entry-tile" role={as} aria-label={as === "group" ? e.name : undefined} data-entry={e.key}>
+      <div className="entry-head">
+        <span className="entry-icon">
+          <GlyphIcon glyph={glyph} />
+        </span>
+        <div className="entry-main">
+          <div className="entry-name">
+            {e.name} {e.recommended && <span className="badge ok">{t("recommended")}</span>}
+          </div>
+          {e.desc && <div className="muted small-text">{e.desc}</div>}
+          <div className="muted small-text">
+            {fmtBytes(e.size)}
+            {e.meta && ` · ${e.meta}`}
+            {where && ` · ${where}`}
+          </div>
+          {e.note && <div className="offer-note small-text">{e.note}</div>}
+          <Credit t={t} e={e} />
+        </div>
+      </div>
+      {e.progress !== null && (
+        <div>
+          <Bar pct={e.progress} label={e.name} />
+          {e.detail && <div className="muted small-text">{e.detail}</div>}
+        </div>
+      )}
+      <div className="entry-foot">
+        <span className={e.tone}>{e.status}</span>
+        <div className="row wrap entry-actions">{e.actions(false)}</div>
+      </div>
+      {e.ask}
+      {e.error && <div className="warn small-text">{e.error}</div>}
+    </div>
+  );
+}
+
 /**
- * Packs and maps: cards, or a table with name, size, status and license. In a
- * folder (`folder`) each shows that folder's icon; elsewhere (search results,
- * the drive) the folders it is in are named, as a pack can be in several.
+ * Packs and maps: cards, or a table with name, size, status and license.
+ * Each shows `glyph` (a topic's, or a kind's), or else its kind's; `where`
+ * adds a line of its own to each (the kind, where things of every kind are
+ * listed together).
  */
-export function Entries({ t, entries, view, folder, label }: { t: T; entries: Entry[]; view: ViewMode; folder?: FolderId; label: string }) {
-  const glyph = (e: Entry) => folderOf(folder ?? e.folders[0]).glyph;
-  const where = (e: Entry) => e.folders.map((f) => t(folderOf(f).name)).join(", ");
-  const showFolder = !folder;
+export function Entries({
+  t,
+  entries,
+  view,
+  label,
+  glyph,
+  where,
+}: {
+  t: T;
+  entries: Entry[];
+  view: ViewMode;
+  label: string;
+  glyph?: Glyph;
+  where?: (e: Entry) => string;
+}) {
+  const icon = (e: Entry) => glyph ?? kindOf(e.kind).glyph;
   if (view === "details") {
     return (
       <div className="details entries" role="table" aria-label={label}>
@@ -202,13 +250,13 @@ export function Entries({ t, entries, view, folder, label }: { t: T; entries: En
           <div className="d-row entry-row" role="row" key={e.key} data-entry={e.key}>
             <div className="d-name" role="cell">
               <span className="entry-icon small">
-                <GlyphIcon glyph={glyph(e)} size={18} />
+                <GlyphIcon glyph={icon(e)} size={18} />
               </span>
               <span className="d-title">
                 <span className="entry-name">
                   {e.name} {e.recommended && <span className="badge ok">{t("recommended")}</span>}
                 </span>
-                <span className="muted d-sub" title={e.desc || undefined}>{showFolder ? where(e) : e.desc}</span>
+                <span className="muted d-sub" title={e.desc || undefined}>{where ? where(e) : e.desc}</span>
               </span>
             </div>
             <div className="d-size" role="cell">{fmtBytes(e.size)}</div>
@@ -234,38 +282,7 @@ export function Entries({ t, entries, view, folder, label }: { t: T; entries: En
   return (
     <div className="list cols entry-grid" role="list" aria-label={label}>
       {entries.map((e) => (
-        <div className="item entry-tile" role="listitem" key={e.key} data-entry={e.key}>
-          <div className="entry-head">
-            <span className="entry-icon">
-              <GlyphIcon glyph={glyph(e)} />
-            </span>
-            <div className="entry-main">
-              <div className="entry-name">
-                {e.name} {e.recommended && <span className="badge ok">{t("recommended")}</span>}
-              </div>
-              {e.desc && <div className="muted small-text">{e.desc}</div>}
-              <div className="muted small-text">
-                {fmtBytes(e.size)}
-                {e.meta && ` · ${e.meta}`}
-                {showFolder && ` · ${where(e)}`}
-              </div>
-              {e.note && <div className="offer-note small-text">{e.note}</div>}
-              <Credit t={t} e={e} />
-            </div>
-          </div>
-          {e.progress !== null && (
-            <div>
-              <Bar pct={e.progress} label={e.name} />
-              {e.detail && <div className="muted small-text">{e.detail}</div>}
-            </div>
-          )}
-          <div className="entry-foot">
-            <span className={e.tone}>{e.status}</span>
-            <div className="row wrap entry-actions">{e.actions(false)}</div>
-          </div>
-          {e.ask}
-          {e.error && <div className="warn small-text">{e.error}</div>}
-        </div>
+        <EntryTile key={e.key} t={t} e={e} glyph={icon(e)} where={where?.(e)} />
       ))}
     </div>
   );

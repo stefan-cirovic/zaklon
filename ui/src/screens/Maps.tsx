@@ -18,10 +18,14 @@ type T = (k: Key) => string;
 /** The two parts of the screen, in the address after "#maps/". */
 type Part = "map" | "navigation";
 
-/** "#maps" and "#maps/home": the Zaklon map (the second with the home location open); "#maps/navigation": CoMaps. */
-function routeOf(hash: string): { part: Part; home: boolean } {
+/**
+ * "#maps", "#maps/home" and "#maps/world": the Zaklon map (the second with
+ * the home location open, the third with the world map to download in
+ * view); "#maps/navigation": CoMaps.
+ */
+function routeOf(hash: string): { part: Part; home: boolean; world: boolean } {
   const sub = hash.replace(/^#/, "").split("/")[1] ?? "";
-  return { part: sub === "navigation" ? "navigation" : "map", home: sub === "home" };
+  return { part: sub === "navigation" ? "navigation" : "map", home: sub === "home", world: sub === "world" };
 }
 
 /**
@@ -39,7 +43,7 @@ export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: bool
   const show = (part: Part) => {
     const hash = part === "map" ? "#maps" : "#maps/navigation";
     if (location.hash !== hash) history.replaceState(history.state, "", hash);
-    setRoute({ part, home: false });
+    setRoute({ part, home: false, world: false });
   };
   const parts: [Part, Key][] = [
     ["map", "mapsZaklonMap"],
@@ -60,7 +64,7 @@ export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: bool
           </button>
         ))}
       </div>
-      {route.part === "map" ? <MapPart t={t} lang={lang} isHub={isHub} homeOpen={route.home} /> : <Navigation t={t} lang={lang} isHub={isHub} />}
+      {route.part === "map" ? <MapPart t={t} lang={lang} isHub={isHub} homeOpen={route.home} worldOpen={route.world} /> : <Navigation t={t} lang={lang} isHub={isHub} />}
     </div>
   );
 }

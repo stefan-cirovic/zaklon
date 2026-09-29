@@ -16,7 +16,9 @@ import { SettingsIcon } from "../components/SettingsIcon";
 import HelpLink from "../components/HelpLink";
 import SystemSpec from "../components/SystemSpec";
 import { categoriesFor, categoryOf, findSettings, settingsHref, settingsRoute, takePairingRequest, type Category, type CategoryId, type Setting } from "../settings";
-import { AboutZaklon, AiModel, Appearance, ChangePassword, LanguageSettings, Licenses, NetworkAddresses, Privacy, ThisHub, type Look } from "./SettingsMore";
+import AiModels from "../components/AiModels";
+import Storage from "./Storage";
+import { AboutZaklon, Appearance, ChangePassword, LanguageSettings, Licenses, NetworkAddresses, Privacy, ThisHub, type Look } from "./SettingsMore";
 
 type T = (k: Key) => string;
 type Props = {
@@ -149,6 +151,14 @@ export default function Settings({ status, t, lang, setLang, refresh, isHub, own
         </>
       );
       break;
+    case "storage":
+      // Its places (a folder, a drive) are in the address where a setting's name would be.
+      body = hub(
+        <div className="wide">
+          <Storage t={t} lang={lang} isHub={isHub} place={route.setting} />
+        </div>,
+      );
+      break;
     case "network":
       body = hub(
         status && (
@@ -180,7 +190,7 @@ export default function Settings({ status, t, lang, setLang, refresh, isHub, own
     case "assistant":
       body = hub(
         <>
-          <Anchor id="model"><AiModel t={t} lang={lang} isHub={isHub} /></Anchor>
+          <Anchor id="model" wide><AiModels t={t} lang={lang} isHub={isHub} /></Anchor>
           <Anchor id="memory"><Memory t={t} version={0} /></Anchor>
         </>,
       );
@@ -472,7 +482,8 @@ function CategoryPage({ t, cat, setting, jump, side, children }: PageProps) {
             <span aria-hidden="true">›</span>
           </nav>
           <h1 ref={title} tabIndex={-1}>{t(cat.title)}</h1>
-          <HelpLink t={t} topic="settings" section={cat.id} />
+          {/* Storage & Downloads has a help page of its own. */}
+          {cat.id === "storage" ? <HelpLink t={t} topic="storage" /> : <HelpLink t={t} topic="settings" section={cat.id} />}
         </div>
         <div className="set-panels" key={cat.id}>
           {children}

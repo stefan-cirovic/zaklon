@@ -1,12 +1,15 @@
 import type { ReactNode } from "react";
 import type { Key } from "./i18n";
 import type { Glyph } from "./components/ExplorerIcons";
-import { isTopicId, TOPICS, type TopicId } from "./topics";
+import type { TopicId } from "./topics";
+
+// The packs: what /api/catalog says about the guides, maps, AI models and
+// programs, shared by the Library (reading and getting guides), Tools ›
+// Maps (the world map), Settings › AI assistant (the models), Storage &
+// Downloads (what is on the hub) and Home.
 
 /** How a list is shown, remembered per device: big tiles, or a table like Explorer's "Details". */
 export type ViewMode = "tiles" | "details";
-
-// What /api/catalog says, shared by the Add-ons screen and Home.
 
 export type Localized = { en: string; sr: string };
 export type PackStatus = "not_installed" | "queued" | "downloading" | "paused" | "verifying" | "installed" | "failed";
@@ -15,7 +18,7 @@ export type Pack = {
   title: Localized;
   description: Localized;
   category: "knowledge" | "maps" | "model" | "app";
-  /** What a knowledge pack is about (see topics.ts); it shows in the folder of each. */
+  /** What a knowledge pack is about (see topics.ts): the Library lists it under each. */
   topics?: string[];
   version: string;
   size: number;
@@ -24,7 +27,7 @@ export type Pack = {
   /** Where it comes from (the publisher's site, or the library it is downloaded from). */
   source?: string;
   /**
-   * How it may be offered: "auto" like any add-on, "user" only as one people
+   * How it may be offered: "auto" like any pack, "user" only as one people
    * download themselves after confirming its license (never preselected, never
    * in a starter set). Anything else is treated as "user".
    */
@@ -47,6 +50,21 @@ export type CatalogReply = {
   /** The world map: the build offered and the one on the hub. */
   world?: WorldInfo;
 };
+
+/** One installed book of the library (/api/library): a knowledge pack's file, read in the Reader. */
+export type Book = {
+  name: string;
+  pack_id: string;
+  title_en: string;
+  title_sr: string;
+  languages: string[];
+  /** Its start page, relative to the hub. */
+  home: string;
+  /** Its pack's topics (an older hub does not say; then the catalog's are used). */
+  topics?: string[];
+};
+export type Engine = "missing" | "idle" | "starting" | "running" | "failed";
+export type LibraryReply = { engine: Engine; books: Book[] };
 
 /** The world map's pack id. */
 export const WORLD_MAP_ID = "world-map";
@@ -92,61 +110,42 @@ export function rootName(path: string) {
   return path.replace(/[\\/]+$/, "");
 }
 
-export type FolderId = TopicId | "models" | "programs";
+export type KindId = "guides" | "maps" | "models" | "programs";
 
 /**
- * The folders of the Add-ons screen, in this order: the topics, the same
- * categories as the sections of the Tools screen, then AI models and
- * programs, which are not about a topic. A knowledge pack shows in the folder
- * of each of its topics; AI models, maps and programs by their category.
+ * What a pack is, as Storage & Downloads sorts what is on the hub into
+ * folders: guides and books (what the Library reads), maps, AI models and
+ * programs.
  */
-export const FOLDERS: readonly { id: FolderId; name: Key; desc: Key; glyph: Glyph }[] = [
-  ...TOPICS,
-  { id: "models", name: "catModels", desc: "folderModelsDesc", glyph: "chip" },
-  { id: "programs", name: "catApps", desc: "folderProgramsDesc", glyph: "program" },
+export const KINDS: readonly { id: KindId; name: Key; glyph: Glyph }[] = [
+  { id: "guides", name: "kindGuides", glyph: "book" },
+  { id: "maps", name: "maps", glyph: "map" },
+  { id: "models", name: "catModels", glyph: "chip" },
+  { id: "programs", name: "catApps", glyph: "program" },
 ];
 
-export function isFolderId(id: unknown): id is FolderId {
-  return typeof id === "string" && FOLDERS.some((f) => f.id === id);
+export function isKindId(id: unknown): id is KindId {
+  return typeof id === "string" && KINDS.some((k) => k.id === id);
 }
 
-export function folderOf(id: FolderId) {
-  return FOLDERS.find((f) => f.id === id)!;
+export function kindOf(id: KindId) {
+  return KINDS.find((k) => k.id === id)!;
 }
 
-/**
- * Folders renamed when the folders became the topics: "Wikipedia and books"
- * is Knowledge now, "Repair and skills" Build and install. (Health and Garden
- * kept their addresses, and "Other knowledge" was already #addons/knowledge.)
- */
-const RENAMED = new Map<string, FolderId>([
-  ["reference", "knowledge"],
-  ["skills", "build"],
-]);
-
-/** A folder's id now, for the id in an old address ("reference" -> "knowledge"). */
-export function upgradedFolder(id: string): string {
-  return RENAMED.get(id) ?? id;
-}
-
-/**
- * The folders a catalog pack shows in: each of its topics, in the catalog's
- * order (Knowledge when it has none this version knows), or the folder of its
- * category.
- */
-export function packFolders(p: { category: string; topics?: string[] }): FolderId[] {
-  if (p.category === "model") return ["models"];
-  if (p.category === "app") return ["programs"];
-  if (p.category === "maps") return ["maps"];
-  const known = [...new Set(p.topics ?? [])].filter(isTopicId);
-  return known.length > 0 ? known : ["knowledge"];
+/** The kind of a catalog pack. */
+export function packKind(p: { category: string }): KindId {
+  if (p.category === "model") return "models";
+  if (p.category === "app") return "programs";
+  if (p.category === "maps") return "maps";
+  return "guides";
 }
 
 /** One pack or one country's map, ready to show in any view. */
 export type Entry = {
   key: string;
-  /** The folders it shows in; outside a folder, its icon is the first one's. */
-  folders: FolderId[];
+  kind: KindId;
+  /** The Library's topics it is listed under (knowledge packs). */
+  topics: TopicId[];
   name: string;
   desc: string;
   size: number;
@@ -155,7 +154,7 @@ export type Entry = {
   license: string;
   /** One line under it: why people download it themselves, or that it is no longer offered. */
   note: string | null;
-  /** People download it themselves: listed apart, at the bottom of its folder. */
+  /** People download it themselves: listed apart, at the bottom of its list. */
   byUser: boolean;
   /** Its credit line and where it comes from, for its details. */
   credit: { attribution: string; source: string } | null;
@@ -174,30 +173,29 @@ export type Entry = {
   /** Something of it is on the hub's disk (installed, or partly downloaded). */
   onDisk: boolean;
   installed: boolean;
+  /** A newer version waits (installed, or downloading as an update). */
+  update: boolean;
   /** Bytes it takes on the disk when installed. */
   installedBytes: number;
   busy: boolean;
+  /** Paused or failed: a download that waits for a person. */
+  stopped: boolean;
   bytesDone: number;
   bytesTotal: number;
-  /** Folded text the search looks in. */
-  search: string;
 };
 
-export type FolderStat = { id: FolderId; count: number; size: number; installed: number; installedBytes: number; busy: boolean; progress: number | null };
+export type KindStat = { id: KindId; count: number; size: number; busy: boolean; progress: number | null };
 
-/** Sum up a folder's entries for its tile (a pack in two folders counts in both). */
-export function folderStat(id: FolderId, entries: Entry[]): FolderStat {
-  const mine = entries.filter((e) => e.folders.includes(id));
+/** Sum up what of a kind is on the hub, for its folder's tile. */
+export function kindStat(id: KindId, entries: Entry[]): KindStat {
+  const mine = entries.filter((e) => e.kind === id && e.onDisk);
   const busy = mine.filter((e) => e.busy);
   const total = busy.reduce((s, e) => s + e.bytesTotal, 0);
   const done = busy.reduce((s, e) => s + Math.min(e.bytesDone, e.bytesTotal), 0);
-  const installed = mine.filter((e) => e.installed);
   return {
     id,
     count: mine.length,
-    size: mine.reduce((s, e) => s + e.size, 0),
-    installed: installed.length,
-    installedBytes: installed.reduce((s, e) => s + e.installedBytes, 0),
+    size: mine.reduce((s, e) => s + (e.installed ? e.installedBytes : Math.min(e.bytesDone, e.bytesTotal)), 0),
     busy: busy.length > 0,
     progress: total > 0 ? Math.min(100, Math.round((done / total) * 100)) : null,
   };

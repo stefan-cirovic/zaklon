@@ -18,7 +18,7 @@ export type Proposal = {
 
 /**
  * A tool or the guides of a topic, offered under an answer: `link` is the
- * app's address it opens ("#power?items=fridge:1&days=3", "#addons/garden"),
+ * app's address it opens ("#power?items=fridge:1&days=3", "#library/garden"),
  * `label_key` its text in i18n ("{topic}" in it is the topic's name).
  */
 export type Suggestion = { kind: "tool" | "guides"; id: string; topic: string; link: string; label_key: string };

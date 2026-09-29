@@ -8,7 +8,7 @@ export { HELP_TOPICS, type HelpBlock, type HelpContent, type HelpSection, type H
 /** The Help home: the topics in groups, in the order of the pages. */
 export const HELP_GROUPS: { title: Key; topics: HelpTopicId[] }[] = [
   { title: "helpGroupStart", topics: ["start", "pairing"] },
-  { title: "helpGroupScreens", topics: ["home", "assistant", "supplies", "library", "maps", "power", "water", "addons", "settings"] },
+  { title: "helpGroupScreens", topics: ["home", "assistant", "library", "tools", "supplies", "maps", "power", "water", "storage", "settings"] },
   { title: "helpGroupTrouble", topics: ["offline", "troubleshooting"] },
 ];
 
@@ -17,12 +17,13 @@ export const HELP_ICONS: Record<HelpTopicId, IconName> = {
   pairing: "phone",
   home: "home",
   assistant: "assistant",
-  supplies: "supplies",
   library: "library",
+  tools: "tools",
+  supplies: "supplies",
   maps: "maps",
   power: "power",
   water: "water",
-  addons: "addons",
+  storage: "storage",
   settings: "settings",
   offline: "offline",
   troubleshooting: "wrench",
