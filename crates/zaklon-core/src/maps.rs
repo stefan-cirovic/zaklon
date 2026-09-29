@@ -7,8 +7,8 @@
 //! The list of pieces must match the CoMaps app version the hub hands out:
 //! a map file is only usable by an app built for the same data version.
 //!
-//! Also here: the whole world as one pack for the Zaklon map (Protomaps,
-//! PMTiles), which the hub reads itself (see the hub's tiles.rs).
+//! The whole world as one pack for the Zaklon map (Protomaps, PMTiles) is
+//! in [`crate::world_map`]; [`packs`] lists it with the others.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -34,54 +34,6 @@ const COMAPS_APK_SIZE: u64 = 61_716_469;
 
 /// Pack ids of map pieces start with this.
 pub const MAP_ID_PREFIX: &str = "map:";
-
-/// The whole world in one pack for the Zaklon map: the Protomaps basemap
-/// build of 2026-09-28 (OpenStreetMap data, ODbL), zoom 0-15, as one
-/// PMTiles file. A newer catalog can offer a newer build under this id.
-pub const WORLD_MAP_ID: &str = "world-map";
-const WORLD_MAP_VERSION: &str = "20260928";
-const WORLD_MAP_URL: &str = "https://build.protomaps.com/20260928.pmtiles";
-/// Where it goes in the library. A copy put there by hand (with this name and
-/// size) is shown at once and checked in the background.
-pub const WORLD_MAP_PATH: &str = "maps/protomaps-world-20260928.pmtiles";
-const WORLD_MAP_SIZE: u64 = 138_415_942_566;
-/// The SHA-256 of the world map file (lower-case hex). Without one the world
-/// map would not be offered: a pack is never downloaded or trusted without
-/// its checksum.
-pub const WORLD_MAP_SHA256: &str = "7561013a401aa44db88c80fad1fc3f1f9e41fff7bf0ae5986fa9c7b87725f8ec";
-
-/// The world map pack, once its checksum is known (see `WORLD_MAP_SHA256`).
-pub fn world_map_pack() -> Option<Pack> {
-    let known = WORLD_MAP_SHA256.len() == 64 && WORLD_MAP_SHA256.chars().all(|c| c.is_ascii_hexdigit());
-    known.then(|| Pack {
-        id: WORLD_MAP_ID.into(),
-        title: Localized { en: "World map (towns, streets and buildings)".into(), sr: "Mapa sveta (mesta, ulice i zgrade)".into() },
-        description: Localized {
-            en: "The whole world in detail for the Zaklon map, on the laptop and on phones at home. Very large: it needs a big disk and a long download, which continues after interruptions.".into(),
-            sr: "Ceo svet do detalja za Zaklon mapu, na laptopu i na telefonima kod kuće. Veoma velika: treba joj veliki disk i dugo preuzimanje, koje se nastavlja posle prekida.".into(),
-        },
-        category: Category::Maps,
-        topics: vec!["maps".into()],
-        version: WORLD_MAP_VERSION.into(),
-        size: WORLD_MAP_SIZE,
-        files: vec![PackFile {
-            path: WORLD_MAP_PATH.into(),
-            urls: vec![WORLD_MAP_URL.into()],
-            sha256: WORLD_MAP_SHA256.to_ascii_lowercase(),
-            sha1_base64: None,
-            size: WORLD_MAP_SIZE,
-            unpack: None,
-            unpack_to: None,
-        }],
-        license: "ODbL-1.0".into(),
-        attribution: "© OpenStreetMap contributors; map tiles built by Protomaps (protomaps.com)".into(),
-        source: "https://protomaps.com".into(),
-        languages: vec![],
-        recommended_for: vec![],
-        offer: Offer::Auto,
-        offer_reason: String::new(),
-    })
-}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MapRegion {
@@ -201,7 +153,9 @@ pub fn region_path(version: u64, region: &str) -> String {
     format!("maps/{version}/{region}.mwm")
 }
 
-/// Every map piece as a downloadable pack, plus the CoMaps app.
+/// Every map piece as a downloadable pack, plus the CoMaps app and the world
+/// map for the Zaklon map (the build pinned in the app; the hub offers the
+/// build it chooses from Protomaps' list in its place).
 pub fn packs() -> Vec<Pack> {
     let t = tree();
     let mut out: Vec<Pack> = t
@@ -222,6 +176,7 @@ pub fn packs() -> Vec<Pack> {
                 urls: vec![format!("{MAPS_BASE}/{}/{}/{}.mwm", t.series, t.version, url_encode(&r.id))],
                 sha256: String::new(),
                 sha1_base64: Some(r.sha1_base64.clone()),
+                blake3: None,
                 size: r.size,
                 unpack: None,
                 unpack_to: None,
@@ -251,6 +206,7 @@ pub fn packs() -> Vec<Pack> {
             urls: vec![COMAPS_APK_URL.into()],
             sha256: COMAPS_APK_SHA256.into(),
             sha1_base64: None,
+            blake3: None,
             size: COMAPS_APK_SIZE,
             unpack: None,
             unpack_to: None,
@@ -263,7 +219,7 @@ pub fn packs() -> Vec<Pack> {
         languages: vec![],
         recommended_for: vec![],
     });
-    out.extend(world_map_pack());
+    out.push(crate::world_map::pinned());
     out
 }
 
@@ -310,20 +266,11 @@ mod tests {
     }
 
     #[test]
-    fn the_world_map_is_offered_only_with_its_checksum() {
-        let offered = packs().into_iter().find(|p| p.id == WORLD_MAP_ID);
-        match world_map_pack() {
-            None => assert!(offered.is_none(), "never offered without its checksum"),
-            Some(w) => {
-                let p = offered.expect("offered once its checksum is known");
-                assert!(p.is_safe());
-                assert_eq!((p.category, p.topics.clone()), (Category::Maps, vec!["maps".to_string()]));
-                assert_eq!(p.size, 138_415_942_566);
-                assert_eq!(p.files[0].path, "maps/protomaps-world-20260928.pmtiles");
-                assert_eq!(p.files[0].urls, ["https://build.protomaps.com/20260928.pmtiles"]);
-                assert_eq!(p.files[0].sha256.len(), 64);
-                assert_eq!(w.files[0].sha256, p.files[0].sha256);
-            }
-        }
+    fn the_world_map_is_listed_with_its_checksum() {
+        let p = packs().into_iter().find(|p| p.id == crate::world_map::WORLD_MAP_ID).expect("the world map is listed");
+        assert!(p.is_safe());
+        assert_eq!((p.category, p.topics.clone()), (Category::Maps, vec!["maps".to_string()]));
+        assert_eq!(p.files[0].path, "maps/protomaps-world-20260928.pmtiles");
+        assert_eq!(p.files[0].sha256, crate::world_map::PINNED_SHA256);
     }
 }

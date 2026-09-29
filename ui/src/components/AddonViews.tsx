@@ -50,9 +50,26 @@ function Credit({ t, e }: { t: T; e: Entry }) {
 /**
  * The question before downloading a pack people download themselves: its
  * license, named, and a deliberate yes. Focus goes to the yes; Escape or
- * Cancel closes it.
+ * Cancel closes it. Also asks other questions before a download (removing
+ * the old world map first), with their own yes (`yes`, a red one when `danger`).
  */
-export function LicenseAsk({ t, text, name, onYes, onNo }: { t: T; text: string; name: string; onYes: () => void; onNo: () => void }) {
+export function LicenseAsk({
+  t,
+  text,
+  name,
+  onYes,
+  onNo,
+  yes: yesLabel,
+  danger = false,
+}: {
+  t: T;
+  text: string;
+  name: string;
+  onYes: () => void;
+  onNo: () => void;
+  yes?: string;
+  danger?: boolean;
+}) {
   const yes = useRef<HTMLButtonElement>(null);
   const id = useId();
   useEffect(() => {
@@ -69,8 +86,8 @@ export function LicenseAsk({ t, text, name, onYes, onNo }: { t: T; text: string;
     >
       <p id={id}>{text}</p>
       <div className="row wrap">
-        <button ref={yes} className="btn" aria-label={`${t("offerAccept")}: ${name}`} onClick={onYes}>
-          {t("offerAccept")}
+        <button ref={yes} className={danger ? "btn danger-solid" : "btn"} aria-label={`${yesLabel ?? t("offerAccept")}: ${name}`} onClick={onYes}>
+          {yesLabel ?? t("offerAccept")}
         </button>
         <button className="btn secondary" onClick={onNo}>
           {t("cancel")}

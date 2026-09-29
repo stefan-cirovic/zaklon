@@ -24,6 +24,7 @@ pub mod tiles;
 pub mod ui;
 pub mod updates;
 pub mod web;
+pub mod world;
 
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -176,6 +177,8 @@ pub struct HubState {
     pub updates: Arc<updates::Updates>,
     /// The Zaklon map's tiles, fonts and icons.
     pub tiles: Arc<tiles::Tiles>,
+    /// Which build of the world map is offered (Protomaps' list of builds).
+    pub world: Arc<world::WorldBuilds>,
 }
 
 impl HubState {
@@ -272,10 +275,15 @@ impl Hub {
         let db = Db::open(&config.db_path()).context("opening household database")?;
         let identity = zaklon_core::tls::load_or_generate(&config.tls_dir(), &config.hub_name)
             .context("loading TLS identity")?;
-        let downloads = Downloads::new(
+        // The world map build to offer: from the last list of builds this hub
+        // read, else the build pinned in the app. The list is read again
+        // when Add-ons is opened (see world.rs).
+        let world = world::WorldBuilds::open(&config.catalog_dir());
+        let downloads = Downloads::with_world(
             Catalog::load(&config.catalog_dir()),
             config.library_dir(),
             config.catalog_dir().join("state.json"),
+            Some(world.offer()),
         );
         info!(root = %root.display(), hub = %config.hub_name, fp = %identity.fingerprint_display(), "hub opened");
         let library = Library::new(downloads.clone());
@@ -300,6 +308,7 @@ impl Hub {
                 updates,
                 downloads,
                 tiles,
+                world,
             }),
         })
     }

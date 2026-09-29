@@ -19,6 +19,7 @@ use super::error::ApiError;
 use super::home::{read_home, HomeLocation};
 use super::Caller;
 use crate::tiles::{self, Found};
+use zaklon_core::catalog::PackStatus;
 use crate::HubState;
 
 /// Tiles and style files do not change while their address stays the same
@@ -35,6 +36,8 @@ struct PackView {
     status: zaklon_core::catalog::PackStatus,
     bytes_done: u64,
     bytes_total: u64,
+    /// A newer build downloads (or is checked) while the one on the hub is shown.
+    updating: bool,
 }
 
 #[derive(Serialize)]
@@ -65,7 +68,8 @@ pub(super) async fn map_info(State(state): State<Arc<HubState>>, _caller: Caller
         .max_by_key(|p| p.size)
         .map(|p| {
             let st = state.downloads.state_of(&p.id).unwrap_or_else(|| zaklon_core::catalog::PackState::not_installed(p.size));
-            PackView { id: p.id.clone(), size: p.size, status: st.status, bytes_done: st.bytes_done, bytes_total: st.bytes_total }
+            let busy = matches!(st.status, PackStatus::Queued | PackStatus::Downloading | PackStatus::Verifying | PackStatus::Paused);
+            PackView { id: p.id.clone(), size: p.size, status: st.status.clone(), bytes_done: st.bytes_done, bytes_total: st.bytes_total, updating: busy && !st.files.is_empty() }
         });
     Ok(Json(MapReply {
         tiles: summary,

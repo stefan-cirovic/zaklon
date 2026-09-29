@@ -465,3 +465,53 @@ test("power shots", async ({ page }, info) => {
   await page.screenshot({ path: file("power-link"), fullPage: true });
   await page.request.put("/api/power", { data: { plan: null } });
 });
+
+test("world map shots", async ({ page }, info) => {
+  // The world map in Add-ons › Maps, with the hub's answers simulated: the
+  // build offered, then an older build on the hub with a newer one offered.
+  test.setTimeout(60000);
+  if (SIZE && info.project.name === "laptop") await page.setViewportSize({ width: Number(SIZE[1]), height: Number(SIZE[2]) });
+  const file = (name: string) => join(DIR ?? "", `${LANG}-${info.project.name}-${name}.png`);
+  await page.addInitScript((l) => localStorage.setItem("zaklon.lang", l), LANG);
+  await page.goto("/#settings");
+  const setup = page.getByText(/Set up your household|Podesi domaćinstvo/);
+  if (await setup.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await page.locator('input[type="password"]').nth(0).fill("correct horse");
+    await page.locator('input[type="password"]').nth(1).fill("correct horse");
+    await page.locator("form button.btn").click();
+    await page.waitForTimeout(800);
+  }
+  const GB = 1024 ** 3;
+  let world: Record<string, unknown> = { offered: "20260811", offered_size: 137295889397, installed: null, installed_size: 0, update: false, needed: 128 * GB, disk_free: 412 * GB, room_for_both: true, listed: true };
+  let state: Record<string, unknown> = { status: "not_installed", bytes_done: 0, bytes_total: 137295889397, speed: 0 };
+  await page.route("**/api/world-map/check", (r) => r.fulfill({ json: { checking: false } }));
+  await page.route("**/api/catalog", async (r) => {
+    const json = await (await r.fetch()).json();
+    const pack = json.packs.find((p: { id: string }) => p.id === "world-map");
+    Object.assign(pack, { version: world.offered, size: world.offered_size, state });
+    json.world = world;
+    return r.fulfill({ json });
+  });
+  const entry = page.locator('[data-entry="world-map"]');
+  // The world map's entry in the middle of the screen, and the entry alone.
+  const shoot = async (name: string) => {
+    await entry.evaluate((el) => el.scrollIntoView({ block: "center" }));
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: file(name), fullPage: false });
+    await entry.screenshot({ path: file(`${name}-entry`) });
+  };
+  await page.goto("/#addons/maps");
+  await entry.waitFor();
+  await shoot("addons-world-map");
+  world = { ...world, offered: "20261019", offered_size: 129 * GB, installed: "20260811", installed_size: 137295889397, update: true, needed: 130 * GB };
+  state = { status: "installed", bytes_done: 137295889397, bytes_total: 137295889397, speed: 0, update_available: true };
+  await page.reload();
+  await entry.waitFor();
+  await shoot("addons-world-map-update");
+  // Without room for both maps: the question before the old one is removed.
+  world = { ...world, disk_free: 96 * GB, room_for_both: false };
+  await page.reload();
+  await entry.locator("[data-asks-license]").click();
+  await shoot("addons-world-map-noroom");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});

@@ -353,7 +353,7 @@ impl Assistant {
     }
 
     fn model_path(&self, id: &str) -> Option<PathBuf> {
-        let pack = self.downloads.catalog().pack(id)?;
+        let pack = self.downloads.catalog().pack(id).cloned()?;
         if pack.category != Category::Model || self.downloads.state_of(id).map(|s| s.status) != Some(PackStatus::Installed) {
             return None;
         }

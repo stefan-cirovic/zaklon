@@ -27,6 +27,9 @@ const child = spawn(exe, ["--root", root], {
     ZAKLON_INSTALL_PORT: String(base),
     ZAKLON_BEACON_PORT: String(base + 5),
     ZAKLON_IGNORE_BATTERY: "1",
+    // Never read Protomaps' list of world map builds: the tests stay offline
+    // and see the build that comes with the app (or simulate the hub's answers).
+    ZAKLON_WORLD_BUILDS_URL: "off",
     ZAKLON_MAP_ASSETS: process.env.ZAKLON_MAP_ASSETS || resolve(import.meta.dirname, "fixtures/map-assets"),
   },
 });

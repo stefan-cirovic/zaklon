@@ -73,6 +73,8 @@ export function MapNote({ t, info, err }: { t: T; info: MapInfo | null; err: str
     );
   }
   if (info.tiles.detailed) {
+    // A newer build downloads while this one is shown.
+    if (w?.updating) return <p className="zmap-note">{t("mapWorldUpdating").replace("{n}", String(pct))}</p>;
     // The world map is shown while it is checked (it was put in place by hand, say).
     return w?.status === "verifying" ? <p className="zmap-note">{t("mapWorldChecking").replace("{n}", String(pct))}</p> : null;
   }

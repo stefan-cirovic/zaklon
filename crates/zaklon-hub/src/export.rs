@@ -143,7 +143,7 @@ impl Exporter {
         }
         let mut jobs = Vec::new();
         for id in &ids {
-            let pack = downloads.catalog().pack(id).ok_or("unknown pack")?;
+            let pack = downloads.catalog().pack(id).cloned().ok_or("unknown pack")?;
             // The files on disk as verified (possibly an older version than the catalog's).
             let files = downloads.installed_files(id);
             if files.is_empty() {

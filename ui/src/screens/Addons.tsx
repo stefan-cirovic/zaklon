@@ -3,7 +3,7 @@ import { api } from "../api";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
 import { useVisiblePoll } from "../poll";
-import { fmtBytes, fold } from "../format";
+import { fmtBytes, fmtDate, fold } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
 import { CopyToUsb, DrivePicker, type CopyItem, type Drive } from "../components/Usb";
 import StarterSet from "../components/StarterSet";
@@ -11,6 +11,7 @@ import HelpLink from "../components/HelpLink";
 import { BatteryTile, DriveTile, Entries, Folders, LicenseAsk } from "../components/AddonViews";
 import { ToolIcon } from "../components/ExplorerIcons";
 import {
+  buildDay,
   BUSY,
   downloadedByUser,
   FOLDERS,
@@ -21,6 +22,7 @@ import {
   rootName,
   upgradedFolder,
   WITH_BAR,
+  WORLD_MAP_ID,
   type CatalogReply,
   type Entry,
   type FolderId,
@@ -155,6 +157,17 @@ export default function Addons({ t, lang, isHub }: Props) {
   }, [t]);
   const busy = data?.packs.some((p) => BUSY.includes(p.state.status)) ?? false;
   useVisiblePoll(load, busy ? 1500 : 10000);
+  // Opening Add-ons lets the hub look for a newer world map: it reads
+  // Protomaps' list of builds, at most about once a day, in the background.
+  useEffect(() => {
+    let later: number | undefined;
+    api<{ checking?: boolean } | undefined>("/api/world-map/check", { method: "POST" })
+      .then((r) => {
+        if (r?.checking) later = window.setTimeout(() => void load(), 3000);
+      })
+      .catch(() => {});
+    return () => window.clearTimeout(later);
+  }, [load]);
   useEffect(() => {
     api<{ models: { id: string; fits?: boolean }[] }>("/api/assistant")
       .then((a) => setTooBig(new Set(a.models.filter((m) => m.fits === false).map((m) => m.id))))
@@ -196,6 +209,17 @@ export default function Addons({ t, lang, isHub }: Props) {
   };
 
   const title = (l: Localized) => (lang === "sr" && l.sr ? l.sr : l.en);
+  const world = data?.world ?? null;
+  const buildDate = (build: string) => fmtDate(buildDay(build));
+  /** Update the world map (laptop): the hub downloads the newer build next to the old one, or removes the old one first. */
+  const updateWorld = async (removeOld: boolean) => {
+    try {
+      await api("/api/world-map/update", { method: "POST", json: { remove_old: removeOld } });
+      await load();
+    } catch (e) {
+      setErr(errText(t, e));
+    }
+  };
   const nameOf = (x: { name: string; name_sr: string }) => (lang === "sr" ? x.name_sr : x.name);
   // In the details view every button is a quiet one: a column of accent buttons would shout.
   const btn = (small: boolean, primary: boolean) => (primary && !small ? "btn" : "btn secondary") + (small ? " small" : "");
@@ -232,6 +256,12 @@ export default function Addons({ t, lang, isHub }: Props) {
       // Back to the button that opened the question.
       requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-entry="${CSS.escape(p.id)}"] [data-asks-license]`)?.focus());
     };
+    // The world map with an older build on the hub: downloading is updating
+    // it, on the laptop only; without room for both maps it first asks
+    // whether to remove the old one.
+    const isWorld = p.id === WORLD_MAP_ID && !!world;
+    const upd = isWorld && !!s.update_available;
+    const startUpdate = () => (world?.room_for_both ? void updateWorld(false) : setAsking(p.id));
     let status = t("notDownloaded");
     let tone: Entry["tone"] = "muted";
     if (s.status === "queued") status = t("queued");
@@ -242,7 +272,11 @@ export default function Addons({ t, lang, isHub }: Props) {
       status = t("failedStatus");
       tone = "warn";
     } else if (s.status === "installed") {
-      status = s.update_available ? t("packUpdateAvailable") : t("installed");
+      status = !s.update_available
+        ? t("installed")
+        : upd && world
+          ? t("worldNewer").replace("{date}", buildDate(world.offered)).replace("{size}", fmtBytes(world.offered_size))
+          : t("packUpdateAvailable");
       tone = s.update_available ? "warn" : "ok";
     }
     const remove = (small: boolean) =>
@@ -266,10 +300,20 @@ export default function Addons({ t, lang, isHub }: Props) {
       folders: packFolders(p),
       name,
       desc: title(p.description),
-      size: p.size,
-      meta: `${p.version} · ${p.license}`,
+      // The world map on the hub: the size of its build there.
+      size: isWorld && world?.installed ? world.installed_size : p.size,
+      // The world map names its build by date: the one on the hub, else the one offered.
+      meta: `${isWorld && world ? t("worldBuild").replace("{date}", buildDate(world.installed ?? world.offered)) : p.version} · ${p.license}`,
       license: p.license,
-      note: withdrawn ? t("packWithdrawn") : byUser ? offerText(p, "note") : null,
+      note: withdrawn
+        ? t("packWithdrawn")
+        : byUser
+          ? offerText(p, "note")
+          : upd && (BUSY.includes(s.status) || s.status === "paused")
+            ? t("worldKeptMeanwhile")
+            : upd && !isHub
+              ? t("worldUpdateOnLaptop")
+              : null,
       byUser,
       credit: p.attribution || p.source ? { attribution: p.attribution, source: p.source ?? "" } : null,
       ask:
@@ -284,6 +328,19 @@ export default function Addons({ t, lang, isHub }: Props) {
             }}
             onNo={unask}
           />
+        ) : asking === p.id && upd && world && isHub ? (
+          <LicenseAsk
+            t={t}
+            text={t("worldNoRoom").replace("{need}", fmtBytes(world.needed)).replace("{free}", fmtBytes(world.disk_free))}
+            name={name}
+            yes={t("worldRemoveOld")}
+            danger
+            onYes={() => {
+              setAsking(null);
+              void updateWorld(true);
+            }}
+            onNo={unask}
+          />
         ) : null,
       // Nothing people download themselves is ever suggested.
       recommended: p.recommended_for.includes(lang) && !byUser && !withdrawn,
@@ -294,11 +351,30 @@ export default function Addons({ t, lang, isHub }: Props) {
         (s.status === "downloading" || s.status === "paused" || s.status === "queued") && s.bytes_total
           ? `${fmtBytes(s.bytes_done)} / ${fmtBytes(s.bytes_total)}${s.status === "downloading" && s.speed > 0 ? ` · ${fmtBytes(s.speed)}/s` : ""}`
           : null,
-      error: s.status === "failed" && s.error ? errText(t, new Error(s.error)) : tooBig.has(p.id) ? t("aiModelTooBig") : null,
+      error:
+        s.status === "failed" && s.error
+          ? isWorld && /no longer at its download address/.test(s.error)
+            ? t("worldGone")
+            : errText(t, new Error(s.error))
+          : tooBig.has(p.id)
+            ? t("aiModelTooBig")
+            : null,
       // No longer offered: nothing to download or update, only to delete (on the laptop).
       actions: (small) =>
         withdrawn ? (
           (s.status === "paused" || s.status === "failed" || s.status === "installed") && remove(small)
+        ) : upd ? (
+          <>
+            {s.status === "queued" && button(small, false, t("cancel"), pause)}
+            {(s.status === "downloading" || s.status === "verifying") && button(small, false, t("pause"), pause)}
+            {isHub && s.status === "installed" && asking !== p.id && (
+              <button className={btn(small, true)} aria-label={`${t("worldUpdate")}: ${name}`} data-asks-license="" onClick={startUpdate}>
+                {t("worldUpdate")}
+              </button>
+            )}
+            {isHub && (s.status === "paused" || s.status === "failed") && asking !== p.id && button(small, true, s.status === "paused" ? t("resume") : t("retry"), startUpdate)}
+            {(s.status === "paused" || s.status === "failed" || s.status === "installed") && remove(small)}
+          </>
         ) : (
           <>
             {s.status === "not_installed" &&
@@ -320,7 +396,7 @@ export default function Addons({ t, lang, isHub }: Props) {
         ),
       onDisk: s.status === "installed" || s.bytes_done > 0 || BUSY.includes(s.status),
       installed: s.status === "installed",
-      installedBytes: p.size,
+      installedBytes: isWorld && world?.installed ? world.installed_size : p.size,
       busy: BUSY.includes(s.status),
       bytesDone: s.status === "installed" ? p.size : s.bytes_done,
       bytesTotal: s.bytes_total || p.size,

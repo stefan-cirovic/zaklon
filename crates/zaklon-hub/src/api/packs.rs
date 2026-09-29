@@ -11,7 +11,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::error::{bad, not_found, ApiError};
+use super::error::{bad, forbidden, not_found, ApiError};
 use super::{blocking, Caller, LibraryReader, Local};
 use crate::HubState;
 
@@ -26,6 +26,18 @@ pub(super) struct CatalogReply {
     /// The root of the drive the library is on ("D:\"), which the Add-ons
     /// screen shows as the hub's drive.
     library_drive: String,
+    /// The world map: which build is offered, which one the hub has, and
+    /// whether a newer one fits next to it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    world: Option<WorldReply>,
+}
+
+#[derive(Serialize)]
+pub(super) struct WorldReply {
+    #[serde(flatten)]
+    view: crate::downloads::WorldView,
+    /// When Protomaps' list of builds was last read (RFC 3339), if ever.
+    checked_at: Option<String>,
 }
 
 pub(super) async fn catalog(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<CatalogReply>, ApiError> {
@@ -34,12 +46,38 @@ pub(super) async fn catalog(State(state): State<Arc<HubState>>, _caller: Caller)
     // endpoint; the Zaklon map's packs (the world map) are listed here.
     d.notice_placed_maps();
     let packs = d.snapshot().into_iter().filter(|v| !v.pack.id.starts_with(zaklon_core::maps::MAP_ID_PREFIX)).collect();
+    let world = d.world_view().map(|view| WorldReply { view, checked_at: state.world.checked_at() });
     Ok(Json(CatalogReply {
         packs,
         starter_sets: d.catalog().starter_sets.clone(),
         system: crate::downloads::system_info(d.library_dir()),
         library_drive: crate::machine::drive_root(d.library_dir()),
+        world,
     }))
+}
+
+/// Add-ons was opened: the hub reads Protomaps' list of world map builds
+/// in the background when it is due (at most about once a day, and only
+/// then goes online), and offers the build it chooses.
+pub(super) async fn world_check(State(state): State<Arc<HubState>>, _caller: Caller) -> Json<serde_json::Value> {
+    let checking = state.world.check(&state.downloads);
+    Json(serde_json::json!({ "checking": checking }))
+}
+
+#[derive(Deserialize)]
+pub(super) struct WorldUpdateBody {
+    /// The person confirmed that the old map is deleted first (there is no
+    /// room for both).
+    #[serde(default)]
+    remove_old: bool,
+}
+
+/// Laptop only, like removing: update the world map to the newer build
+/// offered (see `Downloads::update_world`).
+pub(super) async fn world_update(State(state): State<Arc<HubState>>, _: Local, Json(body): Json<WorldUpdateBody>) -> Result<StatusCode, ApiError> {
+    tracing::info!(remove_old = body.remove_old, "world map update asked for on the laptop");
+    state.downloads.update_world(body.remove_old).await.map_err(|e| bad(&e))?;
+    Ok(StatusCode::ACCEPTED)
 }
 
 pub(super) async fn system(State(state): State<Arc<HubState>>, _caller: Caller) -> Result<Json<crate::downloads::SystemInfo>, ApiError> {
@@ -55,10 +93,20 @@ pub(super) struct DownloadQuery {
 
 pub(super) async fn pack_download(
     State(state): State<Arc<HubState>>,
-    _caller: Caller,
+    caller: Caller,
     Path(id): Path<String>,
     axum::extract::Query(q): axum::extract::Query<DownloadQuery>,
 ) -> Result<StatusCode, ApiError> {
+    // With a world map on the hub, a download of the world map is its
+    // update: on the laptop only, like removing it, and only with room for
+    // both maps (see world_update).
+    if id == zaklon_core::world_map::WORLD_MAP_ID && !state.downloads.installed_files(&id).is_empty() {
+        if !matches!(caller, Caller::Local) {
+            return Err(forbidden("only the laptop can do this"));
+        }
+        state.downloads.update_world(false).await.map_err(|e| bad(&e))?;
+        return Ok(StatusCode::ACCEPTED);
+    }
     if let Some(pack) = state.downloads.catalog().pack(&id) {
         // A pack under a non-commercial or mixed license is only ever
         // downloaded by a person's own choice, once they confirmed its
@@ -100,7 +148,7 @@ pub(super) async fn pack_remove(State(state): State<Arc<HubState>>, _: Local, Pa
     // AI engine its model and its own files; stop the one concerned so
     // Windows lets us delete them. It starts again by itself.
     // Also a pack the catalog no longer offers: deleting it is the person's choice.
-    if let Some(pack) = state.downloads.pack(&id).cloned() {
+    if let Some(pack) = state.downloads.pack(&id) {
         state.downloads.release(&pack).await;
     }
     let d = state.downloads.clone();

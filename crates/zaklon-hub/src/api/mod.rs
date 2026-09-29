@@ -49,7 +49,7 @@ use maps::{maps_app_file, maps_country_download, maps_country_remove, maps_overv
 use memory::{memory_add, memory_delete, memory_list};
 use packs::{
     catalog, drives, hardware, kiwix_proxy, kiwix_proxy_latin, library_books, library_search, model_file, models_list, pack_download,
-    pack_pause, pack_remove, packs_import, system,
+    pack_pause, pack_remove, packs_import, system, world_check, world_update,
 };
 use pairing::{network_only, pair_complete, pair_start, pake_finish, pake_start};
 use power::{power_plan, power_plan_save};
@@ -99,6 +99,8 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/packs/{id}", axum::routing::delete(pack_remove))
         .route("/api/packs/{id}/download", post(pack_download))
         .route("/api/packs/{id}/pause", post(pack_pause))
+        .route("/api/world-map/check", post(world_check))
+        .route("/api/world-map/update", post(world_update))
         .route("/api/export", get(export_status).post(export_start))
         .route("/api/export/cancel", post(export_cancel))
         .route("/api/drives", get(drives))

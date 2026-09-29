@@ -111,6 +111,10 @@ pub struct PackFile {
     /// Base64 SHA-1, as CoMaps publishes for map files. Used when there is no SHA-256.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha1_base64: Option<String>,
+    /// Lower-case hex BLAKE3, as Protomaps publishes for its world map
+    /// builds. Used when there is no SHA-256.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blake3: Option<String>,
     pub size: u64,
     /// "zip" to unpack after verification.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -253,6 +257,8 @@ pub struct InstalledFile {
     pub sha256: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha1_base64: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blake3: Option<String>,
     pub size: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unpack_to: Option<String>,
@@ -261,17 +267,29 @@ pub struct InstalledFile {
 impl InstalledFile {
     /// Same place and same content as the catalog file `f`.
     pub fn is(&self, f: &PackFile) -> bool {
+        let same_blake3 = match (&self.blake3, &f.blake3) {
+            (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+            (a, b) => a == b,
+        };
         self.path == f.path
             && self.size == f.size
             && self.sha256.eq_ignore_ascii_case(&f.sha256)
             && self.sha1_base64 == f.sha1_base64
+            && same_blake3
             && self.unpack_to == f.unpack_to
     }
 }
 
 impl From<&PackFile> for InstalledFile {
     fn from(f: &PackFile) -> Self {
-        Self { path: f.path.clone(), sha256: f.sha256.clone(), sha1_base64: f.sha1_base64.clone(), size: f.size, unpack_to: f.unpack_to.clone() }
+        Self {
+            path: f.path.clone(),
+            sha256: f.sha256.clone(),
+            sha1_base64: f.sha1_base64.clone(),
+            blake3: f.blake3.clone(),
+            size: f.size,
+            unpack_to: f.unpack_to.clone(),
+        }
     }
 }
 
@@ -292,8 +310,11 @@ impl Pack {
             !s.is_empty() && s.len() <= 160 && !s.contains("..") && !s.contains('/') && !s.contains('\\') && !s.chars().any(char::is_control)
         };
         let id_ok = slug(&self.id) || self.id.strip_prefix(crate::maps::MAP_ID_PREFIX).is_some_and(map_name);
+        // A SHA-256, or without one a BLAKE3 (Protomaps) or a SHA-1 (CoMaps): never none.
+        let hex64 = |h: &str| h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit());
         let hash_ok = |f: &PackFile| {
-            (f.sha256.len() == 64 && f.sha256.chars().all(|c| c.is_ascii_hexdigit()))
+            hex64(&f.sha256)
+                || (f.sha256.is_empty() && f.blake3.as_deref().is_some_and(hex64))
                 || (f.sha256.is_empty() && f.sha1_base64.as_deref().is_some_and(|h| h.len() == 28))
         };
         // A (zip) archive says where it unpacks to; a default folder could wipe

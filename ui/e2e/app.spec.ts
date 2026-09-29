@@ -939,6 +939,80 @@ test("add-ons: a pack Zaklon no longer offers stays listed, usable and removable
   await noHorizontalScroll(page);
 });
 
+test("add-ons: the world map names the build it offers, and a newer one as an update (states simulated)", async ({ page }) => {
+  await ensureSetUp(page);
+  const GB = 1024 ** 3;
+  // As the hub describes the world map: the build Protomaps' list offers, and the one on the hub.
+  let world: Record<string, unknown> = {
+    offered: "20260811",
+    offered_size: 128 * GB,
+    installed: null,
+    installed_size: 0,
+    update: false,
+    needed: 129 * GB,
+    disk_free: 500 * GB,
+    room_for_both: true,
+    listed: true,
+    checked_at: "2026-09-29T09:00:00Z",
+  };
+  let state: Record<string, unknown> = { status: "not_installed", bytes_done: 0, bytes_total: 128 * GB, speed: 0 };
+  let checked = 0;
+  await page.route("**/api/world-map/check", (r) => {
+    checked++;
+    return r.fulfill({ json: { checking: false } });
+  });
+  await page.route("**/api/catalog", async (r) => {
+    const json = await (await r.fetch()).json();
+    const pack = json.packs.find((p: { id: string }) => p.id === "world-map");
+    Object.assign(pack, { version: world.offered, size: world.offered_size, state });
+    json.world = world;
+    return r.fulfill({ json });
+  });
+  const asked: unknown[] = [];
+  await page.route("**/api/world-map/update", (r) => {
+    asked.push(r.request().postDataJSON());
+    return r.fulfill({ status: 202, body: "" });
+  });
+  await page.goto("/#addons/maps");
+  await expect.poll(() => checked, { message: "opening Add-ons lets the hub look for a newer build" }).toBeGreaterThan(0);
+  const entry = page.locator('[data-entry="world-map"]');
+  await expect(entry).toContainText("Map data of 11 Aug 2026");
+  await expect(entry).toContainText("Not downloaded");
+  await expect(entry.getByRole("button", { name: "Download: World map (towns, streets and buildings)" })).toBeVisible();
+
+  // An older build on the hub and a newer one offered: an update, with room for both maps.
+  world = { ...world, offered: "20261019", offered_size: 139 * GB, installed: "20260811", installed_size: 128 * GB, update: true, needed: 140 * GB };
+  state = { status: "installed", bytes_done: 139 * GB, bytes_total: 139 * GB, speed: 0, update_available: true };
+  await page.reload();
+  await expect(entry).toContainText("A newer world map is available (19 Oct 2026, 139 GB)");
+  await expect(entry).toContainText("Map data of 11 Aug 2026");
+  await expect(entry.getByRole("button", { name: /^(Download|Update|Resume|Retry):/ })).toHaveCount(0);
+  await entry.getByRole("button", { name: "Update the map: World map (towns, streets and buildings)" }).click();
+  await expect.poll(() => asked).toEqual([{ remove_old: false }]);
+
+  // No room for both: it says so, and the old map is removed first only once confirmed.
+  world = { ...world, disk_free: 100 * GB, room_for_both: false };
+  await page.reload();
+  await entry.getByRole("button", { name: /^Update the map/ }).click();
+  const noRoom = entry.getByText("There is not enough free space for the new map next to the old one: it needs 140 GB, and 100 GB is free.", { exact: false });
+  await expect(noRoom).toBeVisible();
+  await entry.getByRole("button", { name: "Cancel" }).click();
+  await expect(noRoom).toHaveCount(0);
+  expect(asked).toHaveLength(1);
+  await entry.getByRole("button", { name: /^Update the map/ }).click();
+  await entry.getByRole("button", { name: "Remove the old map and update: World map (towns, streets and buildings)" }).click();
+  await expect.poll(() => asked).toEqual([{ remove_old: false }, { remove_old: true }]);
+  await noHorizontalScroll(page);
+
+  // While the newer build downloads, the map on the hub keeps being used.
+  state = { status: "downloading", bytes_done: 13 * GB, bytes_total: 139 * GB, speed: 20 * 1024 ** 2, update_available: true };
+  await page.reload();
+  await expect(entry).toContainText("The current map is used until the new one is downloaded and checked");
+  await expect(entry.getByRole("button", { name: /^Pause/ })).toBeVisible();
+  // The screen asks again every few seconds: stop the made-up answers before the page closes.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("a download that the hub accepts without a body is not reported as an error", async ({ page }) => {
   await ensureSetUp(page);
   // The hub answers 202 with an empty body; answer the same way without going online.

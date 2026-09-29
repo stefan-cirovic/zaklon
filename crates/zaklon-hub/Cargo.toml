@@ -28,6 +28,10 @@ tracing-appender.workspace = true
 sha2.workspace = true
 sha1.workspace = true
 base64.workspace = true
+time.workspace = true
+# Checks the world map builds with the BLAKE3 hash Protomaps publishes.
+# Pure Rust (with SIMD): no C compiler or assembler needed to build it.
+blake3 = { version = "1.5", default-features = false, features = ["std", "pure"] }
 uuid.workspace = true
 rand.workspace = true
 axum = { version = "0.8", features = ["json", "macros"] }

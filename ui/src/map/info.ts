@@ -17,8 +17,8 @@ export type MapInfo = {
   };
   glyphs: boolean;
   sprites: boolean;
-  /** The world map pack and where it stands. */
-  world: { id: string; size: number; status: MapPackStatus; bytes_done: number; bytes_total: number } | null;
+  /** The world map pack and where it stands (`updating`: a newer build is on its way while this one is shown). */
+  world: { id: string; size: number; status: MapPackStatus; bytes_done: number; bytes_total: number; updating?: boolean } | null;
   /** "Find a place" has its list of places on the hub. */
   places: boolean;
   /** The household's home, if it was set. */

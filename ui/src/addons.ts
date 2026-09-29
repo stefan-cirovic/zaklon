@@ -44,7 +44,38 @@ export type CatalogReply = {
   system: { disk_free: number; disk_total: number; battery_percent: number | null; plugged_in: boolean };
   /** The root of the drive the library is on, like "D:\". */
   library_drive?: string;
+  /** The world map: the build offered and the one on the hub. */
+  world?: WorldInfo;
 };
+
+/** The world map's pack id. */
+export const WORLD_MAP_ID = "world-map";
+
+/** What the hub says about the world map (builds are dates, "20260811"). */
+export type WorldInfo = {
+  /** The build offered for download, or the one downloading. */
+  offered: string;
+  offered_size: number;
+  /** The build on the hub, if any. */
+  installed: string | null;
+  installed_size: number;
+  /** A newer build than the one on the hub is offered. */
+  update: boolean;
+  /** Free space the offered build still needs (with what is kept free). */
+  needed: number;
+  disk_free: number;
+  /** The offered build fits next to the one on the hub. */
+  room_for_both: boolean;
+  /** Offered from Protomaps' list of builds (else the build that comes with the app). */
+  listed: boolean;
+  /** When the list was last read, if ever. */
+  checked_at?: string | null;
+};
+
+/** A build's date, "20260811", as "2026-08-11" (for fmtDate); anything else as it is. */
+export function buildDay(build: string): string {
+  return /^\d{8}$/.test(build) ? `${build.slice(0, 4)}-${build.slice(4, 6)}-${build.slice(6, 8)}` : build;
+}
 
 /** A pack people download themselves: its license has conditions (see `offer`). */
 export function downloadedByUser(p: { offer?: string }) {

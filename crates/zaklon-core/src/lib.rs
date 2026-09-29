@@ -13,6 +13,7 @@ pub mod pairing;
 pub mod supplies;
 pub mod tls;
 pub mod translit;
+pub mod world_map;
 
 pub use config::Config;
 /// The database library, so callers can tell database failures apart.
