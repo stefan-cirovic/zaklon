@@ -1264,11 +1264,11 @@ input[type="text"].water-count { width: 64px; text-align: center; font-weight: 6
 }
 .zmap-note.warn { color: var(--warn); }
 .zmap-note-link { white-space: nowrap; }
-.zmap-credit {
-  position: absolute; right: 0; bottom: 0; z-index: 2; padding: 2px 8px; font-size: 11px; line-height: 18px;
-  background: rgba(24, 24, 24, 0.86); color: var(--muted); border-top-left-radius: var(--radius);
-}
+.zmap-credit { position: absolute; right: 0; bottom: 0; z-index: 2; display: flex; align-items: flex-end; justify-content: flex-end; font-size: 11px; line-height: 18px; color: var(--muted); }
+.zmap-credit > span { padding: 2px 8px; background: rgba(24, 24, 24, 0.86); border-top-left-radius: var(--radius); }
 .zmap-credit:hover { color: var(--text); }
+/* A fingertip wide on a phone; only the words show. */
+@media (max-width: 899px) { .zmap-credit { min-height: 44px; min-width: 44px; } }
 .zmap-loading { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; margin: 0; font-size: 14px; pointer-events: none; }
 .zmap-message {
   position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;

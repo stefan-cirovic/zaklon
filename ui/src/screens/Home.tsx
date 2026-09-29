@@ -688,7 +688,7 @@ function HomeMapCard({ t, lang, info, unreachable }: { t: T; lang: Lang; info: M
   return (
     <section className="panel left home-card home-map" aria-labelledby={id}>
       <CardHead id={id} icon="maps" title={t("homeMapTitle")} href="#maps" link={t("openMaps")} />
-      <ZaklonMap t={t} lang={lang} info={info} home={home} start="home" compact label={t("homeMapTitle")}>
+      <ZaklonMap t={t} lang={lang} info={info} home={home} start="home" compact label={t("mapsZaklonMap")}>
         {unreachable && !info && <p className="zmap-note warn">{t("mapUnreachable")}</p>}
         {info && !home && !info.phone && (
           <a className="btn small zmap-set-home" href="#maps/home">

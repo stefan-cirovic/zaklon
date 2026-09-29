@@ -328,7 +328,7 @@ export default function ZaklonMap({ t, lang, info, home, pending = null, onPick,
       )}
       {children && <div className="zmap-overlay">{children}</div>}
       <a className="zmap-credit" href={ATTRIBUTION.href} target="_blank" rel="noopener" onClick={openCredit}>
-        {ATTRIBUTION.text}
+        <span>{ATTRIBUTION.text}</span>
       </a>
     </div>
   );

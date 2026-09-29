@@ -1131,18 +1131,22 @@ test("home: the hub at the top, what in the supplies needs attention, and the to
 
   const box = async (name: string) => (await page.getByRole("region", { name, exact: true }).boundingBox())!;
   if (info.project.name === "laptop") {
-    // A tall window: the assistant across the top, the supplies and the library side by side
-    // sharing the height that is left, the tools along the bottom, just above the bar.
+    // A tall window: the assistant across the top; the supplies and the home on the map side
+    // by side, half the width each, sharing the height that is left; the library and the tools
+    // below them, just above the bar.
     await page.setViewportSize({ width: 1400, height: 1200 });
-    const [ask, sup, lib, quick] = [await box("Assistant"), await box("Supplies"), await box("Library and add-ons"), await box("Quick access")];
+    const [ask, sup, map, lib, quick] = [await box("Assistant"), await box("Supplies"), await box("Home on the map"), await box("Library and add-ons"), await box("Quick access")];
     expect(ask.width).toBeGreaterThan(1250);
-    expect(Math.abs(sup.y - lib.y)).toBeLessThan(2);
-    expect(Math.abs(sup.height - lib.height)).toBeLessThan(2);
-    expect(lib.x).toBeGreaterThan(sup.x + sup.width);
-    expect(sup.width).toBeGreaterThan(lib.width * 1.5);
+    expect(Math.abs(sup.y - map.y)).toBeLessThan(2);
+    expect(Math.abs(sup.height - map.height)).toBeLessThan(2);
+    expect(map.x).toBeGreaterThan(sup.x + sup.width);
+    expect(Math.abs(sup.width - map.width), "half the width each").toBeLessThan(2);
+    expect(lib.y).toBeGreaterThanOrEqual(sup.y + sup.height);
+    expect(Math.abs(lib.y - quick.y)).toBeLessThan(2);
+    expect(quick.x).toBeGreaterThan(lib.x + lib.width);
     // Below them only the version line (about 100 px with its spacing).
     const nav = (await page.locator("nav.nav").boundingBox())!;
-    expect(nav.y - (quick.y + quick.height), "the cards reach down to the bar").toBeLessThan(120);
+    expect(nav.y - Math.max(lib.y + lib.height, quick.y + quick.height), "the cards reach down to the bar").toBeLessThan(120);
     await noHorizontalScroll(page);
   } else {
     // A phone: one card under the other, and everything to tap a fingertip wide.
