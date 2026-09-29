@@ -41,6 +41,24 @@ const TOPIC_WORDS: usize = 4;
 /// Results asked for per full-text search: more for several books at once.
 const TEXT_RESULTS: usize = 5;
 const TEXT_RESULTS_SHARED: usize = 8;
+/// Points for an article from a pack about the question's topic: it comes
+/// before an equally good one from elsewhere, not before a better one.
+const TOPIC_BONUS: i32 = 3;
+
+/// What decides a library search besides its terms: a health question
+/// (a medical book keeps a place among the sources) and the question's
+/// topics (the packs about them are searched first and rank higher; the
+/// others are still searched).
+#[derive(Debug, Clone, Default)]
+pub(super) struct Focus {
+    pub(super) safety: bool,
+    pub(super) topics: Vec<&'static str>,
+}
+
+/// A book about one of the question's topics.
+fn on_topic(book: &Book, topics: &[&str]) -> bool {
+    book.topics.iter().any(|t| topics.contains(&t.as_str()))
+}
 
 impl Assistant {
     /// Online research: a web search for the question, and the relevant
@@ -129,8 +147,10 @@ struct Lookup {
 /// then the terms one by one: at most `MAX_QUERIES` full-text searches per
 /// language and `MAX_TITLE_LOOKUPS` title lookups. Books in another language
 /// than their terms (Serbian books for an English question) get only the
-/// first full-text search.
-fn plan_lookups(books: &[Book], terms: &[String], terms_en: &[String], language: &str) -> Vec<Lookup> {
+/// first full-text search. Packs about the question's topics are searched
+/// on their own and first: searched together with a big encyclopedia, a
+/// small guide's articles rarely make its first results.
+fn plan_lookups(books: &[Book], terms: &[String], terms_en: &[String], language: &str, topics: &[&str]) -> Vec<Lookup> {
     /// Books searched together: the same set of terms and the same languages.
     struct Group {
         set: usize,
@@ -140,14 +160,17 @@ fn plan_lookups(books: &[Book], terms: &[String], terms_en: &[String], language:
         native: bool,
         serbian: bool,
         queries: Vec<String>,
+        /// About the question's topic.
+        topical: bool,
     }
     let sets = [terms, terms_en];
     let mut groups: Vec<Group> = Vec::new();
     for (i, b) in books.iter().enumerate() {
         let set = usize::from(english_book(&b.languages) && !terms_en.is_empty());
+        let topical = on_topic(b, topics);
         let mut languages = b.languages.clone();
         languages.sort();
-        match groups.iter_mut().find(|g| g.set == set && g.languages == languages) {
+        match groups.iter_mut().find(|g| g.set == set && g.languages == languages && g.topical == topical) {
             Some(g) => g.books.push(i),
             None => {
                 let wanted = if set == 1 || language == "en" { "eng" } else { "srp" };
@@ -161,11 +184,12 @@ fn plan_lookups(books: &[Book], terms: &[String], terms_en: &[String], language:
                         queries.push(q);
                     }
                 }
-                groups.push(Group { set, languages, books: vec![i], native, serbian, queries });
+                groups.push(Group { set, languages, books: vec![i], native, serbian, queries, topical });
             }
         }
     }
-    groups.sort_by_key(|g| !g.native);
+    // Books in the language of their terms first, and among them those about the topic.
+    groups.sort_by_key(|g| (!g.native, !g.topical));
 
     let mut out: Vec<Lookup> = Vec::new();
     let text = |g: &Group, round: usize| {
@@ -283,7 +307,9 @@ async fn in_order<F: Future>(jobs: Vec<F>, deadline: tokio::time::Instant) -> (V
 /// English ones), a few requests in all (see `plan_lookups`), within
 /// `LIBRARY_TIME`. Results are ranked by their titles, the best few are read,
 /// and those are ranked again by how many of the terms the parts chosen from
-/// them cover. Two good sources beat three with a wrong one.
+/// them cover. Two good sources beat three with a wrong one. Packs about the
+/// question's topics (`focus`) are searched first, and their articles rank
+/// a little higher.
 pub(super) async fn find_sources<S: Shelf>(
     shelf: &S,
     books: &[Book],
@@ -291,8 +317,9 @@ pub(super) async fn find_sources<S: Shelf>(
     terms_en: &[String],
     question: &str,
     language: &str,
-    safety: bool,
+    focus: &Focus,
 ) -> (Vec<Passage>, SearchStats) {
+    let safety = focus.safety;
     let mut stats = SearchStats::default();
     if terms.is_empty() && terms_en.is_empty() {
         return (Vec::new(), stats);
@@ -302,7 +329,7 @@ pub(super) async fn find_sources<S: Shelf>(
     let sets = [prepare_terms(terms), prepare_terms(terms_en)];
     let context = context_words(question, terms, terms_en);
 
-    let lookups = plan_lookups(books, terms, terms_en, language);
+    let lookups = plan_lookups(books, terms, terms_en, language, &focus.topics);
     let jobs: Vec<_> = lookups.iter().map(|l| lookup(shelf, books, l)).collect();
     let (results, started) = in_order(jobs, start + LOOKUP_TIME).await;
     stats.lookups = started as u32;
@@ -327,7 +354,11 @@ pub(super) async fn find_sources<S: Shelf>(
             if scored.score <= 0 {
                 continue;
             }
-            let medical = books.iter().any(|b| b.name == r.book && medical_pack(&b.pack_id));
+            let from = books.iter().find(|b| b.name == r.book);
+            let medical = from.is_some_and(|b| medical_pack(&b.pack_id));
+            if from.is_some_and(|b| on_topic(b, &focus.topics)) {
+                scored.score += TOPIC_BONUS;
+            }
             let order = cands.len();
             cands.push(Candidate { result: r, set: l.set, scored, medical, order });
         }
@@ -758,6 +789,7 @@ mod tests {
             home: String::new(),
             file: PathBuf::new(),
             rel: String::new(),
+            topics: Vec::new(),
         }
     }
 
@@ -775,7 +807,7 @@ mod tests {
         let books = three_books();
         let terms = strings(&["ujed zmije", "poskok", "prva pomoć kod ujeda", "otok"]);
         let terms_en = strings(&["snakebite", "viper", "first aid"]);
-        let l = plan_lookups(&books, &terms, &terms_en, "sr");
+        let l = plan_lookups(&books, &terms, &terms_en, "sr", &[]);
         // It used to be every query in every book, each with up to 13 title
         // lookups and 2 full-text searches: well over a hundred requests.
         assert!(l.len() <= 2 * MAX_QUERIES + MAX_TITLE_LOOKUPS, "{l:#?}");
@@ -800,7 +832,7 @@ mod tests {
             assert_eq!(l.iter().filter(|y| *y == x).count(), 1, "{x:?}");
         }
         // A word written with diacritics has one spelling.
-        let l = plan_lookups(&books, &strings(&["šargarepa"]), &[], "sr");
+        let l = plan_lookups(&books, &strings(&["šargarepa"]), &[], "sr", &[]);
         assert_eq!(l.iter().filter(|x| x.titles).map(|x| x.query.as_str()).collect::<Vec<_>>(), vec!["шаргареп"]);
         assert_eq!(title_spellings("osigurac", true), vec!["осигурац", "осигурач"], "typed without the č");
     }
@@ -827,7 +859,7 @@ mod tests {
         books.push(book("wikipedia_de_all_nopic_2026-01", "wikipedia-de", &["deu"]));
         let terms = strings(&["bee sting", "allergy", "swelling"]);
         // An English question: its terms serve the English books too.
-        let l = plan_lookups(&books, &terms, &terms, "en");
+        let l = plan_lookups(&books, &terms, &terms, "en", &[]);
         let languages = 3;
         assert!(l.len() <= languages * MAX_QUERIES + MAX_TITLE_LOOKUPS, "{l:#?}");
         // The English books first, all in one request; the others get the topic only.
@@ -835,7 +867,7 @@ mod tests {
         assert_eq!(l.iter().filter(|x| x.books.contains(&0)).count(), 1, "Serbian books: once");
         assert_eq!(l.iter().filter(|x| x.books.contains(&6)).count(), 1, "German: once");
         assert!(l.iter().filter(|x| x.titles).all(|x| books[x.books[0]].languages == ["eng"]));
-        assert!(plan_lookups(&books, &[], &[], "sr").is_empty());
+        assert!(plan_lookups(&books, &[], &[], "sr", &[]).is_empty());
     }
 
     /// A library where every request takes `delay`: a full-text search or a
@@ -889,12 +921,12 @@ mod tests {
         let terms = strings(&["ujed zmije", "poskok"]);
         let terms_en = strings(&["snakebite", "viper"]);
         let question = "kako da prepoznam poskoka i sta ako te ujede zmija";
-        let planned = plan_lookups(&books, &terms, &terms_en, "sr").len();
+        let planned = plan_lookups(&books, &terms, &terms_en, "sr", &[]).len();
 
         // A quiet disk: everything planned is asked and read, quickly.
         let quick = SlowShelf::new(Duration::from_millis(100), true);
         let t = tokio::time::Instant::now();
-        let (found, stats) = find_sources(&quick, &books, &terms, &terms_en, question, "sr", false).await;
+        let (found, stats) = find_sources(&quick, &books, &terms, &terms_en, question, "sr", &Focus::default()).await;
         assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
         assert!(!stats.cut && !found.is_empty(), "{stats:?}");
         assert_eq!((stats.lookups as usize, quick.asked.lock().unwrap().len()), (planned, planned));
@@ -905,7 +937,7 @@ mod tests {
         // what was done in time, and nothing more is asked.
         let slow = SlowShelf::new(Duration::from_secs(5), false);
         let t = tokio::time::Instant::now();
-        let (found, stats) = find_sources(&slow, &books, &terms, &terms_en, question, "sr", false).await;
+        let (found, stats) = find_sources(&slow, &books, &terms, &terms_en, question, "sr", &Focus::default()).await;
         assert!(t.elapsed() <= LIBRARY_TIME, "{:?}", t.elapsed());
         assert!(stats.cut);
         assert_eq!(stats.lookups, 6, "two at a time, started before 12 s: at 0, 5 and 10 s");
@@ -967,7 +999,7 @@ mod tests {
             for (q, terms, terms_en, safety) in cases.iter().filter(|c| c.0.contains(&only)) {
                 let (terms, terms_en) = (strings(terms), strings(terms_en));
                 let t = tokio::time::Instant::now();
-                let (found, stats) = find_sources(&*ai.library, &books, &terms, &terms_en, q, "sr", *safety).await;
+                let (found, stats) = find_sources(&*ai.library, &books, &terms, &terms_en, q, "sr", &Focus { safety: *safety, ..Focus::default() }).await;
                 let titles: Vec<&str> = found.iter().map(|p| p.source.title.as_str()).collect();
                 println!("{:>6} ms  {stats:?}  {titles:?}  <- {q}", t.elapsed().as_millis());
             }
@@ -1029,7 +1061,7 @@ mod tests {
         let only = std::env::var("ZAKLON_LIVE_ONLY").unwrap_or_default();
         for (q, terms, terms_en, safety) in cases.iter().filter(|c| c.0.contains(&only)) {
             let (terms, terms_en) = (strings(terms), strings(terms_en));
-            let (mut found, _) = find_sources(&*ai.library, &books, &terms, &terms_en, q, "sr", *safety).await;
+            let (mut found, _) = find_sources(&*ai.library, &books, &terms, &terms_en, q, "sr", &Focus { safety: *safety, ..Focus::default() }).await;
             println!("=== {q}");
             for p in &found {
                 println!("--- [{}] {} ({} chars)\n{}", p.source.n, p.source.title, p.text.chars().count(), p.text);
@@ -1068,5 +1100,82 @@ mod tests {
         assert_eq!(pick_reads(&c, true), want, "and a medical book for a health question");
         assert_eq!(pick_reads(&c[..2], false), vec![0, 1]);
         assert!(pick_reads(&[], true).is_empty());
+    }
+
+    fn about(mut b: Book, topics: &[&str]) -> Book {
+        b.topics = strings(topics);
+        b
+    }
+
+    #[test]
+    fn packs_about_the_topic_are_searched_first() {
+        let mut books = three_books();
+        books.push(book("wikipedia_en_all_nopic_2026-01", "wikipedia-en-nopic", &["eng"]));
+        books.push(about(book("zimgit-water_en_all_2025-01", "zimgit-water-en", &["eng"]), &["water", "health"]));
+        let terms = strings(&["prečišćavanje vode"]);
+        let terms_en = strings(&["water purification"]);
+        // Without a topic, the English books are searched together, as before.
+        let plain = plan_lookups(&books, &terms, &terms_en, "sr", &[]);
+        assert!(plain.iter().any(|x| !x.titles && x.books == [2, 3, 4]), "{plain:#?}");
+        // About water: the water guides on their own and first, the others after them.
+        let l = plan_lookups(&books, &terms, &terms_en, "sr", &["water"]);
+        let texts: Vec<&Lookup> = l.iter().filter(|x| !x.titles).collect();
+        assert_eq!(texts[0].books, vec![4], "{l:#?}");
+        assert!(texts.iter().any(|x| x.books == [0, 1]) && texts.iter().any(|x| x.books == [2, 3]), "the other books are still searched");
+        assert_eq!(l.iter().find(|x| x.titles).unwrap().books, vec![4], "their titles are looked up first too");
+        // A topic no book is about changes nothing.
+        assert_eq!(plan_lookups(&books, &terms, &terms_en, "sr", &["maps"]), plain);
+    }
+
+    /// A library where each book has one article about the query, titled
+    /// "<query> <the book's title>", all of them as good.
+    struct EvenShelf;
+
+    impl Shelf for EvenShelf {
+        fn text(&self, books: &[&Book], query: &str, _limit: usize) -> impl Future<Output = Found> + Send {
+            let results = books
+                .iter()
+                .map(|b| SearchResult {
+                    title: format!("{query} {}", b.title_en),
+                    url: format!("/kiwix/content/{}/{query}", b.name),
+                    snippet: String::new(),
+                    book: b.name.clone(),
+                    book_title_en: b.title_en.clone(),
+                    book_title_sr: b.title_sr.clone(),
+                    kind: "text",
+                })
+                .collect();
+            std::future::ready(Found { results, cached: false })
+        }
+
+        fn titles(&self, _book: &Book, _query: &str, _limit: usize) -> impl Future<Output = Found> + Send {
+            std::future::ready(Found { results: Vec::new(), cached: false })
+        }
+
+        async fn read(&self, _url: &str, _stems: Vec<String>) -> Option<String> {
+            Some("Rainwater harvesting collects the rain from a roof in a barrel or a tank, to water a garden or, filtered and boiled, to drink.".into())
+        }
+    }
+
+    #[tokio::test]
+    async fn articles_from_packs_about_the_topic_rank_first() {
+        let mut wiki = book("wikipedia_en_all_nopic_2026-01", "wikipedia-en-nopic", &["eng"]);
+        wiki.title_en = "in cities".into();
+        let mut water = about(book("zimgit-water_en_all_2025-01", "zimgit-water-en", &["eng"]), &["water", "health"]);
+        water.title_en = "at home".into();
+        let books = vec![wiki, water];
+        let terms = strings(&["rainwater harvesting"]);
+        let question = "How do I collect rainwater?";
+        let first = |found: &[Passage]| found.first().map(|p| p.source.url.clone()).unwrap_or_default();
+        // Two articles as good as each other: the one found first leads...
+        let (found, _) = find_sources(&EvenShelf, &books, &terms, &terms, question, "en", &Focus::default()).await;
+        assert_eq!(found.len(), 2);
+        assert!(first(&found).contains("wikipedia"), "{found:?}");
+        // ...unless the question is about the other pack's topic. Nothing is left out.
+        let focus = Focus { safety: false, topics: vec!["water"] };
+        let (found, _) = find_sources(&EvenShelf, &books, &terms, &terms, question, "en", &focus).await;
+        assert_eq!(found.len(), 2);
+        assert!(first(&found).contains("zimgit-water"), "{found:?}");
+        assert_eq!(found[0].source.n, 1);
     }
 }

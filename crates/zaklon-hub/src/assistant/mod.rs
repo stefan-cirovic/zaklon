@@ -14,7 +14,9 @@
 //! (`llm`), deciding what a question is about (`plan`), finding sources in
 //! the library (`sources`) and what of them the model gets (`passages`),
 //! prompts (`prompts`), checking a written answer (`finish`), the supplies
-//! (`supplies`), the household's notes (`notes`), and words (`text`).
+//! (`supplies`), the household's notes (`notes`), and words (`text`). The
+//! app's topics a question is about (`topics`) choose the packs searched
+//! first and the tools and guides offered under the answer (`suggest`).
 
 mod engine;
 mod finish;
@@ -24,10 +26,12 @@ mod passages;
 mod plan;
 mod prompts;
 mod sources;
+mod suggest;
 mod supplies;
 #[cfg(test)]
 mod test_util;
 mod text;
+mod topics;
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -53,6 +57,7 @@ pub use plan::{
 };
 pub use prompts::{clean_history, HISTORY_TURNS};
 pub use sources::Passage;
+pub use suggest::{read_question, Suggestion};
 pub use supplies::{convert, match_item, match_items, propose, supplies_list, supplies_named, ItemMatch, Proposal};
 pub use text::{article_text, search_terms, search_words, stem, strip_html};
 
@@ -61,8 +66,9 @@ use finish::{fixed_reply, Finish};
 use notes::with_notes;
 use passages::{trim_sources, trim_stems};
 use plan::supplies_plan;
-use prompts::{build_messages, fit_passages, PROMPT_CHARS};
-use sources::{find_sources, SearchStats};
+use prompts::{build_messages, fit_passages, with_tools, PROMPT_CHARS};
+use sources::{find_sources, Focus, SearchStats};
+use suggest::calculators;
 use supplies::supplies_messages;
 
 /// Database setting that remembers the chosen model.
@@ -122,6 +128,10 @@ pub struct Answer {
     /// The answer names at least one of its sources ([1]...).
     pub cited: bool,
     pub proposal: Option<Proposal>,
+    /// The app's topics the question is about, read from its words (see `topics`).
+    pub topics: Vec<&'static str>,
+    /// Tools and guides offered under the answer (see `suggest`).
+    pub suggestions: Vec<Suggestion>,
     /// False when the model answered alone: nothing was found in the
     /// library, or the answer cites none of the sources it was given.
     pub grounded: bool,
@@ -191,6 +201,8 @@ impl Answer {
             used_internet: online,
             cited: false,
             proposal: None,
+            topics: Vec::new(),
+            suggestions: Vec::new(),
             grounded: false,
             safety: false,
             fixed: false,
@@ -330,6 +342,10 @@ impl Assistant {
         }
         let language = zaklon_core::lang::question_language(&question).unwrap_or(if app_language == "sr" { "sr" } else { "en" });
         let id = uuid::Uuid::new_v4().to_string();
+        let mut ctx = ctx;
+        ctx.history = clean_history(&ctx.history);
+        // Read by its words, at once: the tools and guides are there even when the AI is not.
+        let (topics, suggestions) = read_question(&question, &ctx.history);
         {
             let mut answers = self.answers.lock().unwrap_or_else(|p| p.into_inner());
             // Only questions somebody still waits for count: an abandoned one
@@ -339,13 +355,14 @@ impl Assistant {
                 return Err("the assistant is busy with other questions; try again in a moment".into());
             }
             make_room(&mut answers);
-            answers.insert(id.clone(), Answer::new(id.clone(), question.clone(), language, ctx.online, now));
+            let mut a = Answer::new(id.clone(), question.clone(), language, ctx.online, now);
+            a.topics = topics;
+            a.suggestions = suggestions;
+            answers.insert(id.clone(), a);
         }
         self.last_used.store(self.epoch.elapsed().as_secs(), Ordering::Relaxed);
         let me = self.clone();
         let id2 = id.clone();
-        let mut ctx = ctx;
-        ctx.history = clean_history(&ctx.history);
         tokio::spawn(async move {
             let asked = Instant::now();
             let r = match me.wait_turn(&id2).await {
@@ -461,6 +478,10 @@ impl Assistant {
         });
         self.stop_requested(id)?;
         route(&mut plan, question, items);
+        // The supplies and the notes answer these; tools and guides are for library questions.
+        if plan.kind != "library" {
+            self.update(id, |a| a.suggestions.clear());
+        }
 
         // 2. Something to remember: propose it, keep nothing yet.
         if plan.kind == "remember" && !plan.note.trim().is_empty() {
@@ -532,10 +553,12 @@ impl Assistant {
         self.update(id, |a| a.searched = shown);
         let t1 = Instant::now();
         let books = self.library.books();
+        let (topics, suggested) = self.answer(id).map(|a| (a.topics, a.suggestions)).unwrap_or_default();
         let (mut passages, stats) = if books.is_empty() {
             (Vec::new(), SearchStats::default())
         } else {
-            let search = find_sources(&*self.library, &books, &terms, &terms_en, question, language, safety);
+            let focus = Focus { safety, topics };
+            let search = find_sources(&*self.library, &books, &terms, &terms_en, question, language, &focus);
             self.unless_stopped(id, search).await?
         };
         self.update(id, |a| {
@@ -593,6 +616,8 @@ impl Assistant {
             notes: if safety { direct } else { Vec::new() },
         };
         let messages = with_notes(build_messages(question, language, &passages, history, safety), &known, language, !safety);
+        // The calculators under the answer: the model may point to them.
+        let messages = with_tools(messages, &calculators(&suggested), language);
         let t2 = Instant::now();
         let slot = if safety { SLOT_HEALTH } else { SLOT_ANSWER };
         let r = self.stream_answer(id, port, slot, messages, language, finish).await;

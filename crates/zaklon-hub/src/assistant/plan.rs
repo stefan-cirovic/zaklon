@@ -429,11 +429,15 @@ const HEALTH_WORDS: &[&str] = &[
 /// A question about health or first aid, by its words. Used together with
 /// the model's own `safety` answer; a false alarm only makes the rules stricter.
 pub fn health_question(question: &str) -> bool {
+    health_hits(question) > 0
+}
+
+/// How many of the phrases and words about health a question has (the
+/// health topic counts them among its words, see `topics`).
+pub(super) fn health_hits(question: &str) -> usize {
     let q = padded(question);
-    if HEALTH_PHRASES.iter().any(|p| q.contains(&format!(" {p} "))) {
-        return true;
-    }
-    q.split_whitespace().any(|w| HEALTH_WORDS.contains(&w) || HEALTH_STARTS.iter().any(|s| w.starts_with(s)))
+    let phrases = HEALTH_PHRASES.iter().filter(|p| q.contains(&format!(" {p} "))).count();
+    phrases + q.split_whitespace().filter(|w| HEALTH_WORDS.contains(w) || HEALTH_STARTS.iter().any(|s| w.starts_with(s))).count()
 }
 
 #[cfg(test)]

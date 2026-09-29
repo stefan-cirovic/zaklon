@@ -45,6 +45,10 @@ pub struct Book {
     /// The file's path inside the library ("zim/x.zim").
     #[serde(skip)]
     pub rel: String,
+    /// What the pack is about, its topics in the catalog ("water", "health"):
+    /// the assistant searches the packs about a question's topics first.
+    #[serde(skip)]
+    pub topics: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -217,6 +221,8 @@ impl Library {
                         languages: v.pack.languages.clone(),
                         file,
                         rel: f.path,
+                        // A knowledge pack about no known topic is in the Knowledge folder.
+                        topics: if v.pack.topics.is_empty() { vec!["knowledge".into()] } else { v.pack.topics.clone() },
                     })
                 })
             })
