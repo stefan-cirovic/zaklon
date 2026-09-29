@@ -119,3 +119,46 @@ test("suggestions: none for small talk or the supplies; a Serbian health questio
   await expect(chips.getByRole("link")).toHaveCount(1);
   await expect(chips.getByRole("link", { name: "Guides: Health and first aid" })).toHaveAttribute("href", "#addons/health");
 });
+
+// Pictures to look at by eye, not a check: only with ZAKLON_SHOTS_DIR (SHOT_SIZE=1600x900
+// sets the laptop window). The answers are made up (there is no AI here); the suggestions are the hub's.
+test("suggestions: screenshots", async ({ page }, info) => {
+  const dir = process.env.ZAKLON_SHOTS_DIR;
+  test.skip(!dir, "set ZAKLON_SHOTS_DIR to take screenshots");
+  const size = process.env.SHOT_SIZE?.match(/^(\d+)x(\d+)$/);
+  if (size && info.project.name === "laptop") await page.setViewportSize({ width: Number(size[1]), height: Number(size[2]) });
+  const file = (name: string) => `${dir}/en-${info.project.name}-assist-${name}.png`;
+  await ensureSetUp(page);
+  await assistantReady(page);
+  const texts: Record<string, string> = {
+    battery:
+      "For a refrigerator, six LED bulbs and a laptop you need about 1.8 kWh a day, so roughly 5.4 kWh for 3 days [1]. " +
+      "With a 12 V LiFePO4 battery that is about 560 Ah. The exact sizing, with solar panels and an inverter, is in the power calculator.",
+    burn: "Cool the burn under cool running water for 20 minutes [1]. Do not put ice, butter or toothpaste on it [1].",
+  };
+  await page.route("**/api/assistant/answers/*", async (route) => {
+    const json = await (await route.fetch()).json();
+    const text = /battery/.test(json.question) ? texts.battery : texts.burn;
+    const source = { n: 1, title: /battery/.test(json.question) ? "Battery (electricity)" : "Burn", url: "/kiwix/content/x/A/Battery", book_title_en: "Wikipedia", book_title_sr: "Vikipedija" };
+    return route.fulfill({ json: { ...json, status: "done", error: null, grounded: true, cited: true, text, sources: [source], tokens_per_second: 9.4 } });
+  });
+  await page.goto("/#assistant");
+  await ask2(page, "A fridge, 6 LED bulbs and a laptop for 3 days: how big a battery do I need?");
+  await ask2(page, "šta da radim kod opekotine");
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: file("chips") });
+  await page.locator(".exchange").first().getByRole("link", { name: "Open the power calculator with this list" }).click();
+  await expect(page.getByText("Opened from a link.")).toBeVisible();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: file("power") });
+  await page.goBack();
+  await page.locator(".exchange").last().getByRole("link", { name: /^Guides: / }).click();
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: file("guides") });
+});
+
+async function ask2(page: Page, question: string) {
+  await page.getByRole("textbox", { name: "Ask something" }).fill(question);
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  await expect(page.locator(".exchange", { hasText: question }).locator(".ai-suggest")).toBeVisible();
+}
