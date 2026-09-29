@@ -397,6 +397,21 @@ pub fn list(cfg: &Config) -> Vec<BackupFile> {
     out
 }
 
+/// When the newest backup in the backups folder (automatic or made by hand)
+/// was written, by its file's time; None when there is none. Cheap: no
+/// backup is opened.
+pub fn newest(cfg: &Config) -> Option<std::time::SystemTime> {
+    std::fs::read_dir(cfg.backups_dir())
+        .ok()?
+        .flatten()
+        .filter(|e| {
+            let n = e.file_name().to_string_lossy().to_string();
+            n.ends_with(".zip") && (n.starts_with(AUTO_PREFIX) || n.starts_with(MANUAL_PREFIX))
+        })
+        .filter_map(|e| e.metadata().ok()?.modified().ok())
+        .max()
+}
+
 /// A daily backup, if the newest automatic one is older than a day. Keeps the last seven.
 pub fn auto_backup_if_due(cfg: &Config, db: &Db) {
     let dir = cfg.backups_dir();

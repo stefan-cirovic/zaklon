@@ -18,6 +18,7 @@ mod memory;
 mod packs;
 mod pairing;
 mod power;
+mod spec;
 mod supplies;
 mod water;
 
@@ -95,6 +96,7 @@ pub fn router(state: Arc<HubState>, listener: Listener) -> Router {
         .route("/api/me", get(me))
         .route("/api/catalog", get(catalog))
         .route("/api/system", get(system))
+        .route("/api/system/spec", get(spec::system_spec))
         .route("/api/packs/import", post(packs_import))
         .route("/api/packs/{id}", axum::routing::delete(pack_remove))
         .route("/api/packs/{id}/download", post(pack_download))

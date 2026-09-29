@@ -26,7 +26,8 @@ pub const MAPS_BASE: &str = "https://mapgen-fi-1.comaps.app/maps";
 
 /// The CoMaps Android app the hub serves to phones.
 pub const COMAPS_APK_ID: &str = "comaps-app";
-const COMAPS_APK_VERSION: &str = "2026.08.31-14";
+/// Its version (also in the system specification, Settings › About).
+pub const COMAPS_APK_VERSION: &str = "2026.08.31-14";
 const COMAPS_APK_URL: &str =
     "https://codeberg.org/comaps/comaps/releases/download/v2026.08.31-14/CoMaps-26083114-main-release.apk";
 const COMAPS_APK_SHA256: &str = "6fa705e67b464ef4c3daa7781c53ae6e5061858687e4c46b7836b4a99bab4ed3";

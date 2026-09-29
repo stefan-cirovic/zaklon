@@ -1,6 +1,7 @@
 //! What the hub knows about the computer it runs on: drives (for copying
-//! packs to and from USB) and a short hardware summary (for the Household
-//! screen and, later, for recommending AI models).
+//! packs to and from USB), a short hardware summary (for Settings › About
+//! and for recommending AI models), and the system, the processor and the
+//! WebView2 runtime for the system specification.
 
 use std::path::Path;
 
@@ -41,6 +42,25 @@ pub fn hardware() -> Hardware {
     let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
     let (ram_total, ram_free) = memory();
     Hardware { cpu: cpu_name(), cores, ram_total, ram_free, os: os_name() }
+}
+
+/// What does not change while the hub runs, for the system specification
+/// (Settings › About). Read once, the first time it is asked for.
+#[derive(Debug, Clone, Default)]
+pub struct Computer {
+    /// "Windows 11 Pro 24H2" (elsewhere the system's name).
+    pub os: String,
+    /// Windows' build and its update revision, "26100.4061".
+    pub os_build: Option<String>,
+    /// The processor's name, "" when it cannot be read.
+    pub cpu: String,
+    /// The WebView2 runtime the desktop window draws with, "131.0.2903.70".
+    pub webview2: Option<String>,
+}
+
+pub fn computer() -> &'static Computer {
+    static COMPUTER: std::sync::OnceLock<Computer> = std::sync::OnceLock::new();
+    COMPUTER.get_or_init(|| Computer { os: os_name(), os_build: os_build(), cpu: cpu_name(), webview2: webview2_version() })
 }
 
 /// The computer's memory in bytes: all of it, and what is available now
@@ -245,21 +265,77 @@ fn memory() -> (u64, u64) {
 
 #[cfg(windows)]
 fn registry_string(key: &str, value: &str) -> Option<String> {
-    use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
-    let wide = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+    registry_string_in(windows_sys::Win32::System::Registry::HKEY_LOCAL_MACHINE, key, value)
+}
+
+#[cfg(windows)]
+fn wide(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(windows)]
+fn registry_string_in(root: windows_sys::Win32::System::Registry::HKEY, key: &str, value: &str) -> Option<String> {
+    use windows_sys::Win32::System::Registry::{RegGetValueW, RRF_RT_REG_SZ};
     let (k, v) = (wide(key), wide(value));
     let mut buf = [0u16; 256];
     let mut len = (buf.len() * 2) as u32;
     // SAFETY: strings are NUL-terminated; the buffer is passed with its size in bytes.
-    let rc = unsafe {
-        RegGetValueW(HKEY_LOCAL_MACHINE, k.as_ptr(), v.as_ptr(), RRF_RT_REG_SZ, std::ptr::null_mut(), buf.as_mut_ptr().cast(), &mut len)
-    };
+    let rc = unsafe { RegGetValueW(root, k.as_ptr(), v.as_ptr(), RRF_RT_REG_SZ, std::ptr::null_mut(), buf.as_mut_ptr().cast(), &mut len) };
     if rc != 0 {
         return None;
     }
     let chars = (len as usize / 2).min(buf.len());
     let s = String::from_utf16_lossy(&buf[..chars]);
     Some(s.trim_end_matches('\0').trim().to_string())
+}
+
+#[cfg(windows)]
+fn registry_dword(key: &str, value: &str) -> Option<u32> {
+    use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD};
+    let (k, v) = (wide(key), wide(value));
+    let mut n: u32 = 0;
+    let mut len = std::mem::size_of::<u32>() as u32;
+    // SAFETY: strings are NUL-terminated; the value is written into `n`, whose size is passed.
+    let rc = unsafe {
+        RegGetValueW(HKEY_LOCAL_MACHINE, k.as_ptr(), v.as_ptr(), RRF_RT_REG_DWORD, std::ptr::null_mut(), (&mut n as *mut u32).cast(), &mut len)
+    };
+    (rc == 0).then_some(n)
+}
+
+/// Windows' build and update revision ("26100.4061"), as `winver` shows them.
+#[cfg(windows)]
+fn os_build() -> Option<String> {
+    let key = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
+    let build = registry_string(key, "CurrentBuildNumber").filter(|b| !b.is_empty())?;
+    Some(match registry_dword(key, "UBR") {
+        Some(ubr) => format!("{build}.{ubr}"),
+        None => build,
+    })
+}
+
+#[cfg(not(windows))]
+fn os_build() -> Option<String> {
+    None
+}
+
+/// The WebView2 runtime's version, where Microsoft says to look for it: the
+/// runtime for the whole computer, else the one for this user.
+#[cfg(windows)]
+fn webview2_version() -> Option<String> {
+    use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    const CLIENT: &str = r"Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}";
+    [
+        (HKEY_LOCAL_MACHINE, format!(r"SOFTWARE\WOW6432Node\{CLIENT}")),
+        (HKEY_LOCAL_MACHINE, format!(r"SOFTWARE\{CLIENT}")),
+        (HKEY_CURRENT_USER, format!(r"Software\{CLIENT}")),
+    ]
+    .into_iter()
+    .find_map(|(root, key)| registry_string_in(root, &key, "pv").filter(|v| !v.is_empty() && v != "0.0.0.0"))
+}
+
+#[cfg(not(windows))]
+fn webview2_version() -> Option<String> {
+    None
 }
 
 #[cfg(windows)]
@@ -311,6 +387,14 @@ mod tests {
             assert!(c.physical >= 1 && c.logical >= c.physical, "{c:?}");
             assert!(!h.cpu.is_empty());
             assert!(h.os.starts_with("Windows"), "{}", h.os);
+            let pc = computer();
+            assert_eq!((pc.os.as_str(), pc.cpu.as_str()), (h.os.as_str(), h.cpu.as_str()));
+            let build = pc.os_build.as_deref().expect("the Windows build is read");
+            assert!(build.split('.').all(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())), "{build}");
+            // The desktop window needs WebView2; where it is installed, its version is read.
+            if let Some(v) = &pc.webview2 {
+                assert_eq!(v.split('.').count(), 4, "{v}");
+            }
             let d = drives();
             assert!(d.iter().any(|d| d.system), "the system drive is listed: {d:?}");
         }

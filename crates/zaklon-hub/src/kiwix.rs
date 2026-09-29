@@ -194,7 +194,8 @@ impl Library {
         format!("http://127.0.0.1:{port}")
     }
 
-    fn exe(&self) -> PathBuf {
+    /// The library engine's program (there once the kiwix-tools add-on is installed).
+    pub fn exe(&self) -> PathBuf {
         let name = if cfg!(windows) { "kiwix-serve.exe" } else { "kiwix-serve" };
         self.engine_dir.join(name)
     }

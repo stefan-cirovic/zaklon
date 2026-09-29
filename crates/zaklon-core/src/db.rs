@@ -244,6 +244,34 @@ impl Db {
         let conn = self.lock();
         Ok(conn.query_row("SELECT COUNT(*) FROM devices", [], |r| r.get(0))?)
     }
+
+    // ---- about the database itself (Settings › About) -------------------
+
+    /// The one-time data migrations done on this database, by name
+    /// ("batches_v1"), each marked by a `migration_<name>` setting. The
+    /// schema itself has no version number: its tables, indexes and columns
+    /// are made on every start where they are missing (see [`Db::open`]).
+    pub fn migrations_done(&self) -> Result<Vec<String>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare("SELECT substr(key, 11) FROM settings WHERE key LIKE 'migration\\_%' ESCAPE '\\' ORDER BY key")?;
+        let names = stmt.query_map([], |r| r.get(0))?.collect::<std::result::Result<Vec<String>, _>>()?;
+        Ok(names)
+    }
+
+    /// Bytes on disk: the database file and its write-ahead log (0 for a
+    /// database in memory).
+    pub fn size_on_disk(&self) -> u64 {
+        let Some(path) = &self.path else { return 0 };
+        let size = |p: &Path| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+        let mut wal = path.as_os_str().to_owned();
+        wal.push("-wal");
+        size(path) + size(Path::new(&wal))
+    }
+}
+
+/// The version of SQLite built into Zaklon ("3.46.0").
+pub fn sqlite_version() -> &'static str {
+    rusqlite::version()
 }
 
 /// One setting read straight from the household database file at `path`,
@@ -422,6 +450,24 @@ fn read_only_uri(path: &Path) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_database_tells_its_migrations_size_and_sqlite() {
+        let db = Db::open_in_memory().unwrap();
+        assert_eq!(db.migrations_done().unwrap(), ["batches_v1"]);
+        // Only settings named migration_<name> count ("migrationX" is not one).
+        db.set_setting("migrationX", "1").unwrap();
+        db.set_setting("migration_aaa", "1").unwrap();
+        assert_eq!(db.migrations_done().unwrap(), ["aaa", "batches_v1"]);
+        assert_eq!(db.size_on_disk(), 0);
+        let dir = std::env::temp_dir().join(format!("zaklon-db-size-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = Db::open(&dir.join("household.db")).unwrap();
+        assert!(file.size_on_disk() > 0);
+        drop(file);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(sqlite_version().starts_with("3."), "{}", sqlite_version());
+    }
 
     #[test]
     fn devices_roundtrip() {

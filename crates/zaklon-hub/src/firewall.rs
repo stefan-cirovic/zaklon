@@ -139,6 +139,67 @@ $public = @(Get-NetConnectionProfile | Where-Object {{
     )
 }
 
+/// One network this computer is connected to, as the system specification
+/// shows it: the adapter's name ("Wi-Fi") and how Windows files the network.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NetworkProfile {
+    pub adapter: String,
+    /// "Private", "Public" or "Domain".
+    pub category: String,
+}
+
+/// Reads (changes nothing): the connected networks and how Windows files
+/// each, leaving out this laptop's own hotspot and virtual adapters, as
+/// [`public_interfaces_script`] does. The network's own name is not read.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn profiles_script() -> String {
+    let virtual_ = crate::discovery::VIRTUAL_HINTS.iter().map(|h| format!("'{h}'")).collect::<Vec<_>>().join(",");
+    format!(
+        r#"$ErrorActionPreference = 'SilentlyContinue'
+$hot = @(Get-NetIPAddress -AddressFamily IPv4 | Where-Object {{ $_.IPAddress -like '192.168.137.*' }} | ForEach-Object {{ $_.InterfaceIndex }})
+$virtual = @({virtual_})
+$nets = @(Get-NetConnectionProfile | Where-Object {{
+  $alias = ([string]$_.InterfaceAlias).ToLower()
+  ($hot -notcontains $_.InterfaceIndex) -and -not ($virtual | Where-Object {{ $alias.Contains($_) }})
+}} | ForEach-Object {{ [pscustomobject]@{{ adapter = [string]$_.InterfaceAlias; category = [string]$_.NetworkCategory }} }})
+[pscustomobject]@{{ networks = $nets }} | ConvertTo-Json -Compress -Depth 3
+"#
+    )
+}
+
+/// The networks in the answer of [`profiles_script`] (PowerShell may write
+/// a single one without the brackets). None when the answer is not one.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn parse_profiles(json: &str) -> Option<Vec<NetworkProfile>> {
+    let value: serde_json::Value = serde_json::from_str(json).ok()?;
+    let list = match value.get("networks")? {
+        serde_json::Value::Array(a) => a.clone(),
+        serde_json::Value::Null => Vec::new(),
+        one => vec![one.clone()],
+    };
+    let text = |v: &serde_json::Value, k: &str| v.get(k).and_then(|s| s.as_str()).unwrap_or_default().trim().to_string();
+    Some(
+        list.iter()
+            .map(|n| {
+                let category = match text(n, "category").as_str() {
+                    "DomainAuthenticated" => "Domain".to_string(),
+                    other => other.to_string(),
+                };
+                NetworkProfile { adapter: text(n, "adapter"), category }
+            })
+            .filter(|n| !n.category.is_empty())
+            .collect(),
+    )
+}
+
+/// The networks this computer is on and how Windows files each (Private,
+/// Public, Domain). Takes PowerShell a second or more.
+#[cfg(windows)]
+pub fn network_profiles() -> Result<Vec<NetworkProfile>, String> {
+    let out = crate::powershell::run(&profiles_script(), std::time::Duration::from_secs(60))?;
+    parse_profiles(crate::powershell::last_json_line(&out)).ok_or_else(|| "Windows did not answer about its networks".to_string())
+}
+
 /// The interface numbers in the answer of [`public_interfaces_script`]
 /// (PowerShell may write a single one without the brackets); anything else
 /// is left out, so only whole numbers can reach the elevated script.
@@ -273,6 +334,27 @@ pub fn make_private() -> FirewallState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn network_profiles_are_read_without_changing_anything() {
+        let script = profiles_script();
+        assert!(!script.contains("Set-") && !script.contains("New-") && !script.contains("Remove-"), "{script}");
+        assert!(!script.contains(".Name"), "the network's own name is not read");
+        let profile = |adapter: &str, category: &str| NetworkProfile { adapter: adapter.into(), category: category.into() };
+        assert_eq!(
+            parse_profiles(r#"{"networks":[{"adapter":"Wi-Fi","category":"Private"},{"adapter":"Ethernet","category":"DomainAuthenticated"}]}"#),
+            Some(vec![profile("Wi-Fi", "Private"), profile("Ethernet", "Domain")])
+        );
+        // One network, written without the brackets; none; not an answer.
+        assert_eq!(parse_profiles(r#"{"networks":{"adapter":"Wi-Fi","category":"Public"}}"#), Some(vec![profile("Wi-Fi", "Public")]));
+        assert_eq!(parse_profiles(r#"{"networks":[]}"#), Some(vec![]));
+        assert_eq!(parse_profiles("WARNING"), None);
+        #[cfg(windows)]
+        {
+            let nets = network_profiles().expect("Windows answers");
+            assert!(nets.iter().all(|n| ["Private", "Public", "Domain"].contains(&n.category.as_str())), "{nets:?}");
+        }
+    }
 
     #[test]
     fn ok_means_phones_can_come_in() {
