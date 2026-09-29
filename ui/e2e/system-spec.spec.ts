@@ -223,17 +223,22 @@ test("about: screenshots of the system specification", async ({ page }, info) =>
   await page.addInitScript((l) => localStorage.setItem("zaklon.lang", l), SHOT_LANG);
   await page.reload();
   await openSpec(page);
-  await page.waitForTimeout(500);
+  // Past the light that marks a setting opened by its address.
+  await page.waitForTimeout(2500);
   await page.screenshot({ path: file("about-spec-page"), fullPage: true });
   await spec(page).scrollIntoViewIfNeeded();
   await page.screenshot({ path: file("about-spec"), fullPage: false });
+  // The whole table alone, without the bar at the bottom over it.
+  const noBar = ".nav { display: none !important; }";
+  await page.addStyleTag({ content: noBar });
   await spec(page).screenshot({ path: file("about-spec-table") });
   if (info.project.name === "phone") {
     await asPhoneApp(page);
     await page.reload();
     await expect(spec(page).locator("h3")).toHaveCount(GROUPS.en.length + 1, { timeout: 15_000 });
     await expect(spec(page).locator("td.pending")).toHaveCount(0, { timeout: 30_000 });
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(2500);
+    await page.addStyleTag({ content: noBar });
     await spec(page).screenshot({ path: file("about-spec-phone-app") });
   }
 });
