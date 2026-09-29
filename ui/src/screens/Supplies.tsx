@@ -5,7 +5,7 @@ import { onBackOnline, onOfflineChange } from "../offline";
 import type { Key } from "../i18n";
 import { canScan, scan } from "../scan";
 import { errCode, errText } from "../errors";
-import { fmtDateTime, fmtQty, parseNumber, unitKey, unitName, UNITS } from "../format";
+import { daysUntil, fmtDateTime, fmtQty, parseNumber, unitKey, unitName, UNITS } from "../format";
 import ConfirmButton from "../components/ConfirmButton";
 import ExpiryBadge from "../components/ExpiryBadge";
 import HelpLink from "../components/HelpLink";
@@ -44,6 +44,14 @@ type View = "items" | "shopping" | "putaway" | "history";
 
 const VIEWS: View[] = ["items", "shopping", "putaway", "history"];
 const CATEGORIES = ["food", "drink", "medicine", "hygiene", "equipment", "fuel", "other"] as const;
+/** The filters beside the categories: what has expired or expires soon, and what runs low. */
+const FILTERS = ["expiring", "low"] as const;
+/** Where Home leads beside the views: the items with a filter, a new item, or the scanner. */
+const OPENINGS = [...FILTERS, "add", "scan"] as const;
+type Opening = (typeof OPENINGS)[number];
+/** Expires within this many days: "expires soon", as the hub's summary counts it. */
+const EXPIRING_DAYS = 30;
+const NEW_ITEM: Partial<Item> = { quantity: 1, unit: "pcs", category: "food" };
 
 const catKey = (c: string) => ("cat_" + c) as Key;
 const placeKey = (p: string) => ("place_" + p) as Key;
@@ -54,14 +62,34 @@ function viewFromHash(): View {
   return tab === "supplies" && VIEWS.includes(v as View) ? (v as View) : "items";
 }
 
+/** What Home asked to open ("#supplies/expiring", "#supplies/add"), if anything. */
+function openingFromHash(): Opening | null {
+  const [tab, v] = location.hash.replace(/^#/, "").split("/");
+  return tab === "supplies" && OPENINGS.includes(v as Opening) ? (v as Opening) : null;
+}
+
+/** Expired, or expires within 30 days (with some left). */
+export function isExpiring(i: Item): boolean {
+  return !!i.expiry && i.quantity > 0 && daysUntil(i.expiry) <= EXPIRING_DAYS;
+}
+
+/** Below its "Warn below" amount. */
+export function isLow(i: Item): boolean {
+  return i.min_quantity !== null && i.quantity < i.min_quantity;
+}
+
+/** The earliest date first (what expired longest ago, then what expires soonest); no date last. */
+export function byExpiry(a: Item, b: Item): number {
+  return (a.expiry ?? "9999").localeCompare(b.expiry ?? "9999");
+}
+
+/** How much of its "Warn below" amount is left (0: none): the emptiest comes first. */
+export function lowShare(i: Item): number {
+  return i.min_quantity ? i.quantity / i.min_quantity : 1;
+}
+
 export default function Supplies({ t }: { t: T }) {
   const [view, setViewState] = useState<View>(viewFromHash);
-  // A link to another view (from Home, say) while the screen is open.
-  useEffect(() => {
-    const onHash = () => setViewState(viewFromHash());
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
   /** Show a view and keep it in the address (without a step in the history), so a reload keeps it. */
   const setView = (v: View) => {
     setViewState(v);
@@ -73,8 +101,12 @@ export default function Supplies({ t }: { t: T }) {
   const [awayCount, setAwayCount] = useState(0);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  const [cat, setCat] = useState<string>("all");
-  const [editing, setEditing] = useState<Partial<Item> | null>(null);
+  // A category or a filter; "#supplies/expiring" and "#supplies/low" (from Home) start with that filter.
+  const [cat, setCat] = useState<string>(() => {
+    const o = openingFromHash();
+    return o === "expiring" || o === "low" ? o : "all";
+  });
+  const [editing, setEditing] = useState<Partial<Item> | null>(() => (openingFromHash() === "add" ? NEW_ITEM : null));
   const [scanner, setScanner] = useState(false);
 
   const load = useCallback(async () => {
@@ -108,9 +140,12 @@ export default function Supplies({ t }: { t: T }) {
 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return (items ?? []).filter(
-      (i) => (cat === "all" || i.category === cat) && (!needle || i.name.toLowerCase().includes(needle) || (i.barcode ?? "").includes(needle)),
-    );
+    const kept = (i: Item) => (cat === "all" ? true : cat === "expiring" ? isExpiring(i) : cat === "low" ? isLow(i) : i.category === cat);
+    const list = (items ?? []).filter((i) => kept(i) && (!needle || i.name.toLowerCase().includes(needle) || (i.barcode ?? "").includes(needle)));
+    // The most urgent first, as on Home.
+    if (cat === "expiring") list.sort(byExpiry);
+    if (cat === "low") list.sort((a, b) => lowShare(a) - lowShare(b));
+    return list;
   }, [items, q, cat]);
 
   const adjust = async (i: Item, delta: number) => {
@@ -124,7 +159,7 @@ export default function Supplies({ t }: { t: T }) {
     }
   };
 
-  const scanAndOpen = async () => {
+  const scanAndOpen = useCallback(async () => {
     const code = await scan("product", t);
     if (!code) return;
     try {
@@ -135,7 +170,32 @@ export default function Supplies({ t }: { t: T }) {
     } catch (e) {
       setErr(errText(t, e));
     }
-  };
+  }, [t]);
+
+  // Follow the address: another view (a link from Home, say, while the
+  // screen is open), or what Home asked for: a filter, a new item or the
+  // scanner. That is done once: the address goes back to the items, so a
+  // reload or the back button does not do it again.
+  useEffect(() => {
+    const follow = () => {
+      const o = openingFromHash();
+      if (o === null) {
+        setViewState(viewFromHash());
+        return;
+      }
+      history.replaceState(history.state, "", "#supplies");
+      setViewState("items");
+      if (o === "add") setEditing(NEW_ITEM);
+      else if (o === "scan") void scanAndOpen();
+      else {
+        setCat(o);
+        setQ("");
+      }
+    };
+    follow();
+    window.addEventListener("hashchange", follow);
+    return () => window.removeEventListener("hashchange", follow);
+  }, [scanAndOpen]);
 
   if (editing) {
     return (
@@ -183,14 +243,14 @@ export default function Supplies({ t }: { t: T }) {
       {view === "items" && (
         <>
           <div className="row actions">
-            <button className="btn" onClick={() => setEditing({ quantity: 1, unit: "pcs", category: "food" })}>{t("addItem")}</button>
+            <button className="btn" onClick={() => setEditing(NEW_ITEM)}>{t("addItem")}</button>
             {scanner && <button className="btn secondary" onClick={scanAndOpen}>{t("scanBarcode")}</button>}
           </div>
           <input type="search" className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("searchSupplies")} aria-label={t("searchSupplies")} />
           <div className="chips">
-            {["all", ...CATEGORIES].map((c) => (
+            {["all", ...FILTERS, ...CATEGORIES].map((c) => (
               <button key={c} className={"chip" + (cat === c ? " active" : "")} aria-pressed={cat === c} onClick={() => setCat(c)}>
-                {c === "all" ? t("all") : t(catKey(c))}
+                {c === "all" ? t("all") : c === "expiring" ? t("expiring") : c === "low" ? t("runningLow") : t(catKey(c))}
               </button>
             ))}
           </div>
@@ -201,7 +261,7 @@ export default function Supplies({ t }: { t: T }) {
           ) : (
             <div className="list cols">
               {shown.map((i) => {
-                const low = i.min_quantity !== null && i.quantity < i.min_quantity;
+                const low = isLow(i);
                 const batches = i.batches?.length ?? 0;
                 return (
                   <div className="item supply" key={i.id}>

@@ -245,23 +245,23 @@ const en: HelpContent = {
         id: "lists",
         title: "Supplies",
         body: [
-          { p: "**Needs attention** is one list, the most urgent first:" },
+          { p: "The supplies card has three columns, side by side (one under the other on a phone), the most urgent first in each:" },
           {
             list: [
-              "what has **expired** (in red), and how long ago;",
-              "what **expires** within 30 days (in amber), the soonest first;",
-              "what is **running low**: less than its **Warn below** amount, such as “2 of 3 kg”.",
+              "**Expiring**: what has expired (in red, with how long ago) and what expires within 30 days, with when: “today”, “in 3 days”;",
+              "**Running low**: less than its **Warn below** amount, such as “2 of 3 kg”, the emptiest first; a cart means it is on the shopping list already;",
+              "**To buy**: the shopping list. Tick what you bought; it moves to **Put away**, just like **Bought** on the list.",
             ],
           },
-          { p: "Up to six lines show; open [Supplies](#supplies) for the rest. When nothing needs attention, the card just says **All good**." },
-          { p: "Beside something expired or running low is **Add to shopping list**; what is on the list already says **On the list**. Below, **To buy** says how many things are on the shopping list and opens it." },
+          { p: "Each column shows up to five lines, then a link to the rest in [Supplies](#supplies). An empty column says **Nothing**: all is well there." },
+          { p: "Below them, **Add item** starts a new item (on a phone, **Scan** reads a barcode), and on the right is how many items there are at home." },
         ],
       },
       {
         id: "map",
         title: "Home on the map",
         body: [
-          { p: "Beside what needs attention (below it on a phone) is the household's home on the Zaklon map. Without a home location the map shows the whole world and a **Set home location** button. See [Your home location](#help/maps/home-location)." },
+          { p: "Beside the supplies (below them on a phone) is the household's home on the Zaklon map. Without a home location the map shows the whole world and a **Set home location** button. See [Your home location](#help/maps/home-location)." },
         ],
       },
       {
@@ -432,7 +432,7 @@ const en: HelpContent = {
         id: "items",
         title: "Items",
         body: [
-          { p: "Supplies are shared by the whole household: a change on one device shows on all of them. The **Items** tab lists everything, with a search and a filter by category. To add something:" },
+          { p: "Supplies are shared by the whole household: a change on one device shows on all of them. The **Items** tab lists everything, with a search and filters: **Expiring** (expired or expiring within 30 days, by date), **Running low** (the emptiest first) and each category. To add something:" },
           {
             steps: [
               "Choose **Add item**.",

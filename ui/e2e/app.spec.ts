@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 // The hub starts empty for the whole run; tests run in order and build on
 // each other (setup first). The "phone" project runs after "laptop" against
@@ -110,11 +110,18 @@ test("supplies: add, adjust, running low, shopping list, history, home", async (
   await expect(page.getByText(name).first()).toBeVisible();
   await expect(page.getByText("used").first()).toBeVisible();
 
-  // Home lists it as needing attention, already on the shopping list (as running low).
+  // Home shows it under Running low, already on the shopping list (suggested there because it runs low).
   await page.goto("/#home");
-  const attention = page.getByRole("region", { name: /^Needs attention/ }).locator(".attn-row", { hasText: name });
-  await expect(attention).toContainText("2 of 3 kg");
-  await expect(attention.locator(".attn-listed")).toHaveAttribute("title", "On the list");
+  const low = page.getByRole("region", { name: "Running low" }).locator(".sup-row", { hasText: name });
+  await expect(low).toContainText("2 of 3 kg");
+  await expect(low.locator(".sup-listed")).toHaveAttribute("title", "On the list");
+
+  // Home's "+ N more" under Running low opens the items with that filter, just once.
+  await page.goto("/#supplies/low");
+  await expect(page.getByRole("button", { name: "Running low", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page).toHaveURL(/#supplies$/);
+  await expect(row).toBeVisible();
+  for (const shown of await page.locator(".item.supply").all()) await expect(shown.getByText("Running low")).toBeVisible();
 });
 
 test("supplies: an expired item is flagged and a bad date is refused", async ({ page }, info) => {
@@ -128,6 +135,14 @@ test("supplies: an expired item is flagged and a bad date is refused", async ({ 
   await page.getByRole("button", { name: "Save" }).click();
   const row = page.locator(".item.supply", { hasText: name });
   await expect(row.getByText(/expired · 31 Jan 2020/)).toBeVisible();
+
+  // Home's "+ N more" under Expiring opens the items with that filter: this one is there, what has no date is not.
+  await page.goto("/#supplies/expiring");
+  await expect(page.getByRole("button", { name: "Expiring", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(row).toBeVisible();
+  await expect(page.locator(".item.supply", { hasText: `Flour ${info.project.name}` })).toHaveCount(0);
+  await page.getByRole("button", { name: "All", exact: true }).click();
+  await expect(page.locator(".item.supply", { hasText: `Flour ${info.project.name}` })).toBeVisible();
 
   // An impossible date is refused by the hub with a clear message.
   await page.getByRole("button", { name: "Add item" }).click();
@@ -205,16 +220,21 @@ test("every screen fits the width of the device", async ({ page }, info) => {
   const width = page.viewportSize()!.width;
   const plus = await row.getByRole("button", { name: /^Add one/ }).boundingBox();
   expect(plus!.x + plus!.width).toBeLessThanOrEqual(width);
-  // Home: every line of what needs attention stays inside its panel.
+  // Home: every line of the supplies stays inside its column, and a long name takes two lines at most.
   await page.goto("/#home");
-  await expect(page.locator(".attn-row", { hasText: name }).first()).toBeVisible();
+  const line = page.locator(".sup-row", { hasText: name }).first();
+  await expect(line).toBeVisible();
   const outside = await page.evaluate(() =>
-    [...document.querySelectorAll(".attn-row")].filter((row) => {
-      const panel = row.closest(".panel")!.getBoundingClientRect();
-      return [...row.children].some((c) => c.getBoundingClientRect().right > panel.right + 1);
+    [...document.querySelectorAll(".sup-row")].filter((row) => {
+      const col = row.closest(".sup-col")!.getBoundingClientRect();
+      return [...row.querySelectorAll(".sup-name, .sup-state")].some((c) => {
+        const r = c.getBoundingClientRect();
+        return r.right > col.right + 1 || r.left < col.left - 1;
+      });
     }).length,
   );
-  expect(outside, "nothing sticks out of the Home panels").toBe(0);
+  expect(outside, "nothing sticks out of the supplies' columns").toBe(0);
+  expect((await line.locator(".sup-name").boundingBox())!.height, "two lines at most").toBeLessThan(45);
   await noHorizontalScroll(page);
   const del = await page.request.get("/api/items");
   const item = (await del.json()).find((i: { name: string }) => i.name === name);
@@ -1263,7 +1283,7 @@ function dayFromToday(n: number) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-test("home: the hub at the top, what in the supplies needs attention, and the tools not in the bar", async ({ page }, info) => {
+test("home: the hub at the top, the supplies in three columns, and the tools not in the bar", async ({ page }, info) => {
   await ensureSetUp(page);
   await page.request.post("/api/pinned-tool", { data: { tool: null } });
   // The supplies and the shopping list, simulated so the lists are known. Milk expires soon and runs low too.
@@ -1273,26 +1293,27 @@ test("home: the hub at the top, what in the supplies needs attention, and the to
       json: {
         total_items: 42,
         expired: [fakeItem("e1", "Bread", { expiry: dayFromToday(-2) }), fakeItem("e2", "Beans", { quantity: 4, expiry: "2020-01-31" })],
-        expiring_soon: [fakeItem("s2", "Yogurt", { expiry: dayFromToday(3) }), milk],
-        running_low: [milk, fakeItem("l1", "Rice", { unit: "kg", min_quantity: 4 })],
+        expiring_soon: [fakeItem("s2", "Yogurt", { expiry: dayFromToday(3) }), milk, fakeItem("s3", "Cheese", { expiry: dayFromToday(0) })],
+        running_low: [milk, fakeItem("l1", "Rice", { unit: "kg", min_quantity: 4 }), fakeItem("l2", "Candles", { quantity: 0, min_quantity: 6 })],
         to_put_away: 2,
       },
     }),
   );
-  // Rice is on the list already (suggested because it runs low); what is added from Home joins it.
-  const shop: Record<string, unknown>[] = [
+  // Rice is on the list already (suggested because it runs low); Sugar was bought and waits to be put away.
+  let shop: Record<string, unknown>[] = [
     { id: "low:l1", item_id: "l1", text: "Rice", quantity: 3, unit: "kg", status: "open", source: "running_low" },
     { id: "b1", item_id: null, text: "Matches", quantity: 2, unit: "pack", status: "open", source: "manual" },
-    { id: "b3", item_id: null, text: "Salt", quantity: 1, unit: "kg", status: "bought", source: "manual" },
+    { id: "b2", item_id: null, text: "Salt", quantity: null, unit: null, status: "open", source: "manual" },
+    { id: "b3", item_id: null, text: "Sugar", quantity: 1, unit: "kg", status: "bought", source: "manual" },
   ];
-  const added: Record<string, unknown>[] = [];
-  await page.route("**/api/shopping", (r) => {
-    if (r.request().method() !== "POST") return r.fulfill({ json: shop });
-    const body = r.request().postDataJSON();
-    added.push(body);
-    const entry = { id: `n${added.length}`, item_id: body.item_id, text: body.text, quantity: body.quantity, unit: body.unit, status: "open", source: "manual" };
-    shop.push(entry);
-    return r.fulfill({ status: 201, json: entry });
+  await page.route("**/api/shopping", (r) => r.fulfill({ json: shop }));
+  // A tick on Home is "Bought", as on the shopping list.
+  const bought: string[] = [];
+  await page.route("**/api/shopping/*/bought", (r) => {
+    const id = decodeURIComponent(r.request().url().split("/").at(-2) ?? "");
+    bought.push(id);
+    shop = shop.map((e) => (e.id === id ? { ...e, status: "bought" } : e));
+    return r.fulfill({ status: 204 });
   });
   const hub = await (await page.request.get("/api/status")).json();
   await page.goto("/#home");
@@ -1309,45 +1330,48 @@ test("home: the hub at the top, what in the supplies needs attention, and the to
   await expect(facts.getByRole("button", { name: "Add a phone" })).toBeVisible();
   await expect(head.getByRole("link", { name: "How it works" })).toBeVisible();
 
-  // The supplies: one list of what needs attention, the most urgent first:
-  // what expired (the longest ago first), what expires soon (the soonest first), what runs low.
+  // The supplies in three columns, the most urgent first in each.
   const supplies = page.getByRole("region", { name: "Supplies" });
-  const attention = supplies.getByRole("region", { name: /^Needs attention/ });
-  await expect(attention.getByRole("heading")).toHaveText("Needs attention 5");
-  const rows = attention.locator(".attn-row");
-  await expect(rows.locator(".attn-name")).toHaveText(["Beans", "Bread", "Milk", "Yogurt", "Rice"]);
-  await expect(rows.locator(".attn-what")).toHaveText(["expired 31 Jan 2020", "expired 2 days ago", "expires tomorrow", "expires in 3 days", "1 of 4 kg"]);
-  // Expired in red, expiring soon in amber.
-  const color = (i: number) => rows.nth(i).locator(".attn-what").evaluate((el) => getComputedStyle(el).color);
-  expect(await color(0)).toBe("rgb(238, 123, 110)");
-  expect(await color(2)).toBe("rgb(242, 179, 102)");
-  // One quick action where it helps: to the shopping list for what expired or runs low, unless it is on it.
-  await expect(rows.nth(0).getByRole("button", { name: "Add to shopping list: Beans" })).toBeVisible();
-  await expect(rows.nth(1).getByRole("button", { name: "Add to shopping list: Bread" })).toBeVisible();
-  await expect(rows.nth(2).getByRole("button", { name: "Add to shopping list: Milk" })).toBeVisible();
-  await expect(rows.nth(3).getByRole("button")).toHaveCount(0);
-  await expect(rows.nth(4).getByRole("button")).toHaveCount(0);
-  await expect(rows.nth(4).locator(".attn-listed")).toHaveAttribute("title", "On the list");
-  // Each on one line.
-  for (const row of await rows.all()) expect((await row.boundingBox())!.height).toBeLessThan(56);
-  // Below it the shopping list in one line, and the rest.
-  const foot = supplies.locator(".home-foot");
-  await expect(foot.getByRole("link", { name: "To buy: 2 items" })).toHaveAttribute("href", "#supplies/shopping");
-  await expect(foot).toContainText("Items in the supplies: 42");
-  await expect(foot.getByRole("link", { name: "To put away: 2" })).toHaveAttribute("href", "#supplies/putaway");
+  const cols = supplies.locator(".sup-col");
+  await expect(cols.getByRole("heading", { level: 3 })).toHaveText(["Expiring", "Running low", "To buy"]);
+  // Expiring: what expired (the longest ago first), then what expires soon (the soonest first). The state is
+  // short, since the heading says the rest; expired in red, the rest in gray.
+  const expiring = supplies.getByRole("region", { name: "Expiring" });
+  await expect(expiring.locator(".sup-name")).toHaveText(["Beans", "Bread", "Cheese", "Milk", "Yogurt"]);
+  await expect(expiring.locator(".sup-state")).toHaveText(["expired 31 Jan 2020", "expired 2 days ago", "today", "tomorrow", "in 3 days"]);
+  const color = (el: Locator) => el.evaluate((e) => getComputedStyle(e).color);
+  expect(await color(expiring.locator(".sup-state").nth(0))).toBe("rgb(238, 123, 110)");
+  expect(await color(expiring.locator(".sup-state").nth(2))).toBe("rgb(157, 157, 157)");
+  // Five lines: all of them, so no link to more.
+  await expect(expiring.getByRole("link")).toHaveCount(0);
+  // Running low: the emptiest first; what is out entirely in red; a cart where it is on the shopping list.
+  const low = supplies.getByRole("region", { name: "Running low" });
+  await expect(low.locator(".sup-name")).toHaveText(["Candles", "Rice", "Milk"]);
+  await expect(low.locator(".sup-state")).toHaveText(["0 of 6 pcs", "1 of 4 kg", "1 of 2 liters"]);
+  expect(await color(low.locator(".sup-state").nth(0))).toBe("rgb(238, 123, 110)");
+  await expect(low.locator(".sup-row").nth(1).locator(".sup-listed")).toHaveAttribute("title", "On the list");
+  await expect(low.locator(".sup-listed")).toHaveCount(1);
+  // To buy: the shopping list itself (not what was bought), a box to tick on each line.
+  const buy = supplies.getByRole("region", { name: "To buy" });
+  await expect(buy.getByRole("checkbox")).toHaveText(["Rice3 kg", "Matches2 packs", "Salt"]);
+  await expect(buy.getByRole("checkbox", { name: "Bought: Matches" })).not.toBeChecked();
+  await expect(buy.getByRole("link", { name: "To put away: 2" })).toHaveAttribute("href", "#supplies/putaway");
+  // The name and its state together: right after it on the line, or right below it when there is no room.
+  for (const row of await supplies.locator(".sup-row", { has: page.locator(".sup-state") }).all()) {
+    const [name, state] = [(await row.locator(".sup-name").boundingBox())!, (await row.locator(".sup-state").boundingBox())!];
+    if (state.y < name.y + name.height - 4) expect(state.x - (name.x + name.width), "the state right after the name").toBeLessThanOrEqual(12);
+    else expect(Math.abs(state.x - name.x), "the state right below the name").toBeLessThan(2);
+  }
+  // Below them: adding an item (no scanner in a browser: Scan is the phone app's), and how many items there are.
+  const foot = supplies.locator(".sup-foot");
+  await expect(foot.getByRole("link", { name: "Add item" })).toHaveAttribute("href", "#supplies/add");
+  await expect(foot.getByRole("link", { name: "Scan" })).toHaveCount(0);
+  await expect(foot).toContainText("42 items at home");
 
-  // Added to the shopping list from here: as much as there was of something expired, what is missing of something low.
-  await rows.nth(0).getByRole("button", { name: "Add to shopping list: Beans" }).click();
-  await expect(rows.nth(0).locator(".attn-listed")).toHaveAttribute("title", "On the list");
-  await expect(foot.getByRole("link", { name: "To buy: 3 items" })).toBeVisible();
-  await rows.nth(2).getByRole("button", { name: "Add to shopping list: Milk" }).click();
-  await expect(rows.nth(2).locator(".attn-listed")).toBeVisible();
-  expect(added).toEqual([
-    { text: "Beans", quantity: 4, unit: "pcs", item_id: "e2" },
-    { text: "Milk", quantity: 1, unit: "l", item_id: "s1" },
-  ]);
-  await expect(foot.getByRole("link", { name: "To buy: 4 items" })).toBeVisible();
-  await expect(rows.nth(1).getByRole("button", { name: "Add to shopping list: Bread" })).toBeEnabled();
+  // A tick marks it bought, as "Bought" on the shopping list: it leaves the list.
+  await buy.getByRole("checkbox", { name: "Bought: Matches" }).click();
+  await expect(buy.getByRole("checkbox")).toHaveText(["Rice3 kg", "Salt"]);
+  expect(bought).toEqual(["b1"]);
 
   // The tools not in the bar, and Help.
   const tools = page.getByRole("region", { name: "Quick access" });
@@ -1372,11 +1396,25 @@ test("home: the hub at the top, what in the supplies needs attention, and the to
     // Below them only the version line (about 100 px with its spacing).
     const nav = (await page.locator("nav.nav").boundingBox())!;
     expect(nav.y - Math.max(lib.y + lib.height, quick.y + quick.height), "the cards reach down to the bar").toBeLessThan(120);
+    // The supplies' three columns side by side, the same width each, the footer at the bottom of the card.
+    const [c1, c2, c3] = [(await expiring.boundingBox())!, (await low.boundingBox())!, (await buy.boundingBox())!];
+    expect(Math.abs(c1.y - c2.y) + Math.abs(c2.y - c3.y)).toBeLessThan(2);
+    expect(c2.x).toBeGreaterThan(c1.x + c1.width);
+    expect(c3.x).toBeGreaterThan(c2.x + c2.width);
+    expect(Math.abs(c1.width - c3.width)).toBeLessThan(2);
+    const f = (await foot.boundingBox())!;
+    expect(sup.y + sup.height - (f.y + f.height)).toBeLessThan(24);
     await noHorizontalScroll(page);
   } else {
     // A phone: one card under the other, and everything to tap a fingertip wide.
     const [sup, lib] = [await box("Supplies"), await box("Library and add-ons")];
     expect(lib.y).toBeGreaterThanOrEqual(sup.y + sup.height);
+    // The supplies' columns one under the other, each the card's width.
+    const [c1, c2, c3] = [(await expiring.boundingBox())!, (await low.boundingBox())!, (await buy.boundingBox())!];
+    expect(c2.y).toBeGreaterThanOrEqual(c1.y + c1.height);
+    expect(c3.y).toBeGreaterThanOrEqual(c2.y + c2.height);
+    expect(Math.abs(c1.x - c3.x)).toBeLessThan(2);
+    expect(c1.width).toBeGreaterThan(sup.width - 40);
     const small = await page.evaluate(() =>
       [...document.querySelectorAll(".home a, .home button, .home input")]
         .map((el) => ({ el, r: el.getBoundingClientRect() }))
@@ -1387,11 +1425,11 @@ test("home: the hub at the top, what in the supplies needs attention, and the to
   }
 
   // A link opens its view of Supplies, which stays in the address.
-  await foot.getByRole("link", { name: /^To buy/ }).click();
-  await expect(page).toHaveURL(/#supplies\/shopping$/);
-  await expect(page.getByRole("button", { name: "Shopping list" })).toHaveAttribute("aria-pressed", "true");
+  await buy.getByRole("link", { name: "To put away: 2" }).click();
+  await expect(page).toHaveURL(/#supplies\/putaway$/);
+  await expect(page.getByRole("button", { name: /^Put away/ })).toHaveAttribute("aria-pressed", "true");
   await page.reload();
-  await expect(page.getByRole("button", { name: "Shopping list" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /^Put away/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "History" }).click();
   await expect(page).toHaveURL(/#supplies\/history$/);
 
@@ -1403,32 +1441,75 @@ test("home: the hub at the top, what in the supplies needs attention, and the to
   await page.request.post("/api/pinned-tool", { data: { tool: null } });
 });
 
-test("home: when nothing needs attention, the supplies say so in one calm line", async ({ page }) => {
+test("home: an empty column of the supplies says Nothing, calmly, so all is well there", async ({ page }) => {
   await ensureSetUp(page);
   await page.route("**/api/supplies/summary", (r) => r.fulfill({ json: { total_items: 3, expired: [], expiring_soon: [], running_low: [], to_put_away: 0 } }));
   await page.route("**/api/shopping", (r) => r.fulfill({ json: [] }));
   await page.goto("/#home");
   const supplies = page.getByRole("region", { name: "Supplies" });
-  await expect(supplies.locator(".home-allgood")).toHaveText("All good: nothing has expired, expires soon or is running low.");
-  // No empty lists with their headings.
-  await expect(supplies.getByRole("heading", { level: 3 })).toHaveCount(0);
-  await expect(supplies.locator(".attn-row")).toHaveCount(0);
-  await expect(supplies.getByRole("link", { name: "The shopping list is empty." })).toHaveAttribute("href", "#supplies/shopping");
+  for (const name of ["Expiring", "Running low", "To buy"]) {
+    const col = supplies.getByRole("region", { name });
+    await expect(col.locator(".sup-nothing")).toHaveText("Nothing");
+    await expect(col.getByRole("listitem")).toHaveCount(0);
+    await expect(col.getByRole("link")).toHaveCount(0);
+  }
+  // Gray words and a green check: nothing to worry about.
+  const nothing = supplies.locator(".sup-nothing").first();
+  expect(await nothing.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(157, 157, 157)");
+  expect(await nothing.locator("svg").evaluate((el) => getComputedStyle(el).color)).toBe("rgb(127, 203, 147)");
+  await expect(supplies.locator(".sup-foot")).toContainText("3 items at home");
+  await expect(supplies.getByRole("link", { name: "Add item" })).toBeVisible();
   await noHorizontalScroll(page);
 });
 
-test("home: a long list of what needs attention shows the six most urgent and leads to the rest", async ({ page }) => {
+test("home: Add item on the supplies card opens a new item in Supplies, once", async ({ page }) => {
   await ensureSetUp(page);
-  const soon = [1, 2, 3, 4, 5, 6, 7].map((n) => fakeItem(`s${n}`, `Yogurt ${n}`, { expiry: dayFromToday(n) }));
-  await page.route("**/api/supplies/summary", (r) =>
-    r.fulfill({ json: { total_items: 9, expired: [], expiring_soon: soon, running_low: [fakeItem("l1", "Rice", { unit: "kg", min_quantity: 4 })], to_put_away: 0 } }),
-  );
-  await page.route("**/api/shopping", (r) => r.fulfill({ json: [] }));
   await page.goto("/#home");
-  const attention = page.getByRole("region", { name: /^Needs attention/ });
-  await expect(attention.getByRole("heading")).toHaveText("Needs attention 8");
-  await expect(attention.locator(".attn-name")).toHaveText(["Yogurt 1", "Yogurt 2", "Yogurt 3", "Yogurt 4", "Yogurt 5", "Yogurt 6"]);
-  await expect(attention.getByRole("link", { name: "2 more" })).toHaveAttribute("href", "#supplies");
+  await page.getByRole("region", { name: "Supplies" }).getByRole("link", { name: "Add item" }).click();
+  await expect(page.getByRole("heading", { name: "Add item", level: 1 })).toBeVisible();
+  await expect(page.getByLabel("Name")).toBeFocused();
+  // The address is the supplies again, so a reload or the way back does not open it again.
+  await expect(page).toHaveURL(/#supplies$/);
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("heading", { name: "Supplies", level: 1 })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Supplies", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add item" })).toHaveCount(0);
+  await page.goBack();
+  await expect(page).toHaveURL(/#home$/);
+});
+
+test("home: a long column shows the five most urgent and leads to the rest in Supplies", async ({ page }) => {
+  await ensureSetUp(page);
+  // Out of order on purpose: Home sorts them.
+  const soon = [7, 3, 1, 5, 2, 6, 4].map((n) => fakeItem(`s${n}`, `Yogurt ${n}`, { expiry: dayFromToday(n) }));
+  const low = [6, 2, 4, 1, 3, 5].map((n) => fakeItem(`l${n}`, `Rice ${n}`, { unit: "kg", quantity: n, min_quantity: 10 }));
+  await page.route("**/api/supplies/summary", (r) =>
+    r.fulfill({ json: { total_items: 20, expired: [], expiring_soon: soon, running_low: low, to_put_away: 0 } }),
+  );
+  const shop = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ id: `b${n}`, item_id: null, text: `Candles ${n}`, quantity: null, unit: null, status: "open", source: "manual" }));
+  await page.route("**/api/shopping", (r) => r.fulfill({ json: shop }));
+  await page.goto("/#home");
+  const expiring = page.getByRole("region", { name: "Expiring" });
+  await expect(expiring.locator(".sup-name")).toHaveText(["Yogurt 1", "Yogurt 2", "Yogurt 3", "Yogurt 4", "Yogurt 5"]);
+  await expect(expiring.getByRole("link")).toHaveText(["+ 2 more"]);
+  await expect(expiring.getByRole("link", { name: "+ 2 more" })).toHaveAttribute("href", "#supplies/expiring");
+  const lowCol = page.getByRole("region", { name: "Running low" });
+  await expect(lowCol.locator(".sup-name")).toHaveText(["Rice 1", "Rice 2", "Rice 3", "Rice 4", "Rice 5"]);
+  await expect(lowCol.getByRole("link", { name: "+ 1 more" })).toHaveAttribute("href", "#supplies/low");
+  const buy = page.getByRole("region", { name: "To buy" });
+  await expect(buy.getByRole("checkbox")).toHaveCount(5);
+  await expect(buy.getByRole("link", { name: "+ 3 more" })).toHaveAttribute("href", "#supplies/shopping");
+  // The rest of what expires: Supplies with that filter.
+  await expiring.getByRole("link", { name: "+ 2 more" }).click();
+  await expect(page.getByRole("heading", { name: "Supplies", level: 1 })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Expiring", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page).toHaveURL(/#supplies$/);
+  // The rest of the shopping list.
+  await page.goto("/#home");
+  await buy.getByRole("link", { name: "+ 3 more" }).click();
+  await expect(page.getByRole("button", { name: "Shopping list" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page).toHaveURL(/#supplies\/shopping$/);
 });
 
 test("home: Add a phone beside Devices opens the pairing straight away (laptop)", async ({ page }, info) => {

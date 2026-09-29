@@ -3,14 +3,14 @@ import { api, ApiError, type Status } from "../api";
 import type { Key, Lang } from "../i18n";
 import { offlineState, onBackOnline, onOfflineChange } from "../offline";
 import { useVisiblePoll } from "../poll";
-import { countWord, daysUntil, fmtBytes, fmtDate, fmtDateTime, fmtQty, unitName } from "../format";
+import { fmtBytes, fmtDateTime } from "../format";
 import { askInAssistant, fromText, openInAssistant, type Summary as Chat } from "../conversations";
 import { BUSY, rootName, type CatalogReply, type Localized } from "../addons";
 import { countryState, type MapsReply } from "../maps";
 import { TOOLS, type ToolId } from "../tools";
-import { askForPairing, fold } from "../settings";
-import { errText } from "../errors";
-import type { Item } from "./Supplies";
+import { askForPairing } from "../settings";
+import CardHead from "../components/CardHead";
+import SuppliesCard, { type ShoppingEntry, type SuppliesSummary } from "../components/SuppliesCard";
 import HelpLink from "../components/HelpLink";
 import Firewall from "../components/Firewall";
 import { UpdateBanner } from "../components/Updates";
@@ -34,8 +34,6 @@ type Props = {
   /** The tool in the bar; Quick access leaves it out. */
   pinned: ToolId | null;
 };
-type SuppliesSummary = { total_items: number; expired: Item[]; expiring_soon: Item[]; running_low: Item[]; to_put_away?: number };
-type ShoppingEntry = { id: string; item_id?: string | null; text: string; quantity: number | null; unit: string | null; status: string };
 
 /** Supplies, the shopping list, the conversations and the add-ons are asked for again this often (never while the app is in the background). */
 const EVERY = 30_000;
@@ -43,19 +41,16 @@ const EVERY = 30_000;
 const BUSY_EVERY = 2_000;
 /** The world's maps are a long answer: asked for rarely, unless a map is downloading. */
 const MAPS_EVERY = 120_000;
-/** How many things that need attention Home lists, how many downloads, and how many conversations. */
-const ATTENTION = 6;
+/** How many downloads Home lists, and how many conversations. */
 const SHOW = 5;
-/** Something added to the shopping list from Home counts as on it this long, until the list itself shows it. */
-const ADDED_KEEP = 60_000;
 const RECENT = 3;
 
 /**
  * Home: the household at a glance, using the whole window. The hub in one
- * line at the top, then the assistant, what needs attention in the supplies
- * with the home on the map beside it, the library and add-ons, and the
- * tools. A phone away from home shows its copy of the supplies and
- * conversations, marked as old.
+ * line at the top, then the assistant, the supplies (what expires, what runs
+ * low, what to buy) with the home on the map beside it, the library and
+ * add-ons, and the tools. A phone away from home shows its copy of the
+ * supplies and conversations, marked as old.
  */
 export default function Home({ status, statusAt, error, t, lang, go, phone, pinned }: Props) {
   const up = !!status && !error;
@@ -241,228 +236,6 @@ function HubHead({
         </p>
       )}
     </header>
-  );
-}
-
-/** A card's title with its icon, and a link to the screen it comes from. */
-function CardHead({ id, icon, title, href, link }: { id: string; icon: IconName; title: string; href: string; link: string }) {
-  return (
-    <div className="home-card-head">
-      <h2 id={id}>
-        <span className="home-card-icon">
-          <Icon name={icon} size={18} />
-        </span>
-        {title}
-      </h2>
-      <a className="home-link" href={href}>{link}</a>
-    </div>
-  );
-}
-
-/** Something in the supplies that needs attention. */
-type Attention = {
-  item: Item;
-  kind: "expired" | "soon" | "low";
-  /** Days until it expires (below 0: since it did). */
-  days: number;
-  /** Below its "Warn below" amount (also when it is listed for its date). */
-  low: boolean;
-};
-
-/**
- * One list of what needs attention, the most urgent first: what has expired
- * (the longest ago first), what expires within 30 days (the soonest first),
- * then what is running low. Something that is more than one of these is
- * listed once, where it comes first.
- */
-function needsAttention(sum: SuppliesSummary): Attention[] {
-  const lowIds = new Set(sum.running_low.map((i) => i.id));
-  const seen = new Set<string>();
-  const out: Attention[] = [];
-  const add = (item: Item, kind: Attention["kind"]) => {
-    if (seen.has(item.id)) return;
-    seen.add(item.id);
-    out.push({ item, kind, days: item.expiry ? daysUntil(item.expiry) : 0, low: lowIds.has(item.id) });
-  };
-  const byDate = (a: Item, b: Item) => (a.expiry ?? "").localeCompare(b.expiry ?? "");
-  for (const i of [...sum.expired].sort(byDate)) add(i, "expired");
-  for (const i of [...sum.expiring_soon].sort(byDate)) add(i, "soon");
-  for (const i of sum.running_low) add(i, "low");
-  return out;
-}
-
-/** "2 days" / "2 dana". */
-function dayCount(n: number): string {
-  return `${n} ${countWord(n, ["day", "days"], ["dan", "dana", "dana"])}`;
-}
-
-/** What is wrong, in a few words: "expired 2 days ago", "expires tomorrow", "2 of 3 kg". */
-function whatIsWrong(t: T, a: Attention): string {
-  const { item, days } = a;
-  if (a.kind === "low") {
-    const min = item.min_quantity ?? 0;
-    return `${fmtQty(item.quantity)} ${t("of")} ${fmtQty(min)} ${unitName(t, item.unit, min)}`;
-  }
-  if (a.kind === "expired") {
-    if (days >= 0) return t("expired");
-    if (days === -1) return t("attnExpiredYesterday");
-    if (days >= -30) return t("attnExpiredAgo").replace("{n}", dayCount(-days));
-    return t("attnExpiredOn").replace("{date}", fmtDate(item.expiry ?? ""));
-  }
-  if (days <= 0) return t("attnExpiresToday");
-  if (days === 1) return t("attnExpiresTomorrow");
-  return t("attnExpiresIn").replace("{n}", dayCount(days));
-}
-
-/** On the shopping list already: added (by hand or from here), or suggested there because it runs low. */
-function onShoppingList(shop: ShoppingEntry[], item: Item): boolean {
-  const name = fold(item.name);
-  return shop.some((e) => e.status === "open" && (e.item_id === item.id || e.id === `low:${item.id}` || fold(e.text) === name));
-}
-
-/**
- * The supplies at a glance: one list of what needs attention (a line each:
- * the name, what is wrong and, where it helps, "Add to shopping list"), or a
- * calm "All good"; below it one line with the shopping list and the rest.
- */
-function SuppliesCard({
-  t,
-  sum,
-  shop,
-  unavailable,
-  note,
-  reload,
-}: {
-  t: T;
-  sum: SuppliesSummary | null;
-  shop: ShoppingEntry[] | null;
-  unavailable: boolean;
-  /** When the lists are old: from when, or that the hub does not answer. */
-  note: string | null;
-  /** Ask for the supplies and the shopping list again. */
-  reload: () => void;
-}) {
-  const id = useId();
-  const listId = useId();
-  const [adding, setAdding] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  // Added from here: on the list at once, before the list from the hub (or the phone's copy) shows it.
-  const [added, setAdded] = useState<string[]>([]);
-  const waiting = added.filter((id) => !shop?.some((e) => e.status === "open" && e.item_id === id));
-  const listed = (item: Item) => waiting.includes(item.id) || (shop !== null && onShoppingList(shop, item));
-
-  const all = sum ? needsAttention(sum) : [];
-  const toBuy = (shop ?? []).filter((e) => e.status === "open").length + waiting.length;
-  const toPutAway = sum?.to_put_away ?? 0;
-
-  const addToList = async (a: Attention) => {
-    const { item } = a;
-    setAdding(item.id);
-    setErr(null);
-    // Enough to be back at the "Warn below" amount; for something expired, as much as there was.
-    const missing = (item.min_quantity ?? 0) - item.quantity;
-    const quantity = a.kind === "expired" ? Math.max(item.quantity, missing) : missing;
-    try {
-      await api("/api/shopping", {
-        json: { text: item.name, quantity: quantity > 0 ? Math.round(quantity * 1000) / 1000 : null, unit: item.unit, item_id: item.id },
-      });
-      setAdded((list) => [...list.filter((id) => id !== item.id), item.id]);
-      setTimeout(() => setAdded((list) => list.filter((id) => id !== item.id)), ADDED_KEEP);
-      reload();
-    } catch (e) {
-      setErr(errText(t, e));
-    } finally {
-      setAdding(null);
-    }
-  };
-
-  return (
-    <section className="panel left home-card home-supplies" aria-labelledby={id}>
-      <CardHead id={id} icon="supplies" title={t("supplies")} href="#supplies" link={t("homeOpenSupplies")} />
-      {unavailable ? (
-        <p className="warn home-empty">{t("unavailable")}</p>
-      ) : sum === null ? (
-        <p className="muted home-empty">{t("aiLoading")}</p>
-      ) : all.length === 0 ? (
-        <p className="home-allgood">
-          <span className="home-allgood-icon">
-            <Icon name="check" size={16} />
-          </span>
-          <span>
-            <strong>{t("homeAllGood")}</strong>
-            <span className="muted">: {t("homeAllGoodMore")}</span>
-          </span>
-        </p>
-      ) : (
-        <section className="home-part" aria-labelledby={listId}>
-          <h3 id={listId} className="home-sub">
-            {t("homeNeedsAttention")} <span className={"home-count " + (all[0].kind === "expired" ? "warn" : "soon")}>{all.length}</span>
-          </h3>
-          <ul className="attn-list">
-            {all.slice(0, ATTENTION).map((a) => {
-              const shopping = a.kind === "expired" || a.low;
-              const on = shopping && listed(a.item);
-              return (
-                <li key={a.item.id} className={`attn-row ${a.kind}`}>
-                  <span className="attn-name" title={a.item.name}>{a.item.name}</span>
-                  <span className="attn-what">{whatIsWrong(t, a)}</span>
-                  <span className="attn-act">
-                    {shopping && !on && (
-                      <button
-                        type="button"
-                        className="btn secondary small attn-add"
-                        onClick={() => addToList(a)}
-                        disabled={adding !== null}
-                        aria-label={`${t("addToShopping")}: ${a.item.name}`}
-                        title={t("addToShopping")}
-                      >
-                        <Icon name="cart" size={16} />
-                        <span className="attn-add-text">{t("addToShopping")}</span>
-                      </button>
-                    )}
-                    {on && (
-                      <span className="attn-listed" title={t("onShoppingList")}>
-                        <Icon name="check" size={16} />
-                        <span className="attn-listed-text">{t("onShoppingList")}</span>
-                      </span>
-                    )}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-          {all.length > ATTENTION && (
-            <a className="home-link" href="#supplies">{t("homeMoreN").replace("{n}", String(all.length - ATTENTION))}</a>
-          )}
-        </section>
-      )}
-      {err && <p className="error home-empty" role="alert">{err}</p>}
-      {(sum !== null || note) && (
-        <div className="home-foot">
-          {shop !== null && (
-            <a className="home-link" href="#supplies/shopping">
-              {toBuy > 0 ? `${t("homeToBuy")}: ${toBuy} ${countWord(toBuy, ["item", "items"], ["stavka", "stavke", "stavki"])}` : t("homeShoppingEmpty")}
-            </a>
-          )}
-          {toPutAway > 0 && (
-            <a className="home-link" href="#supplies/putaway">
-              {t("homeToPutAway")}: {toPutAway}
-            </a>
-          )}
-          {sum !== null &&
-            (sum.total_items > 0 ? (
-              <span className="muted">
-                {t("homeItemsTotal")}: {sum.total_items}
-              </span>
-            ) : (
-              <span className="muted">
-                {t("homeNoSupplies")} <a className="home-link" href="#supplies">{t("addItem")}</a>
-              </span>
-            ))}
-          {note && <span className="muted home-note">{note}</span>}
-        </div>
-      )}
-    </section>
   );
 }
 

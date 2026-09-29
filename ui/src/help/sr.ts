@@ -245,23 +245,23 @@ const sr: HelpContent = {
         id: "lists",
         title: "Zalihe",
         body: [
-          { p: "**Zahteva pažnju** je jedan spisak, najhitnije prvo:" },
+          { p: "Kartica zaliha ima tri kolone, jednu pored druge (na telefonu jednu ispod druge), u svakoj najhitnije prvo:" },
           {
             list: [
-              "ono čemu je **istekao** rok (crveno), i pre koliko;",
-              "ono čemu rok **ističe** u narednih 30 dana (narandžasto), prvo ono što ističe najpre;",
-              "ono čega **ponestaje**: ima ga manje nego što piše u **Upozori kad padne ispod**, na primer „2 od 3 kg“.",
+              "**Ističe**: ono čemu je istekao rok (crveno, i pre koliko) i ono čemu rok ističe u narednih 30 dana, sa rokom: „danas“, „za 3 dana“;",
+              "**Ponestaje**: ima ga manje nego što piše u **Upozori kad padne ispod**, na primer „2 od 3 kg“, prvo ono čega ima najmanje; kolica znače da je već na listi za kupovinu;",
+              "**Za kupovinu**: lista za kupovinu. Štikliraj ono što je kupljeno; prelazi u **Spremi**, isto kao **Kupljeno** na listi.",
             ],
           },
-          { p: "Prikazuje se do šest redova; ostalo je u [Zalihama](#supplies). Kad ništa ne traži pažnju, kartica samo kaže **Sve je u redu**." },
-          { p: "Pored onoga čemu je istekao rok ili čega ponestaje je **Dodaj na listu za kupovinu**; ono što je već na listi ima oznaku **Na listi je**. Ispod spiska, **Za kupovinu** kaže koliko stvari ima na listi za kupovinu i otvara je." },
+          { p: "Svaka kolona prikazuje do pet redova, a zatim link ka ostalom u [Zalihama](#supplies). Prazna kolona kaže **Ništa**: tu je sve u redu." },
+          { p: "Ispod njih, **Dodaj stavku** počinje novu stavku (na telefonu **Skeniraj** čita barkod), a desno piše koliko stavki ima kod kuće." },
         ],
       },
       {
         id: "map",
         title: "Dom na mapi",
         body: [
-          { p: "Pored onoga što zahteva pažnju (ispod toga na telefonu) je dom domaćinstva na Zaklon mapi. Bez lokacije doma mapa prikazuje ceo svet i dugme **Postavi lokaciju doma**. Vidi [Lokacija tvog doma](#help/maps/home-location)." },
+          { p: "Pored zaliha (ispod njih na telefonu) je dom domaćinstva na Zaklon mapi. Bez lokacije doma mapa prikazuje ceo svet i dugme **Postavi lokaciju doma**. Vidi [Lokacija tvog doma](#help/maps/home-location)." },
         ],
       },
       {
@@ -432,7 +432,7 @@ const sr: HelpContent = {
         id: "items",
         title: "Stavke",
         body: [
-          { p: "Zalihe su zajedničke za celo domaćinstvo: izmena na jednom uređaju vidi se na svima. Kartica **Stavke** prikazuje sve, uz pretragu i izbor kategorije. Da dodaš nešto:" },
+          { p: "Zalihe su zajedničke za celo domaćinstvo: izmena na jednom uređaju vidi se na svima. Kartica **Stavke** prikazuje sve, uz pretragu i filtere: **Ističe** (isteklo ili ističe u narednih 30 dana, po roku), **Ponestaje** (prvo ono čega ima najmanje) i svaka kategorija. Da dodaš nešto:" },
           {
             steps: [
               "Izaberi **Dodaj stavku**.",

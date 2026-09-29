@@ -371,6 +371,8 @@ test("home shots", async ({ page }, info) => {
   await page.screenshot({ path: file("home"), fullPage: true });
   // What the window shows (a full-page picture draws the bar, which stays at the bottom, in the middle).
   await page.screenshot({ path: file("home-screen"), fullPage: false });
+  // The supplies card up close.
+  await page.locator(".home-supplies").screenshot({ path: file("home-supplies") });
 
   // Downloads under way, a new version and a paused download; a newer Zaklon; the firewall (laptop).
   await page.route("**/api/catalog", async (r) => {
@@ -403,9 +405,11 @@ test("home shots", async ({ page }, info) => {
   // A home Wi-Fi that Windows treats as public (the button is never pressed here), and supplies with nothing to do.
   firewall = { ...firewall, allowed: true, blocked: false, public_network: true, ok: false };
   await page.route("**/api/supplies/summary", (r) => r.fulfill({ json: { total_items: 8, expired: [], expiring_soon: [], running_low: [], to_put_away: 0 } }));
+  await page.route("**/api/shopping", (r) => r.fulfill({ json: [] }));
   await page.reload();
   await page.waitForTimeout(1500);
   await page.screenshot({ path: file("home-public-allgood"), fullPage: false });
+  await page.locator(".home-supplies").screenshot({ path: file("home-supplies-empty") });
   await page.goto("/#settings/network");
   await page.waitForTimeout(1200);
   await page.screenshot({ path: file("settings-network-public"), fullPage: false });
