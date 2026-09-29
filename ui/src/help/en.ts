@@ -996,6 +996,14 @@ const en: HelpContent = {
           { p: "The version and the license (Zaklon is free and open source, forever), the hub's computer (processor, memory, free disk and, on the laptop, the data folder), and the licenses of the projects Zaklon is built on." },
         ],
       },
+      {
+        id: "system-spec",
+        title: "System specification: send it with a bug report",
+        body: [
+          { p: "At the bottom of [About](#settings/about/system-spec), **System specification** lists Zaklon's version and build, what it is built with, and the state of the database, the AI assistant, the library, the maps and the network. On a phone it starts with the phone's app, Android and WebView, and the hub it is connected to." },
+          { p: "When something does not work, choose **Copy all** and paste the text into your bug report. There is nothing secret in it: no password, no keys." },
+        ],
+      },
     ],
   },
 

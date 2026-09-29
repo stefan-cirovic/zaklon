@@ -25,6 +25,8 @@ struct AppMode {
     api_base: Option<String>,
     platform: &'static str,
     version: &'static str,
+    /// A debug build of the app (the system specification says "development").
+    debug: bool,
 }
 
 /// Start the app again (the laptop, after choosing a backup to restore).
@@ -48,11 +50,18 @@ fn app_mode() -> AppMode {
             api_base: Some(format!("http://127.0.0.1:{}", desktop::local_port())),
             platform: std::env::consts::OS,
             version: env!("CARGO_PKG_VERSION"),
+            debug: cfg!(debug_assertions),
         }
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        AppMode { mode: "client", api_base: None, platform: std::env::consts::OS, version: env!("CARGO_PKG_VERSION") }
+        AppMode {
+            mode: "client",
+            api_base: None,
+            platform: std::env::consts::OS,
+            version: env!("CARGO_PKG_VERSION"),
+            debug: cfg!(debug_assertions),
+        }
     }
 }
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { api } from "../api";
+import { copyText } from "../clipboard";
 import type { Key, Lang } from "../i18n";
 import { errText } from "../errors";
 import { useVisiblePoll } from "../poll";
@@ -62,24 +63,6 @@ export default function Maps({ t, lang, isHub }: { t: T; lang: Lang; isHub: bool
       {route.part === "map" ? <MapPart t={t} lang={lang} isHub={isHub} homeOpen={route.home} /> : <Navigation t={t} lang={lang} isHub={isHub} />}
     </div>
   );
-}
-
-/** Clipboard, with a fallback for web views that do not allow it. */
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    const area = document.createElement("textarea");
-    area.value = text;
-    area.style.position = "fixed";
-    area.style.opacity = "0";
-    document.body.appendChild(area);
-    area.select();
-    const ok = document.execCommand("copy");
-    area.remove();
-    return ok;
-  }
 }
 
 /** CoMaps for phones: the app and the maps of every country, from the hub. */

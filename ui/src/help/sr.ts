@@ -996,6 +996,14 @@ const sr: HelpContent = {
           { p: "Verzija i licenca (Zaklon je besplatan i otvorenog koda, zauvek), računar huba (procesor, memorija, slobodan prostor i, na laptopu, folder sa podacima) i licence projekata na kojima je Zaklon zasnovan." },
         ],
       },
+      {
+        id: "system-spec",
+        title: "Specifikacija sistema: pošalji je uz prijavu greške",
+        body: [
+          { p: "Na dnu stranice [O programu](#settings/about/system-spec), **Specifikacija sistema** navodi verziju i build Zaklona, s čim je napravljen, i stanje baze podataka, AI asistenta, biblioteke, mapa i mreže. Na telefonu počinje aplikacijom na telefonu, Androidom i WebView-om, i hubom sa kojim je povezan." },
+          { p: "Kad nešto ne radi, izaberi **Kopiraj sve** i nalepi tekst u prijavu greške. U njemu nema ničeg tajnog: ni lozinke ni ključeva." },
+        ],
+      },
     ],
   },
 

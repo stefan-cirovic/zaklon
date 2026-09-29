@@ -68,6 +68,7 @@ export const SETTINGS: readonly Setting[] = [
   { id: "version", cat: "about", title: "version", kw: "kwVersion" },
   { id: "this-hub", cat: "about", title: "thisHub", kw: "kwThisHub" },
   { id: "licenses", cat: "about", title: "licenses", kw: "kwLicenses" },
+  { id: "system-spec", cat: "about", title: "systemSpec", kw: "kwSystemSpec" },
 ];
 
 export function categoriesFor(isHub: boolean): Category[] {

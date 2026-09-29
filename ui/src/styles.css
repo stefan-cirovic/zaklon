@@ -423,6 +423,16 @@ dl.facts > div { display: grid; grid-template-columns: 170px 1fr; gap: 12px; }
 dl.facts dt { color: var(--muted); font-size: 13px; }
 dl.facts dd { margin: 0; word-break: break-word; }
 @media (max-width: 599px) { dl.facts > div { grid-template-columns: 1fr; gap: 0; } }
+/* Settings › About › System specification: a label and its value on each row, thin lines between rows, in groups. */
+.spec-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.spec-intro, .spec-note { margin: 0; font-size: 13px; }
+.spec-group h3 { margin: 6px 0 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.spec-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
+.spec-table th, .spec-table td { padding: 6px 0; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.spec-table tr:not(:last-child) > * { border-bottom: 1px solid var(--line-2); }
+.spec-table th { width: 30%; padding-right: 16px; font-weight: 400; color: var(--muted); }
+.spec-table td.pending { color: var(--muted); font-style: italic; }
+@media (max-width: 599px) { .spec-table th { width: 40%; padding-right: 10px; } }
 details > summary { cursor: pointer; color: var(--accent); padding: 6px 0; min-height: 32px; }
 ul.plain { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; }
 

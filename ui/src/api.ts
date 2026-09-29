@@ -25,6 +25,8 @@ export type AppMode = {
   api_base: string | null;
   platform: string;
   version: string;
+  /** A debug build of the app (an older app does not say). */
+  debug?: boolean;
 };
 
 export type Status = {

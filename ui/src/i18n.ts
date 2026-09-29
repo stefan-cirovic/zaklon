@@ -178,6 +178,9 @@ const en = {
   licenses: "Licenses and credits", licensesIntro: "Zaklon is built on the work of these projects, each under its own license:",
   tpKiwix: "library engine", tpLlama: "AI engine", tpComaps: "map app for phones", tpZxing: "barcode scanning on phones", tpOsm: "map data", tpMapLibre: "draws the Zaklon map", tpProtomaps: "the map's tiles and style", tpGeoNames: "places for finding the home", tpNoto: "the map's labels",
   tpWikipedia: "knowledge packs", tpModels: "AI models", tpFrameworks: "app frameworks", tpFont: "wordmark font",
+  // Settings › About; its own words are in spec-text.ts.
+  systemSpec: "System specification",
+  kwSystemSpec: "system specification versions build commit bug report copy windows webview android sqlite rust tauri react",
   // Settings, laid out like Windows Settings: the categories, their pages and the search.
   findSetting: "Find a setting", settingsFound: "Settings found:", noSettingFound: "No setting matches that. Try another word.",
   settingsCategories: "Categories", breadcrumb: "Breadcrumb", backToSettings: "Back to Settings",
@@ -582,6 +585,8 @@ const sr: typeof en = {
   licenses: "Licence i zasluge", licensesIntro: "Zaklon je zasnovan na radu ovih projekata, svaki pod svojom licencom:",
   tpKiwix: "pokreće biblioteku", tpLlama: "pokreće AI", tpComaps: "aplikacija za mape na telefonu", tpZxing: "skeniranje barkoda na telefonu", tpOsm: "podaci mapa", tpMapLibre: "crta Zaklon mapu", tpProtomaps: "pločice i stil mape", tpGeoNames: "mesta za pronalaženje doma", tpNoto: "nazivi na mapi",
   tpWikipedia: "paketi znanja", tpModels: "AI modeli", tpFrameworks: "osnova aplikacije", tpFont: "font logotipa",
+  systemSpec: "Specifikacija sistema",
+  kwSystemSpec: "specifikacija sistema verzije build komit prijava greške greška kopiraj windows webview android sqlite rust tauri react",
   findSetting: "Pronađi podešavanje", settingsFound: "Pronađena podešavanja:", noSettingFound: "Nijedno podešavanje ne odgovara. Probaj drugu reč.",
   settingsCategories: "Kategorije", breadcrumb: "Putanja", backToSettings: "Nazad na Podešavanja",
   catDevicesDesc: "Upareni telefoni i dodavanje novog", catDevicesDescPhone: "Upareni telefoni i hub koji ovaj telefon koristi",

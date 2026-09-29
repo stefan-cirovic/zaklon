@@ -14,6 +14,7 @@ import { Brand } from "../components/Brand";
 import { Icon } from "../components/Icon";
 import { SettingsIcon } from "../components/SettingsIcon";
 import HelpLink from "../components/HelpLink";
+import SystemSpec from "../components/SystemSpec";
 import { categoriesFor, categoryOf, findSettings, settingsHref, settingsRoute, takePairingRequest, type Category, type CategoryId, type Setting } from "../settings";
 import { AboutZaklon, AiModel, Appearance, ChangePassword, LanguageSettings, Licenses, NetworkAddresses, Privacy, ThisHub, type Look } from "./SettingsMore";
 
@@ -197,6 +198,7 @@ export default function Settings({ status, t, lang, setLang, refresh, isHub, own
           <Anchor id="version"><AboutZaklon t={t} status={status} /></Anchor>
           {status && <Anchor id="this-hub"><ThisHub t={t} status={status} isHub={isHub} /></Anchor>}
           <Anchor id="licenses" wide><Licenses t={t} /></Anchor>
+          <Anchor id="system-spec" wide><SystemSpec t={t} lang={lang} isHub={isHub} /></Anchor>
         </>
       );
       break;
