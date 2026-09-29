@@ -768,6 +768,14 @@ input[type="search"].convo-search { min-height: 30px; padding: 4px 10px; font-si
 .chat, .exchange { min-width: 0; }
 .exchange .q, .answer-text { overflow-wrap: anywhere; }
 .proposal { margin-top: 12px; gap: 10px; }
+/* Tools and guides under an answer: small chips; a calculator filled in from the question in the accent. */
+.ai-suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.ai-suggest-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 12px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--panel); color: var(--text); font-size: 13px; line-height: 1.3; }
+.ai-suggest-chip:hover { border-color: var(--accent); background: var(--hover); }
+.ai-suggest-chip.tool { border-color: var(--accent); color: var(--accent); }
+.ai-suggest-chip .icon, .ai-suggest-chip svg { flex: 0 0 auto; }
+/* The way back to the conversation, on a screen opened from a suggestion. */
+.back-to-chat { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; margin-bottom: 8px; font-size: 13px; }
 .backup-row { padding: 6px 0; border-top: 1px solid var(--line); gap: 8px; }
 .restore-confirm { flex-basis: 100%; gap: 10px; padding: 10px 0 4px; }
 .notice { border: 1px solid var(--accent); border-radius: var(--radius); padding: 12px 14px; }
@@ -808,7 +816,7 @@ select.lang-pick { width: auto; margin-top: 4px; }
   .qty-btn { width: 44px; height: 44px; font-size: 20px; }
   .btn.small { min-height: 44px; min-width: 44px; padding: 8px 12px; font-size: 14px; }
   .segmented button { min-height: 44px; }
-  .chip, .source, .link-btn, .model-line select, .check-line { min-height: 44px; }
+  .chip, .source, .link-btn, .model-line select, .check-line, .ai-suggest-chip, .back-to-chat { min-height: 44px; }
   .chip { font-size: 14px; }
   .chip, .link-btn { min-width: 44px; }
   details > summary { padding: 10px 0; min-height: 44px; }

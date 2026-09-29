@@ -314,6 +314,14 @@ const sr: HelpContent = {
         ],
       },
       {
+        id: "tools",
+        title: "Alati i vodiči",
+        body: [
+          { p: "Asistent upućuje na alate i vodiče. Ispod odgovora nudi šta još u Zaklonu pomaže oko pitanja: alat, na primer [Kalkulator struje](#power), i vodiče za tu temu u [Dodacima](#addons). Dodirni jedan da ga otvoriš; **Nazad na razgovor** (ili dugme za nazad) vraća te na odgovor." },
+          { p: "Kad pitaš koliko ti treba, na primer „frižider, 6 LED sijalica i laptop za 3 dana“, dugme otvara kalkulator sa tim spiskom već popunjenim. Odgovor može dati okvirne brojeve; tačan proračun radi kalkulator. Spisak otvoren ovako nije sačuvan dok ne izabereš da ga sačuvaš." },
+        ],
+      },
+      {
         id: "supplies",
         title: "Pitanja o zalihama",
         body: [

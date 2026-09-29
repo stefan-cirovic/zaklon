@@ -16,6 +16,13 @@ export type Proposal = {
   current: number | null;
 };
 
+/**
+ * A tool or the guides of a topic, offered under an answer: `link` is the
+ * app's address it opens ("#power?items=fridge:1&days=3", "#addons/garden"),
+ * `label_key` its text in i18n ("{topic}" in it is the topic's name).
+ */
+export type Suggestion = { kind: "tool" | "guides"; id: string; topic: string; link: string; label_key: string };
+
 /** An answer as the screen shows it: one being written (polled from the hub) or a saved one. */
 export type Answer = {
   /** The hub's answer id (a saved turn without one uses its turn id). */
@@ -24,6 +31,8 @@ export type Answer = {
   turnId?: string;
   from_supplies?: boolean;
   proposal?: Proposal | null;
+  /** Tools and guides for the question (a newer hub). */
+  suggestions?: Suggestion[];
   /** What happened to the proposal. */
   outcome?: "done" | "canceled" | null;
   question: string;
@@ -60,7 +69,7 @@ export type SavedTurn = {
   error: string | null;
   answer_id: string | null;
   sources: Source[];
-  details: Partial<Pick<Answer, "grounded" | "cited" | "fixed" | "from_supplies" | "searched" | "proposal" | "language" | "tokens_per_second">>;
+  details: Partial<Pick<Answer, "grounded" | "cited" | "fixed" | "from_supplies" | "searched" | "proposal" | "language" | "tokens_per_second" | "suggestions">>;
   outcome: "done" | "canceled" | null;
   created_at: string;
   answered_at: string | null;
@@ -111,6 +120,37 @@ export function clearQuestionFromHome() {
   handedOver = null;
 }
 
+/**
+ * A tool or guides opened from a suggestion under an answer: until the
+ * Assistant is shown again, the screens offer the way back to the
+ * conversation (the Assistant opens the one it showed).
+ */
+const FROM_CHAT = "zaklon.fromChat";
+
+export function markFromChat() {
+  try {
+    sessionStorage.setItem(FROM_CHAT, "1");
+  } catch {
+    /* private mode: no way back offered */
+  }
+}
+
+export function cameFromChat(): boolean {
+  try {
+    return sessionStorage.getItem(FROM_CHAT) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function clearFromChat() {
+  try {
+    sessionStorage.removeItem(FROM_CHAT);
+  } catch {
+    /* nothing kept */
+  }
+}
+
 /** Open a saved conversation when the Assistant is shown next. */
 export function openInAssistant(id: string) {
   handedOver = null;
@@ -133,6 +173,7 @@ export function toAnswer(t: SavedTurn): Answer {
     fixed: d.fixed ?? false,
     from_supplies: d.from_supplies ?? false,
     proposal: d.proposal ?? null,
+    suggestions: Array.isArray(d.suggestions) ? d.suggestions : [],
     language: d.language ?? "",
     tokens_per_second: d.tokens_per_second ?? 0,
     error: t.error,

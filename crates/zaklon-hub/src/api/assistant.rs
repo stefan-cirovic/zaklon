@@ -151,7 +151,10 @@ fn save_answer(db: &zaklon_core::Db, a: &crate::assistant::Answer) -> bool {
     let all = serde_json::to_value(a).unwrap_or_default();
     // What the app shows with an answer, besides its text and sources.
     let mut details = serde_json::Map::new();
-    for key in ["grounded", "cited", "fixed", "from_supplies", "used_internet", "safety", "searched", "proposal", "language", "tokens_per_second"] {
+    for key in [
+        "grounded", "cited", "fixed", "from_supplies", "used_internet", "safety", "searched", "proposal", "language", "tokens_per_second", "topics",
+        "suggestions",
+    ] {
         if let Some(v) = all.get(key) {
             details.insert(key.into(), v.clone());
         }

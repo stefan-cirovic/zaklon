@@ -314,6 +314,14 @@ const en: HelpContent = {
         ],
       },
       {
+        id: "tools",
+        title: "Tools and guides",
+        body: [
+          { p: "The assistant points to tools and guides. Under an answer it offers what else in Zaklon helps with the question: a tool, such as the [Power calculator](#power), and the guides for its topic in [Add-ons](#addons). Tap one to open it; **Back to the conversation** (or the back button) returns to the answer." },
+          { p: "When you ask how much you need, for example “a fridge, 6 LED bulbs and a laptop for 3 days”, the button opens the calculator with that list already filled in. The answer may give rough numbers; the calculator does the exact sizing. A list opened this way is not saved until you choose to save it." },
+        ],
+      },
+      {
         id: "supplies",
         title: "Questions about your supplies",
         body: [

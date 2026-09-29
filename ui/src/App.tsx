@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { invoke } from "@tauri-apps/api/core";
 import { api, ApiError, clientForget, flushOutbox, clientState, getMode, type AppMode, type LinkSummary, type Status } from "./api";
 import { discardParked, onOfflineChange, onProbeRequest, parkedElsewhere, sendParkedHere } from "./offline";
+import { cameFromChat, clearFromChat } from "./conversations";
 import { makeT, type Key, type Lang } from "./i18n";
 import { setFormatLang } from "./format";
 import { errText } from "./errors";
@@ -156,6 +157,12 @@ export default function App() {
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
+
+  // A screen opened from a suggestion under an answer offers the way back to the conversation.
+  useEffect(() => {
+    if (tab === "assistant") clearFromChat();
+  }, [tab]);
+  const backToChat = tab !== "assistant" && cameFromChat();
 
   const setLang = (l: Lang) => {
     setLangState(l);
@@ -389,6 +396,11 @@ export default function App() {
               {parkedErr && <p className="error" role="alert">{parkedErr}</p>}
             </div>
           ))}
+        {backToChat && (
+          <a className="back-to-chat" href="#assistant">
+            ← {t("aiBackToChat")}
+          </a>
+        )}
         {tab === "home" && <Home status={status} statusAt={statusAt} error={homeError} t={t} lang={lang} go={setTab} phone={!isHub} pinned={pinned} />}
         {tab === "settings" && (
           <Settings
@@ -436,7 +448,10 @@ export default function App() {
                 className={barTab === x.id ? "active" : ""}
                 // The tool open under Tools: its section, not the page itself.
                 aria-current={barTab === x.id ? (tab === x.id ? "page" : "true") : undefined}
-                onClick={() => setTab(x.id)}
+                onClick={() => {
+                  clearFromChat();
+                  setTab(x.id);
+                }}
               >
                 <Icon name={x.icon} />
                 <span className="nav-label">{t(x.key)}</span>

@@ -27,6 +27,7 @@ import ChatTitle from "../components/ChatTitle";
 import SidePanel from "../components/SidePanel";
 import HelpLink from "../components/HelpLink";
 import { Icon } from "../components/Icon";
+import Suggestions from "../components/Suggestions";
 
 type T = (k: Key) => string;
 type EngineState = "missing" | "no_model" | "stopped" | "starting" | "ready" | "failed";
@@ -793,6 +794,8 @@ export default function Assistant({ t, lang, isHub, go }: { t: T; lang: Lang; is
                           )}
                         </>
                       )}
+                      {/* The tools and guides for the question: there even when the AI could not answer. */}
+                      {(a.status === "done" || a.status === "failed") && <Suggestions t={t} list={a.suggestions} />}
                     </div>
                   </div>
                 ))}
