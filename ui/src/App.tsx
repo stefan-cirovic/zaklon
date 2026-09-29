@@ -16,6 +16,7 @@ import Maps from "./screens/Maps";
 import Power from "./screens/Power";
 import Assistant from "./screens/Assistant";
 import Tools from "./screens/Tools";
+import Water from "./screens/Water";
 import Help from "./screens/Help";
 import OfflineBanner from "./components/OfflineBanner";
 import { BrandLink } from "./components/Brand";
@@ -419,6 +420,7 @@ export default function App() {
         {tab === "maps" && <Maps t={t} lang={lang} isHub={isHub} />}
         {tab === "supplies" && <Supplies t={t} />}
         {tab === "power" && <Power t={t} lang={lang} />}
+        {tab === "water" && <Water t={t} lang={lang} />}
         {tab === "assistant" && <Assistant t={t} lang={lang} isHub={isHub} go={setTab} />}
         {tab === "addons" && <Addons t={t} lang={lang} isHub={isHub} />}
         {tab === "help" && <Help t={t} lang={lang} />}

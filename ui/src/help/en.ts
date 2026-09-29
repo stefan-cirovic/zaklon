@@ -659,6 +659,77 @@ const en: HelpContent = {
     ],
   },
 
+  water: {
+    title: "Water calculator",
+    summary: "How much drinking water to store and how to make water safe, and how much water a vegetable garden needs with drip irrigation.",
+    open: { href: "#water", label: "Open the water calculator" },
+    sections: [
+      {
+        id: "drinking",
+        title: "Drinking water to store",
+        body: [
+          {
+            steps: [
+              "Open [Water calculator](#water) under Tools. It opens on **Drinking water to store**.",
+              "Set how many adults, children and pets drink from your supply, with **−** and **+** or by typing the number.",
+              "Choose for how many days: **3 days**, **1 week**, **2 weeks**, or **Other** to type any number.",
+            ],
+          },
+          { p: "The first amount is for drinking and cooking: at least one gallon (3.8 L) per person a day, as Ready.gov advises. The second adds washing and basic hygiene: at least 15 L per person a day, the minimum of the humanitarian Sphere standards. Below them are the same amounts in 5, 10 and 20 L canisters and 200 L drums." },
+          { note: "Children, nursing mothers and sick people may need more water, and in very hot weather the need can double. Replace water you filled yourself every six months." },
+        ],
+      },
+      {
+        id: "safe",
+        title: "Make water safe to drink",
+        body: [
+          { p: "Boiling is the best method: bring clear water to a rolling boil for 1 minute, or 3 minutes above 1,000 m, and let it cool. Without a way to boil it, use plain, unscented household bleach with 5–9% sodium hypochlorite: 2 drops per liter of clear water, 4 if it is cloudy, and wait at least 30 minutes." },
+          { warn: "Boiling, bleach and filters cannot make water with fuel, chemicals or poison in it safe." },
+          { note: "These numbers come from the CDC and the EPA, which have not endorsed Zaklon." },
+        ],
+      },
+      {
+        id: "garden",
+        title: "Drip irrigation for a garden",
+        body: [
+          {
+            steps: [
+              "Choose **Drip irrigation for a garden**.",
+              "For each bed, enter its length and width in meters (or choose **Area** and enter square meters) and what grows in it. **Add a bed** adds another one.",
+              "Under **Weather in that month**, choose the month (the hottest one, to be safe), enter the latitude or pick a city nearby, and the usual daytime high and night low. The rain is optional.",
+              "Choose the dripper spacing and flow written on your drip line.",
+            ],
+          },
+          { p: "**What the garden needs** shows the liters a day and a week, how many drippers there are, how long to run the water each day (in the morning and the evening when it is over an hour) and a tank that holds a day's water." },
+          { note: "A bucket or drum raised about 1 m can feed drip lines by gravity, but the pressure is low, so drippers give less than their rating. Hold a cup under one dripper for 10 minutes to see what it really gives, and run the water longer if needed." },
+          { p: "If a local weather service gives the reference evapotranspiration (ET₀), enter it under **Your own ET₀** and it is used in place of the estimate. **How this is calculated** shows every formula and where its numbers come from." },
+        ],
+      },
+      {
+        id: "roof",
+        title: "Rainwater from your roof",
+        body: [
+          { p: "Enter the area your roof covers, measured from above, and the month's rain under the weather. The calculator shows about how many liters the roof collects (1 mm of rain on 1 m² is 1 liter, and 80% of it is counted) and for how many days that waters the garden." },
+          { warn: "Rainwater must be boiled or disinfected before drinking." },
+        ],
+      },
+      {
+        id: "shared",
+        title: "Shared by the household",
+        body: [
+          { p: "What you enter is kept on the hub, so everyone in the household sees the same numbers, on the laptop and on every phone. Anyone in the household can change them; a change is saved a moment after it is made, and a change made on another device shows up here too. A phone away from home shows the numbers it saw last." },
+        ],
+      },
+      {
+        id: "link",
+        title: "Opened from a link",
+        body: [
+          { p: "A link can open the calculator with numbers of its own, for example one from the assistant; what the link does not say stays as the household has it. Those numbers are not saved: choose **Save for the household** to keep them, or **Show the saved numbers** to go back to the household's." },
+        ],
+      },
+    ],
+  },
+
   addons: {
     title: "Add-ons",
     summary: "Download knowledge packs, AI models and maps, and copy them to or from a USB drive.",

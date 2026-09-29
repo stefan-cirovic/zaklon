@@ -24,7 +24,7 @@ const ONE_CONVERSATION = /^\/api\/conversations\/[^/?]+$/;
 /** GET answers kept for when the hub is out of reach. */
 const CACHED = [
   /^\/api\/items$/, /^\/api\/shopping$/, /^\/api\/put-away$/, /^\/api\/places$/, /^\/api\/supplies\/summary$/, /^\/api\/history(\?.*)?$/,
-  /^\/api\/conversations$/, ONE_CONVERSATION, /^\/api\/power$/,
+  /^\/api\/conversations$/, ONE_CONVERSATION, /^\/api\/power$/, /^\/api\/water$/,
 ];
 /** Conversations kept for reading away from the hub: the ones opened last. */
 const KEEP_CONVERSATIONS = 30;

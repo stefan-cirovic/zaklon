@@ -39,6 +39,19 @@ The knowledge packs are ZIM files published by Kiwix (openZIM).
 | Map region list and region names (bundled in `crates/zaklon-core/catalog/comaps-*.json`, Serbian names converted to Latin script) | Apache-2.0 | CoMaps contributors |
 | AI models (Qwen3.5 0.8B, 2B, 4B, 9B) | Apache-2.0 | Qwen team, Alibaba Cloud; GGUF conversions by ggml-org (0.8B) and Unsloth (2B, 4B, 9B) |
 
+## Figures the tools calculate with
+
+Only numbers and methods are used; no text is copied. The sources do not endorse Zaklon.
+
+| Tool | Figures | Source |
+|---|---|---|
+| Water calculator | Drinking water per person (one gallon a day) | Ready.gov, https://www.ready.gov/water (U.S. government work) |
+| Water calculator | Water for basic hygiene (15 L per person a day) | The Sphere Handbook (2018), water supply standard 2.1 |
+| Water calculator | Boiling times and bleach amounts | CDC, https://www.cdc.gov/water-emergency/about/index.html, and EPA, https://www.epa.gov/ground-water-and-drinking-water/emergency-disinfection-drinking-water (U.S. government works) |
+| Water calculator | Crop coefficients | USDA NRCS, National Engineering Handbook Part 623, Chapter 2 (1993; public domain) |
+| Water calculator | Reference evapotranspiration | Hargreaves and Samani (1985); extraterrestrial radiation by the formulas of FAO Irrigation and Drainage Paper 56 (Allen et al. 1998) |
+| Water calculator | Gravity drip kits (a bucket or drum about 1 m up) | Palada M. et al. 2011. More Crop Per Drop. AVRDC – The World Vegetable Center (CC BY-SA 3.0) |
+
 ## Libraries
 
 Zaklon is built with Tauri, React, Rust crates (among them axum, tokio, rustls and reqwest) and SQLite (public domain, compiled in through rusqlite). Backups are encrypted in the standard age format with the `age` crate (MIT or Apache-2.0, https://github.com/str4d/rage), so the `age` tool can open them too. A generated list of all Rust and JavaScript libraries and their licenses is not produced yet; it is planned to ship with every build. Until then, the complete dependency lists are `Cargo.lock` and `pnpm-lock.yaml` in this repository.

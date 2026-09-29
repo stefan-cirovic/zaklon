@@ -291,6 +291,9 @@ assert.ok(off.isCacheable("GET", "/api/conversations/c1"));
 assert.ok(!off.isCacheable("GET", "/api/conversations?q=water"));
 assert.ok(!off.isCacheable("GET", "/api/conversations/c1/send"));
 assert.ok(!off.isQueueable("POST", "/api/assistant/ask"), "questions do not wait for the hub");
+// The calculators' household plans are kept to look at away from home; a change is not kept for later.
+assert.ok(off.isCacheable("GET", "/api/water") && off.isCacheable("GET", "/api/power"));
+assert.ok(!off.isCacheable("PUT", "/api/water") && !off.isQueueable("PUT", "/api/water"));
 for (let i = 0; i < 32; i++) off.remember(`/api/conversations/c${i}`, JSON.stringify({ id: `c${i}`, turns: [] }));
 off.remember("/api/conversations/c0", JSON.stringify({ id: "c0", turns: [] }));
 assert.equal(off.recall("/api/conversations/c1"), null, "the one opened longest ago made room");

@@ -20,6 +20,7 @@ export const HELP_TOPICS = [
   "library",
   "maps",
   "power",
+  "water",
   "addons",
   "settings",
   "offline",

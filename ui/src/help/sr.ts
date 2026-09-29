@@ -659,6 +659,77 @@ const sr: HelpContent = {
     ],
   },
 
+  water: {
+    title: "Kalkulator vode",
+    summary: "Koliko vode za piće da čuvaš i kako da je učiniš bezbednom, i koliko vode treba povrtnjaku koji se zaliva kap po kap.",
+    open: { href: "#water", label: "Otvori kalkulator vode" },
+    sections: [
+      {
+        id: "drinking",
+        title: "Voda za piće u rezervi",
+        body: [
+          {
+            steps: [
+              "Otvori [Kalkulator vode](#water) u Alatima. Otvara se na delu **Voda za piće u rezervi**.",
+              "Podesi koliko odraslih, dece i ljubimaca pije iz tvoje rezerve, dugmadima **−** i **+** ili upisivanjem broja.",
+              "Izaberi za koliko dana: **3 dana**, **1 nedelja**, **2 nedelje**, ili **Drugo** da upišeš bilo koji broj.",
+            ],
+          },
+          { p: "Prva količina je za piće i kuvanje: najmanje 3,8 L (jedan galon) po osobi dnevno, kako savetuje Ready.gov. Druga dodaje pranje i osnovnu higijenu: najmanje 15 L po osobi dnevno, minimum iz humanitarnih standarda Sphere. Ispod su iste količine u kanisterima od 5, 10 i 20 L i u buradima od 200 L." },
+          { note: "Deci, dojiljama i bolesnima može trebati više vode, a po velikoj vrućini potreba može da se udvostruči. Vodu koju si sam natočio menjaj na svakih šest meseci." },
+        ],
+      },
+      {
+        id: "safe",
+        title: "Kako da voda bude bezbedna za piće",
+        body: [
+          { p: "Kuvanje je najbolji način: neka bistra voda snažno ključa 1 minut, a iznad 1.000 m nadmorske visine 3 minuta, pa je ostavi da se ohladi. Ako ne možeš da je prokuvaš, koristi običnu varikinu bez mirisa sa 5–9% natrijum-hipohlorita: 2 kapi na litar bistre vode, 4 ako je mutna, i sačekaj najmanje 30 minuta." },
+          { warn: "Ni kuvanje, ni varikina, ni filteri ne mogu učiniti bezbednom vodu u kojoj ima goriva, hemikalija ili otrova." },
+          { note: "Ovi brojevi su od CDC-a i EPA-e, koji ne stoje iza Zaklona." },
+        ],
+      },
+      {
+        id: "garden",
+        title: "Navodnjavanje kap po kap",
+        body: [
+          {
+            steps: [
+              "Izaberi **Navodnjavanje kap po kap**.",
+              "Za svaku leju upiši dužinu i širinu u metrima (ili izaberi **Površina** i upiši kvadratne metre) i šta raste u njoj. **Dodaj leju** dodaje još jednu.",
+              "U delu **Vreme u tom mesecu** izaberi mesec (za svaki slučaj najtopliji), upiši geografsku širinu ili izaberi grad u blizini, i uobičajenu dnevnu najvišu i noćnu najnižu temperaturu. Kiša nije obavezna.",
+              "Izaberi razmak i protok kapaljki koji piše na tvom crevu za kapanje.",
+            ],
+          },
+          { p: "**Šta bašti treba** pokazuje litre dnevno i nedeljno, koliko ima kapaljki, koliko dugo dnevno da puštaš vodu (ujutru i uveče kad je to duže od sata) i posudu u koju staje voda za jedan dan." },
+          { note: "Kofa ili bure podignuti oko 1 m mogu sami da teraju vodu kroz creva, ali je pritisak mali, pa kapaljke daju manje nego što piše na njima. Drži čašu ispod jedne kapaljke 10 minuta da vidiš koliko stvarno daje, i po potrebi puštaj vodu duže." },
+          { p: "Ako lokalna meteorološka služba daje referentnu evapotranspiraciju (ET₀), upiši je u polje **Tvoja ET₀** i koristiće se umesto procene. **Kako se ovo računa** pokazuje sve formule i odakle su brojevi." },
+        ],
+      },
+      {
+        id: "roof",
+        title: "Kišnica sa krova",
+        body: [
+          { p: "Upiši površinu koju krov pokriva, merenu odozgo, i kišu u tom mesecu kod vremena. Kalkulator pokazuje otprilike koliko litara krov skupi (1 mm kiše na 1 m² je 1 litar, a računa se 80%) i za koliko dana je to dovoljno bašti." },
+          { warn: "Kišnicu pre pijenja obavezno prokuvaj ili dezinfikuj." },
+        ],
+      },
+      {
+        id: "shared",
+        title: "Zajedničko za domaćinstvo",
+        body: [
+          { p: "Ono što upišeš čuva se na hubu, pa svi u domaćinstvu vide iste brojeve, na laptopu i na svakom telefonu. Svako iz domaćinstva može da ih menja; promena se čuva čim je napraviš, a promena sa drugog uređaja pojavi se i ovde. Telefon van kuće pokazuje brojeve koje je poslednje video." },
+        ],
+      },
+      {
+        id: "link",
+        title: "Otvoreno preko linka",
+        body: [
+          { p: "Link može da otvori kalkulator sa sopstvenim brojevima, na primer onim iz asistenta; ono što link ne kaže ostaje kako ga domaćinstvo ima. Ti brojevi nisu sačuvani: izaberi **Sačuvaj za domaćinstvo** da ih zadržiš, ili **Prikaži sačuvane brojeve** da se vratiš na brojeve domaćinstva." },
+        ],
+      },
+    ],
+  },
+
   addons: {
     title: "Dodaci",
     summary: "Preuzimanje paketa znanja, AI modela i mapa, i njihovo kopiranje na USB ili sa njega.",

@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 export type IconName =
   | "home" | "assistant" | "tools" | "settings" | "supplies" | "library" | "maps" | "addons" | "pin"
   | "plus" | "list" | "more" | "close" | "send" | "stop" | "memory" | "shared"
-  | "help" | "phone" | "offline" | "wrench" | "check" | "cart" | "power";
+  | "help" | "phone" | "offline" | "wrench" | "check" | "cart" | "power" | "water";
 
 const SHAPES: Record<IconName, ReactNode> = {
   home: (
@@ -124,6 +124,13 @@ const SHAPES: Record<IconName, ReactNode> = {
   ),
   // A lightning bolt: the power calculator.
   power: <path d="M13.5 3.5 6 13.5h5.5l-1 7 7.5-10h-5.5z" />,
+  // A drop: the water calculator.
+  water: (
+    <>
+      <path d="M12 3.8C9.2 7.6 6.3 10.6 6.3 14.2a5.7 5.7 0 0 0 11.4 0c0-3.6-2.9-6.6-5.7-10.4z" />
+      <path d="M9.4 14.6a2.7 2.7 0 0 0 2.4 2.6" />
+    </>
+  ),
 };
 
 export function Icon({ name, size = 22 }: { name: IconName; size?: number }) {

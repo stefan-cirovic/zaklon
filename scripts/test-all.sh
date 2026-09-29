@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run every automated check: lint (clippy), unit tests, the phone offline-logic
-# check, the power calculator's arithmetic, the user guide check, the hub
-# end-to-end test and the interface end-to-end tests (Edge or Chrome).
+# check, the power and water calculators' arithmetic, the user guide check, the
+# hub end-to-end test and the interface end-to-end tests (Edge or Chrome).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.cargo/bin:$PATH"
@@ -23,6 +23,9 @@ node ui/e2e/unit/power.check.mts
 
 echo "== user guide: English and Serbian match, links lead somewhere"
 node ui/e2e/unit/help.check.mts
+
+echo "== water calculator arithmetic"
+node ui/e2e/unit/water.check.mts
 
 echo "== interface end-to-end tests"
 cargo build -p zaklon-hub

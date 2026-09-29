@@ -27,6 +27,7 @@ export const TOOLS = [
   { id: "library", title: "library", desc: "toolLibraryDesc", category: "knowledge" },
   { id: "maps", title: "maps", desc: "toolMapsDesc", category: "maps" },
   { id: "power", title: "powerCalc", desc: "toolPowerDesc", category: "power" },
+  { id: "water", title: "waterCalc", desc: "toolWaterDesc", category: ["water", "garden"] },
   { id: "addons", title: "addons", desc: "toolAddonsDesc", category: "downloads" },
 ] as const satisfies readonly { id: string; title: Key; desc: Key; category: ToolCategory | readonly ToolCategory[] }[];
 

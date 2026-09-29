@@ -32,6 +32,8 @@ test("shots", async ({ page }, info) => {
   }
   const shots: [string, string][] = [
     ["home", "/#home"], ["tools", "/#tools"], ["library", "/#library"], ["maps", "/#maps"], ["supplies", "/#supplies"],
+    ["water", "/#tools/water?people=2&children=2&smallpets=1&days=7"],
+    ["water-drip", "/#tools/water?part=drip&beds=4x1.2:tomatoes,3x1:greens,6:potatoes&lat=44.8&month=7&tmax=29&tmin=17&rain=60&roof=80"],
     ["assistant", "/#assistant"], ["addons", "/#addons"], ["settings", "/#settings"], ["settings-help", "/#help"],
     ...["devices", "network", "backups", "privacy", "appearance", "language", "assistant", "updates", "about"].map(
       (c) => [`settings-${c}`, `/#settings/${c}`] as [string, string],

@@ -255,14 +255,16 @@ test("tools: every tool is listed, and one can be pinned to the bar for the whol
   await page.request.post("/api/pinned-tool", { data: { tool: null } });
   await page.goto("/#tools");
   await expect(page.getByRole("heading", { name: "Tools", exact: true })).toBeVisible();
-  for (const name of ["Supplies", "Library", "Maps", "Power calculator", "Add-ons"]) {
+  for (const name of ["Supplies", "Library", "Maps", "Power calculator", "Water calculator", "Add-ons"]) {
     await expect(page.locator(".tool-card", { hasText: name }).first()).toBeVisible();
   }
   await expect(page.getByText(/expiry dates and a shopping list/).first()).toBeVisible();
-  // Supplies (food and medicines) is listed under Food and under Health and first aid.
+  // Supplies (food and medicines) is listed under Food and under Health and first aid,
+  // the water calculator under Water and under Garden.
   await expect(page.locator(".tool-card", { hasText: "Supplies" })).toHaveCount(2);
+  await expect(page.locator(".tool-card", { hasText: "Water calculator" })).toHaveCount(2);
   // Only the tools: Help is in Settings now.
-  await expect(page.locator(".tool-card")).toHaveCount(6);
+  await expect(page.locator(".tool-card")).toHaveCount(8);
   await expect(page.locator(".topic-grid").getByRole("link", { name: /^Help/ })).toHaveCount(0);
   expect(await barItems(page)).toEqual(["Home", "Assistant", "Tools", "Settings"]);
 
@@ -324,7 +326,9 @@ test("tools: sorted by topic; a topic shows its tools, and its guides open Add-o
   // Each with a line on what it is about, and its tools (a topic may have none yet, only guides).
   const water = topic("Water");
   await expect(water).toContainText("Finding, cleaning and storing safe drinking water.");
-  await expect(water.locator(".tool-card")).toHaveCount(0);
+  await expect(water.locator(".tool-title")).toHaveText(["Water calculator"]);
+  await expect(topic("Garden").locator(".tool-title")).toHaveText(["Water calculator"]);
+  await expect(topic("Build and install").locator(".tool-card")).toHaveCount(0);
   await expect(topic("Health and first aid").locator(".tool-title")).toHaveText(["Supplies"]);
   await expect(topic("Food").locator(".tool-title")).toHaveText(["Supplies"]);
   await expect(topic("Knowledge").locator(".tool-title")).toHaveText(["Library"]);
@@ -1120,7 +1124,7 @@ test("home: the hub at the top, what in the supplies needs attention, and the to
 
   // The tools not in the bar, and Help.
   const tools = page.getByRole("region", { name: "Quick access" });
-  await expect(tools.getByRole("link")).toHaveText(["Supplies", "Library", "Maps", "Power calculator", "Add-ons", "Help"]);
+  await expect(tools.getByRole("link")).toHaveText(["Supplies", "Library", "Maps", "Power calculator", "Water calculator", "Add-ons", "Help"]);
   await noHorizontalScroll(page);
 
   const box = async (name: string) => (await page.getByRole("region", { name, exact: true }).boundingBox())!;
@@ -1164,7 +1168,7 @@ test("home: the hub at the top, what in the supplies needs attention, and the to
   await page.request.post("/api/pinned-tool", { data: { tool: "maps" } });
   await page.goto("/#home");
   await page.reload();
-  await expect(tools.getByRole("link")).toHaveText(["Supplies", "Library", "Power calculator", "Add-ons", "Help"]);
+  await expect(tools.getByRole("link")).toHaveText(["Supplies", "Library", "Power calculator", "Water calculator", "Add-ons", "Help"]);
   await page.request.post("/api/pinned-tool", { data: { tool: null } });
 });
 
