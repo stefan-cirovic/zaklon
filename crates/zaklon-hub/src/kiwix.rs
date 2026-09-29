@@ -46,8 +46,8 @@ pub struct Book {
     #[serde(skip)]
     pub rel: String,
     /// What the pack is about, its topics in the catalog ("water", "health"):
-    /// the assistant searches the packs about a question's topics first.
-    #[serde(skip)]
+    /// the Library lists it under each, and the assistant searches the packs
+    /// about a question's topics first.
     pub topics: Vec<String>,
 }
 
@@ -222,8 +222,8 @@ impl Library {
                         languages: v.pack.languages.clone(),
                         file,
                         rel: f.path,
-                        // A knowledge pack about no known topic is in the Knowledge folder.
-                        topics: if v.pack.topics.is_empty() { vec!["knowledge".into()] } else { v.pack.topics.clone() },
+                        // A knowledge pack about no known topic is under Encyclopedias and dictionaries.
+                        topics: if v.pack.topics.is_empty() { vec!["reference".into()] } else { v.pack.topics.clone() },
                     })
                 })
             })

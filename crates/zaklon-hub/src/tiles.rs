@@ -2,7 +2,7 @@
 //! served behind one address, `/tiles/{z}/{x}/{y}.mvt`, together with the
 //! fonts and icons the map's style draws labels with.
 //!
-//! The archives are the map packs from Add-ons (the whole world, 138 GB) and
+//! The archives are the downloaded map packs (the whole world, 138 GB) and
 //! the small world overview that comes with the app (zoom 0-5), in that
 //! order: a tile comes from the most detailed archive that has it. The
 //! overview, the fonts, the icons and the list of cities are the app's *map
@@ -58,7 +58,7 @@ const DIRECTORIES_KEPT: usize = 256;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Kind {
-    /// A map pack from Add-ons.
+    /// A downloaded map pack.
     Pack,
     /// The world overview that comes with the app.
     Overview,

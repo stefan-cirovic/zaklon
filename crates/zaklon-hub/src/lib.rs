@@ -277,7 +277,7 @@ impl Hub {
             .context("loading TLS identity")?;
         // The world map build to offer: from the last list of builds this hub
         // read, else the build pinned in the app. The list is read again
-        // when Add-ons is opened (see world.rs).
+        // when Maps or Storage & Downloads is opened (see world.rs).
         let world = world::WorldBuilds::open(&config.catalog_dir());
         let downloads = Downloads::with_world(
             Catalog::load(&config.catalog_dir()),

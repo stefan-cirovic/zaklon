@@ -1,9 +1,10 @@
 //! Copying installed packs to a folder, usually a USB drive, so another
-//! Zaklon can import them without internet ("Copy to USB" on Add-ons).
+//! Zaklon can import them without internet ("Copy to USB" in Settings ›
+//! Storage & Downloads).
 //! Runs in the background with progress; one copy at a time.
 //!
 //! Files land in `<folder>\zaklon-packs\` under their own names, which is
-//! where "Import from USB" looks. Each file is written as `.part` and renamed
+//! where "Import from a USB stick or folder" looks. Each file is written as `.part` and renamed
 //! when complete, so an unplugged drive never leaves a file that looks whole.
 //! The importing hub checks every file against the catalog's hash anyway.
 
@@ -22,9 +23,10 @@ pub const FOLDER: &str = "zaklon-packs";
 
 const README: &str = "These files are Zaklon packs (offline knowledge, maps, AI models).\r\n\
 \r\n\
-To use them on another computer with Zaklon: open Zaklon, go to Add-ons,\r\n\
-and under \"Import from USB\" choose this drive. Zaklon checks every file\r\n\
-before using it. Nothing here needs internet.\r\n\
+To use them on another computer with Zaklon: open Zaklon, go to Settings >\r\n\
+Storage & Downloads, and under \"Import from a USB stick or folder\" choose\r\n\
+this drive. Zaklon checks every file before using it. Nothing here needs\r\n\
+internet.\r\n\
 \r\n\
 More about Zaklon: https://zaklon.com\r\n";
 
@@ -61,15 +63,17 @@ const USB_README: &str = "ZAKLON\r\n\
 \r\n\
 English\r\n\
 1. On a Windows computer, run Zaklon-setup.exe (no internet needed).\r\n\
-2. Open Zaklon > Add-ons > Import from USB, and choose this drive.\r\n\
+2. Open Zaklon > Settings > Storage & Downloads > Import from a USB stick\r\n\
+   or folder, and choose this drive.\r\n\
 3. Phones: copy zaklon.apk to the phone and open it to install, or install\r\n\
-   it from the new hub (Household > Add a phone).\r\n\
+   it from the new hub (Settings > Devices > Add a phone).\r\n\
 \r\n\
 Srpski\r\n\
 1. Na Windows računaru pokreni Zaklon-setup.exe (internet nije potreban).\r\n\
-2. Otvori Zaklon > Dodaci > Uvoz sa USB-a i izaberi ovaj disk.\r\n\
+2. Otvori Zaklon > Podešavanja > Skladište i preuzimanja > Uvoz sa USB-a ili\r\n\
+   iz foldera i izaberi ovaj disk.\r\n\
 3. Telefoni: prebaci zaklon.apk na telefon i otvori ga da se instalira, ili\r\n\
-   ga instaliraj sa novog huba (Domaćinstvo > Dodaj telefon).\r\n\
+   ga instaliraj sa novog huba (Podešavanja > Uređaji > Dodaj telefon).\r\n\
 \r\n\
 https://zaklon.com\r\n";
 

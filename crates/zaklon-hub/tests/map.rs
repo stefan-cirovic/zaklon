@@ -1,5 +1,5 @@
 //! The Zaklon map against a real hub: tiles from the map archives (a map
-//! pack from Add-ons and the world overview that comes with the app, the
+//! pack downloaded in Maps and the world overview that comes with the app, the
 //! most detailed first, tile by tile), the fonts and icons of its style, a
 //! map pack put in place by hand, who may read all this, and the
 //! household's home location with "find a place".
@@ -63,10 +63,10 @@ async fn tile_text(hub: &Hub, z: u8, x: u32, y: u32) -> (u16, String) {
     (st, gunzip(&body))
 }
 
-/// The status of a pack, as Add-ons shows it.
+/// The status of a pack, as the app shows it.
 async fn pack_status(hub: &Hub, id: &str) -> String {
     let (_, cat) = hub.get("/api/catalog").await;
-    let pack = cat["packs"].as_array().unwrap().iter().find(|p| p["id"] == id).unwrap_or_else(|| panic!("{id} is listed in Add-ons"));
+    let pack = cat["packs"].as_array().unwrap().iter().find(|p| p["id"] == id).unwrap_or_else(|| panic!("{id} is listed in the catalog"));
     pack["state"]["status"].as_str().unwrap().to_string()
 }
 
@@ -117,7 +117,7 @@ async fn the_map_comes_from_the_hub_most_detailed_first() {
     )
     .unwrap();
 
-    // The world map from Add-ons (zoom 0-3, without tile 1/1/1), put in the
+    // The world map pack (zoom 0-3, without tile 1/1/1), put in the
     // hub's maps folder by hand before the hub starts; and one of the wrong
     // size, which is never used.
     let world = temp_dir("map-world").join("world.pmtiles");

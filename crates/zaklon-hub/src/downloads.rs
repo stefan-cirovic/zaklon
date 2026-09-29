@@ -77,7 +77,7 @@ pub struct SystemInfo {
     pub plugged_in: bool,
 }
 
-/// The world map as Add-ons explains it: which build is offered, which one
+/// The world map as the app explains it: which build is offered, which one
 /// the hub has, and whether a newer one fits next to it.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct WorldView {
@@ -579,7 +579,7 @@ impl Downloads {
         self.save_soon();
     }
 
-    /// The world map as Add-ons explains it (None when the catalog has none).
+    /// The world map as the app explains it (None when the catalog has none).
     pub fn world_view(&self) -> Option<WorldView> {
         let pack = self.catalog().pack(WORLD_MAP_ID).cloned()?;
         let st = self.state_of(WORLD_MAP_ID).unwrap_or_else(|| PackState::not_installed(pack.size));
@@ -2741,7 +2741,7 @@ mod tests {
         let st = d.state_of(WORLD_MAP_ID).unwrap();
         assert_eq!((st.status.clone(), st.bytes_done), (PackStatus::Paused, 5000));
         assert!(library.join(&part).is_file());
-        assert_eq!(d.world_view().unwrap().offered, "20260811", "Add-ons names the build under way");
+        assert_eq!(d.world_view().unwrap().offered, "20260811", "the app names the build under way");
         // Its build left the list (Protomaps deleted it): it cannot go on, and its piece goes.
         d.set_world(offer_of(&b, &[&b], &["20261019"]));
         assert_eq!(d.catalog().pack(WORLD_MAP_ID).unwrap().version, "20261019");

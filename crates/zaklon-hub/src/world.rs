@@ -1,6 +1,6 @@
 //! Which build of the world map the hub offers. Protomaps lists the builds
-//! it keeps in builds.json; the hub reads that list when Add-ons is opened,
-//! at most about once a day (sooner only when the build being downloaded
+//! it keeps in builds.json; the hub reads that list when Maps or Storage &
+//! Downloads is opened, at most about once a day (sooner only when the build being downloaded
 //! was deleted), and keeps the last good list in
 //! `<root>/catalog/world-builds.json`, so a hub without internet still
 //! offers the last build it knew. Without any list it offers the build
@@ -23,7 +23,7 @@ use crate::downloads::{Downloads, GONE};
 
 /// The last good list, in the hub's catalog folder.
 pub const CACHE_FILE: &str = "world-builds.json";
-/// A list this old is read again (when Add-ons is opened).
+/// A list this old is read again (when Maps or Storage & Downloads is opened).
 const EVERY: time::Duration = time::Duration::hours(24);
 /// After an attempt (one that failed without internet, say), the next one waits this long.
 const RETRY: Duration = Duration::from_secs(3600);
@@ -149,7 +149,7 @@ impl WorldBuilds {
         Ok(())
     }
 
-    /// Add-ons was opened: read the list in the background when it is due,
+    /// Maps or Storage & Downloads was opened: read the list in the background when it is due,
     /// then offer what it says. When it is not due the offer is brought up
     /// to date all the same (a build may have grown a week old since).
     /// Returns true when the list is being read.

@@ -1,4 +1,4 @@
-//! Add-ons (knowledge packs, maps, AI models and the programs they need),
+//! Packs (knowledge packs, maps, AI models and the programs they need),
 //! the library they make, and installed AI models copied to phones.
 
 use std::sync::Arc;
@@ -15,7 +15,7 @@ use super::error::{bad, forbidden, not_found, ApiError};
 use super::{blocking, Caller, LibraryReader, Local};
 use crate::HubState;
 
-// ---- add-ons ----------------------------------------------------------------
+// ---- packs -------------------------------------------------------------------
 
 #[derive(Serialize)]
 pub(super) struct CatalogReply {
@@ -23,8 +23,8 @@ pub(super) struct CatalogReply {
     /// What a household starts with, by app language.
     starter_sets: Vec<zaklon_core::catalog::StarterSet>,
     system: crate::downloads::SystemInfo,
-    /// The root of the drive the library is on ("D:\"), which the Add-ons
-    /// screen shows as the hub's drive.
+    /// The root of the drive the library is on ("D:\"), which Storage &
+    /// Downloads shows as the hub's drive.
     library_drive: String,
     /// The world map: which build is offered, which one the hub has, and
     /// whether a newer one fits next to it.
@@ -56,9 +56,10 @@ pub(super) async fn catalog(State(state): State<Arc<HubState>>, _caller: Caller)
     }))
 }
 
-/// Add-ons was opened: the hub reads Protomaps' list of world map builds
-/// in the background when it is due (at most about once a day, and only
-/// then goes online), and offers the build it chooses.
+/// Maps or Storage & Downloads was opened, where the world map is offered:
+/// the hub reads Protomaps' list of world map builds in the background when
+/// it is due (at most about once a day, and only then goes online), and
+/// offers the build it chooses.
 pub(super) async fn world_check(State(state): State<Arc<HubState>>, _caller: Caller) -> Json<serde_json::Value> {
     let checking = state.world.check(&state.downloads);
     Json(serde_json::json!({ "checking": checking }))
@@ -198,6 +199,9 @@ pub(super) struct SearchQuery {
     q: String,
     #[serde(default)]
     book: Option<String>,
+    /// Only the books about this topic (a topic page of the Library).
+    #[serde(default)]
+    topic: Option<String>,
     #[serde(default)]
     limit: Option<usize>,
 }
@@ -208,7 +212,12 @@ pub(super) async fn library_search(
     axum::extract::Query(q): axum::extract::Query<SearchQuery>,
 ) -> Json<Vec<crate::kiwix::SearchResult>> {
     let limit = q.limit.unwrap_or(25).clamp(1, 50);
-    Json(state.library.search(&q.q, q.book.as_deref(), limit).await)
+    let books = state.library.books();
+    let books = match q.topic.as_deref().map(zaklon_core::catalog::upgraded_topic) {
+        Some(topic) => books.into_iter().filter(|b| b.topics.iter().any(|t| zaklon_core::catalog::upgraded_topic(t) == topic)).collect(),
+        None => books,
+    };
+    Json(state.library.search_books(books, &q.q, q.book.as_deref(), limit).await)
 }
 
 /// Articles, images and styles of installed knowledge packs, read-only.
