@@ -1618,10 +1618,15 @@ test("add-ons: the starter set downloads the recommended packs in one go (reques
   // The set is complete, and can be downloaded, once the hub has said which AI model fits this computer.
   await expect(panel.getByRole("listitem").filter({ hasText: /AI model/ })).toHaveCount(1);
   await expect(panel.getByRole("button", { name: "Download all" })).toBeEnabled();
+  const lines = await panel.getByRole("listitem").count();
   await panel.getByRole("button", { name: "Download all" }).click();
-  await expect.poll(() => asked.length).toBeGreaterThanOrEqual(3);
+  // Every line asked for, one after the other (the AI model last).
+  await expect.poll(() => asked.length).toBe(lines);
+  expect(lines).toBeGreaterThanOrEqual(3);
   expect(asked).toContain("/api/packs/wikimed-en/download");
   expect(asked.some((p) => /\/api\/packs\/qwen35-/.test(p))).toBe(true);
+  // The screen asks again after starting: stop the made-up answers before the page closes.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 test("settings: warns when Windows Firewall would keep phones out, and fixes it (simulated)", async ({ page }) => {
