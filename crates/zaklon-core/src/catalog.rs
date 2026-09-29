@@ -10,23 +10,34 @@ use serde::{Deserialize, Serialize};
 
 const BUNDLED: &str = include_str!("../catalog/default-catalog.json");
 
-/// The topics a pack can be about, in the order the Tools screen and the
-/// Add-ons folders show them: health and first aid, water, food (recipes,
+/// The topics a pack can be about. The first seven are the Library's, in
+/// the order it shows them: health and first aid, water, food (recipes,
 /// storing, canning), garden, power (small solar, batteries), build (setting
-/// up solar, irrigation, rainwater and pumps, and repairs), knowledge
-/// (encyclopedias, books, dictionaries) and maps.
-pub const TOPICS: [&str; 8] = ["health", "water", "food", "garden", "power", "build", "knowledge", "maps"];
+/// up solar, irrigation, rainwater and pumps, and repairs) and reference
+/// (encyclopedias, dictionaries and books). The last, maps, is what the maps
+/// are about: they are in Tools › Maps, not in the Library.
+pub const TOPICS: [&str; 8] = ["health", "water", "food", "garden", "power", "build", "reference", "maps"];
+
+/// A topic's id now, for one a catalog, a link or a saved answer from an
+/// earlier version may name: "knowledge" (encyclopedias and dictionaries,
+/// called Knowledge before the whole Library was about reading) is
+/// "reference".
+pub fn upgraded_topic(topic: &str) -> &str {
+    match topic {
+        "knowledge" => "reference",
+        other => other,
+    }
+}
 
 /// A pack's topics in a catalog from before a pack could have several,
 /// named after the old Add-ons folders: "reference" (Wikipedia and books),
 /// "health", "garden" (garden and food) and "skills" (repair and skills).
 fn legacy_topics(topic: &str) -> Vec<&str> {
     match topic {
-        "reference" => vec!["knowledge"],
         "garden" => vec!["garden", "food"],
         "skills" => vec!["build"],
         "" => vec![],
-        other => vec![other],
+        other => vec![upgraded_topic(other)],
     }
 }
 
@@ -131,12 +142,12 @@ pub struct Pack {
     #[serde(default)]
     pub description: Localized,
     pub category: Category,
-    /// What a knowledge pack or a map is about: one or more of [`TOPICS`],
-    /// the categories of the Tools screen. The Add-ons screen shows the pack
-    /// in the folder of each (a knowledge pack with none it knows goes to
-    /// "knowledge"). AI models and programs have none: they have folders of
-    /// their own. Catalogs from before this was a list name one `topic`;
-    /// [`Catalog::parse`] reads it as its list.
+    /// What a knowledge pack or a map is about: one or more of [`TOPICS`].
+    /// The Library lists a knowledge pack under each of its topics (one
+    /// with none it knows under "reference"); maps are about "maps". AI
+    /// models and programs have none. Catalogs from before this was a list
+    /// name one `topic`, and older ones "knowledge" for "reference";
+    /// [`Catalog::parse`] reads both as this version names them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub topics: Vec<String>,
     pub version: String,
@@ -331,18 +342,25 @@ impl Pack {
 impl Catalog {
     /// A catalog from its JSON. A pack from an older catalog, with one
     /// `topic` and no `topics`, gets the topics that old one stands for; a
-    /// catalog may carry both, `topic` for older hubs and `topics` for this one.
+    /// catalog may carry both, `topic` for older hubs and `topics` for this
+    /// one. A topic's old name ("knowledge") is read as its name now.
     pub fn parse(text: &str) -> serde_json::Result<Catalog> {
         let mut v: serde_json::Value = serde_json::from_str(text)?;
-        if let Some(packs) = v.get_mut("packs").and_then(|p| p.as_array_mut()) {
+        for list in ["packs", "withdrawn"] {
+            let Some(packs) = v.get_mut(list).and_then(|p| p.as_array_mut()) else { continue };
             for p in packs.iter_mut().filter_map(|p| p.as_object_mut()) {
-                if p.contains_key("topics") {
-                    continue;
+                let named: Vec<&str> = match (p.get("topics").and_then(|t| t.as_array()), p.get("topic").and_then(|t| t.as_str())) {
+                    (Some(list), _) => list.iter().filter_map(|t| t.as_str()).map(upgraded_topic).collect(),
+                    (None, Some(old)) => legacy_topics(old),
+                    (None, None) => continue,
+                };
+                let mut topics: Vec<String> = Vec::new();
+                for t in named {
+                    if !topics.iter().any(|x| x == t) {
+                        topics.push(t.to_string());
+                    }
                 }
-                if let Some(old) = p.get("topic").and_then(|t| t.as_str()) {
-                    let topics = legacy_topics(old).into_iter().map(serde_json::Value::from).collect();
-                    p.insert("topics".into(), serde_json::Value::Array(topics));
-                }
+                p.insert("topics".into(), serde_json::Value::from(topics));
             }
         }
         serde_json::from_value(v)
@@ -428,9 +446,8 @@ mod tests {
             }
         }
         assert!(c.pack("kiwix-tools").is_some());
-        // Every knowledge pack names what it is about: the Tools screen's
-        // categories and the Add-ons folders it shows in. AI models and
-        // programs have folders of their own and no topics.
+        // Every knowledge pack names what it is about: the Library's topics
+        // it is listed under. AI models and programs have no topics.
         for p in &c.packs {
             match p.category {
                 Category::Knowledge => assert!(!p.topics.is_empty(), "no topics for {}", p.id),
@@ -447,6 +464,10 @@ mod tests {
         }
         // A guide about more than one thing is in more than one place.
         assert!(c.packs.iter().any(|p| p.topics.len() > 1));
+        // The Library's guides: maps are in Tools › Maps, not among them.
+        for p in c.packs.iter().filter(|p| p.category == Category::Knowledge) {
+            assert!(!p.topics.iter().any(|t| t == "maps"), "{} is a map in the Library", p.id);
+        }
         for p in &c.packs {
             assert!(p.is_safe(), "unsafe pack {}", p.id);
             for f in &p.files {
@@ -585,6 +606,27 @@ mod tests {
     }
 
     #[test]
+    fn the_kiwix_map_packs_are_no_longer_offered() {
+        // The Zaklon map and CoMaps show maps; a third kind was confusing.
+        // A household that has one keeps it until it removes it.
+        let c = Catalog::bundled();
+        for id in ["kiwix-map-serbia", "kiwix-map-balkans", "kiwix-map-montenegro", "kiwix-map-bosnia-herzegovina"] {
+            assert!(c.pack(id).is_none(), "{id} is not offered");
+            let p = c.withdrawn_pack(id).unwrap_or_else(|| panic!("{id} is known by name"));
+            assert!(p.files.iter().all(|f| f.urls.is_empty()), "{id} has nowhere to be downloaded from");
+            assert!(!p.title.en.is_empty() && !p.title.sr.is_empty() && p.is_safe());
+        }
+        // Nothing offered is a map read in the Library.
+        assert!(!c.packs.iter().any(|p| p.category == Category::Knowledge && p.id.contains("map")));
+        // A withdrawn pack's old topic name is read as the new one too.
+        let text = format!(
+            r#"{{"version":1,"generated":"2026-01-01","packs":[],"withdrawn":[{{"id":"w","title":{{"en":"W"}},"category":"knowledge","topics":["knowledge"],"version":"1","size":1,"files":[{{"path":"zim/w.zim","sha256":"{}","size":1}}]}}]}}"#,
+            "0".repeat(64)
+        );
+        assert_eq!(Catalog::parse(&text).unwrap().withdrawn[0].topics, ["reference"]);
+    }
+
+    #[test]
     fn maps_are_about_maps() {
         let dir = std::env::temp_dir().join(format!("zaklon-catalog-maps-{}", std::process::id()));
         let c = Catalog::load(&dir);
@@ -608,7 +650,8 @@ mod tests {
             Catalog::parse(&text).unwrap().packs[0].topics.clone()
         };
         // The old folders, as the topics they stand for.
-        assert_eq!(topics(r#","topic":"reference""#), ["knowledge"]);
+        assert_eq!(topics(r#","topic":"reference""#), ["reference"]);
+        assert_eq!(topics(r#","topic":"knowledge""#), ["reference"]);
         assert_eq!(topics(r#","topic":"health""#), ["health"]);
         assert_eq!(topics(r#","topic":"garden""#), ["garden", "food"]);
         assert_eq!(topics(r#","topic":"skills""#), ["build"]);
@@ -617,6 +660,12 @@ mod tests {
         assert!(topics("").is_empty());
         // The list wins when a catalog has both (the old field for older hubs).
         assert_eq!(topics(r#","topic":"reference","topics":["water","health"]"#), ["water", "health"]);
+        // Encyclopedias and dictionaries were called Knowledge: the old name
+        // in a list reads as the new one, once.
+        assert_eq!(topics(r#","topics":["knowledge","food"]"#), ["reference", "food"]);
+        assert_eq!(topics(r#","topics":["reference","knowledge"]"#), ["reference"]);
+        assert_eq!(upgraded_topic("knowledge"), "reference");
+        assert_eq!(upgraded_topic("water"), "water");
         // Written back as the list only.
         let text = format!(r#"{{"version":1,"generated":"2026-01-01","packs":[{}]}}"#, pack(r#","topic":"skills""#));
         let json = serde_json::to_value(Catalog::parse(&text).unwrap()).unwrap();

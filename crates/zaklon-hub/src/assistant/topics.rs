@@ -1,5 +1,5 @@
-//! What a question is about among the app's topics: the sections of the
-//! Tools screen and the folders of Add-ons (`zaklon_core::catalog::TOPICS`).
+//! What a question is about among the app's topics: the Library's topics
+//! and the maps (`zaklon_core::catalog::TOPICS`).
 //! Decided by the question's words, from a small table of words for each
 //! topic, matched the way the rest of the assistant matches Serbian: plain
 //! Latin without diacritics (so "фрижидер" and "frizider" are "frižider"),
@@ -232,7 +232,7 @@ const TOPIC_WORDS: &[(&str, &[&str])] = &[
         ],
     ),
     (
-        "knowledge",
+        "reference",
         &[
             // Serbian
             "istorij*", "ratu", "ratov*", "ratni*", "ustanak", "ustanka", "ustanku", "bitk*", "kralj*", "vek", "veka", "veku", "recnik*",
@@ -392,9 +392,9 @@ mod tests {
         check("kako da zamenim osigurac u kuci, izbacuje mi struju", &["power", "build"]);
         check("curi mi slavina u kupatilu sta da radim", &["build"]);
         check("How do I fix a leaking roof?", &["build"]);
-        // Knowledge
-        check("kad je poceo prvi srpski ustanak i ko ga je vodio", &["knowledge"]);
-        check("Who was Nikola Tesla?", &["knowledge"]);
+        // Encyclopedias and dictionaries
+        check("kad je poceo prvi srpski ustanak i ko ga je vodio", &["reference"]);
+        check("Who was Nikola Tesla?", &["reference"]);
         // Maps
         check("kako da stignem do najbliže bolnice", &["maps", "health"]);
         check("Where can I find a map of the hiking trails?", &["maps"]);

@@ -89,6 +89,140 @@
           "size": 97822565
         }
       ]
+    },
+    {
+      "id": "kiwix-map-serbia",
+      "title": {
+        "en": "Map of Serbia with place search (Library)",
+        "sr": "Mapa Srbije sa pretragom mesta (Biblioteka)"
+      },
+      "description": {
+        "en": "A map of Serbia that opens in the Library, on the laptop and on phones: roads and landmarks, and finding a place by its name. It gives no directions; for navigation, use CoMaps on a phone.",
+        "sr": "Mapa Srbije koja se otvara u Biblioteci, na laptopu i na telefonima: putevi i znamenitosti, i traženje mesta po imenu. Ne vodi do cilja; za navigaciju koristi CoMaps na telefonu."
+      },
+      "category": "knowledge",
+      "topics": [
+        "maps"
+      ],
+      "version": "2026-06",
+      "size": 462267717,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [
+        "sr"
+      ],
+      "license": "ODbL 1.0 (map data), CC BY 4.0 (place search)",
+      "attribution": "© OpenStreetMap contributors (ODbL); tiles by OpenFreeMap, © OpenMapTiles; place search © GeoNames (CC BY 4.0); ZIM file by Kiwix",
+      "source": "https://www.openstreetmap.org",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/maps_en_serbia_2026-06.zim",
+          "urls": [],
+          "sha256": "a39a61af9c7773743b9f8c806ff95bfb1f2424573cff5d3a7053651cdac96f32",
+          "size": 462267717
+        }
+      ]
+    },
+    {
+      "id": "kiwix-map-balkans",
+      "title": {
+        "en": "Map of the Balkans with place search (Library)",
+        "sr": "Mapa Balkana sa pretragom mesta (Biblioteka)"
+      },
+      "description": {
+        "en": "A map of the Balkans (Serbia, its neighbors and the rest of the peninsula) that opens in the Library, on the laptop and on phones: roads and landmarks, and finding a place by its name. It gives no directions. Large (1.5 GB).",
+        "sr": "Mapa Balkana (Srbija, susedne zemlje i ostatak poluostrva) koja se otvara u Biblioteci, na laptopu i na telefonima: putevi i znamenitosti, i traženje mesta po imenu. Ne vodi do cilja. Veliko (1,5 GB)."
+      },
+      "category": "knowledge",
+      "topics": [
+        "maps"
+      ],
+      "version": "2026-08",
+      "size": 1541283658,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "ODbL 1.0 (map data), CC BY 4.0 (place search)",
+      "attribution": "© OpenStreetMap contributors (ODbL); tiles by OpenFreeMap, © OpenMapTiles; place search © GeoNames (CC BY 4.0); ZIM file by Kiwix",
+      "source": "https://www.openstreetmap.org",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/maps_en_balkans_2026-08.zim",
+          "urls": [],
+          "sha256": "498380c6b6e5147bfc824bd0058def8fe7b4cb702c8599c1ce8fd8086152f32a",
+          "size": 1541283658
+        }
+      ]
+    },
+    {
+      "id": "kiwix-map-montenegro",
+      "title": {
+        "en": "Map of Montenegro with place search (Library)",
+        "sr": "Mapa Crne Gore sa pretragom mesta (Biblioteka)"
+      },
+      "description": {
+        "en": "A map of Montenegro that opens in the Library, on the laptop and on phones: roads and landmarks, and finding a place by its name. It gives no directions.",
+        "sr": "Mapa Crne Gore koja se otvara u Biblioteci, na laptopu i na telefonima: putevi i znamenitosti, i traženje mesta po imenu. Ne vodi do cilja."
+      },
+      "category": "knowledge",
+      "topics": [
+        "maps"
+      ],
+      "version": "2026-06",
+      "size": 198341170,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "ODbL 1.0 (map data), CC BY 4.0 (place search)",
+      "attribution": "© OpenStreetMap contributors (ODbL); tiles by OpenFreeMap, © OpenMapTiles; place search © GeoNames (CC BY 4.0); ZIM file by Kiwix",
+      "source": "https://www.openstreetmap.org",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/maps_en_montenegro_2026-06.zim",
+          "urls": [],
+          "sha256": "98b09ae36d42eb7c073792e02268f24cb0b4b0f32424f4501caef740e1981ba2",
+          "size": 198341170
+        }
+      ]
+    },
+    {
+      "id": "kiwix-map-bosnia-herzegovina",
+      "title": {
+        "en": "Map of Bosnia and Herzegovina with place search (Library)",
+        "sr": "Mapa Bosne i Hercegovine sa pretragom mesta (Biblioteka)"
+      },
+      "description": {
+        "en": "A map of Bosnia and Herzegovina that opens in the Library, on the laptop and on phones: roads and landmarks, and finding a place by its name. It gives no directions.",
+        "sr": "Mapa Bosne i Hercegovine koja se otvara u Biblioteci, na laptopu i na telefonima: putevi i znamenitosti, i traženje mesta po imenu. Ne vodi do cilja."
+      },
+      "category": "knowledge",
+      "topics": [
+        "maps"
+      ],
+      "version": "2026-06",
+      "size": 367521252,
+      "languages": [
+        "eng"
+      ],
+      "recommended_for": [],
+      "license": "ODbL 1.0 (map data), CC BY 4.0 (place search)",
+      "attribution": "© OpenStreetMap contributors (ODbL); tiles by OpenFreeMap, © OpenMapTiles; place search © GeoNames (CC BY 4.0); ZIM file by Kiwix",
+      "source": "https://www.openstreetmap.org",
+      "offer": "auto",
+      "files": [
+        {
+          "path": "zim/maps_en_bosnia-herzegovina_2026-06.zim",
+          "urls": [],
+          "sha256": "9c5c0d1eb6f7e7977e036033d31a6b713c1b5a30a0bb1aca15ef2f97ecaf37d3",
+          "size": 367521252
+        }
+      ]
     }
   ],
   "packs": [
@@ -104,7 +238,7 @@
       },
       "category": "knowledge",
       "topics": [
-        "knowledge"
+        "reference"
       ],
       "version": "2026-09-14",
       "size": 11819209331,
@@ -143,7 +277,7 @@
       },
       "category": "knowledge",
       "topics": [
-        "knowledge"
+        "reference"
       ],
       "version": "2026-09-14",
       "size": 6897076901,
@@ -180,7 +314,7 @@
       },
       "category": "knowledge",
       "topics": [
-        "knowledge"
+        "reference"
       ],
       "version": "2026-09-14",
       "size": 2029773550,
@@ -217,7 +351,7 @@
       },
       "category": "knowledge",
       "topics": [
-        "knowledge"
+        "reference"
       ],
       "version": "2026-07",
       "size": 700593845,
@@ -254,7 +388,7 @@
       },
       "category": "knowledge",
       "topics": [
-        "knowledge"
+        "reference"
       ],
       "version": "2026-07",
       "size": 157534147,
@@ -291,7 +425,7 @@
       },
       "category": "knowledge",
       "topics": [
-        "knowledge"
+        "reference"
       ],
       "version": "2026-07-14",
       "size": 332858392,
@@ -330,7 +464,7 @@
       },
       "category": "knowledge",
       "topics": [
-        "knowledge"
+        "reference"
       ],
       "version": "2026-07",
       "size": 141724244,
@@ -367,7 +501,7 @@
       },
       "category": "knowledge",
       "topics": [
-        "knowledge"
+        "reference"
       ],
       "version": "2026-01",
       "size": 3624747,
@@ -482,7 +616,7 @@
       },
       "category": "knowledge",
       "topics": [
-        "knowledge"
+        "reference"
       ],
       "version": "2026-09-09",
       "size": 14386799064,
@@ -521,7 +655,7 @@
       },
       "category": "knowledge",
       "topics": [
-        "knowledge"
+        "reference"
       ],
       "version": "2026-06-17",
       "size": 52690706555,
@@ -793,7 +927,7 @@
       },
       "category": "knowledge",
       "topics": [
-        "knowledge",
+        "reference",
         "food"
       ],
       "version": "2026-07",
@@ -833,7 +967,7 @@
       },
       "category": "knowledge",
       "topics": [
-        "knowledge",
+        "reference",
         "health",
         "food"
       ],
@@ -1316,156 +1450,6 @@
           ],
           "sha256": "3fdbf378347ecf02d7c5233cf266bdb18b67a18cdb288c6aa115aefd8e8d9ed4",
           "size": 490983811
-        }
-      ]
-    },
-    {
-      "id": "kiwix-map-serbia",
-      "title": {
-        "en": "Map of Serbia with place search (Library)",
-        "sr": "Mapa Srbije sa pretragom mesta (Biblioteka)"
-      },
-      "description": {
-        "en": "A map of Serbia that opens in the Library, on the laptop and on phones: roads and landmarks, and finding a place by its name. It gives no directions; for navigation, use CoMaps on a phone.",
-        "sr": "Mapa Srbije koja se otvara u Biblioteci, na laptopu i na telefonima: putevi i znamenitosti, i traženje mesta po imenu. Ne vodi do cilja; za navigaciju koristi CoMaps na telefonu."
-      },
-      "category": "knowledge",
-      "topics": [
-        "maps"
-      ],
-      "version": "2026-06",
-      "size": 462267717,
-      "languages": [
-        "eng"
-      ],
-      "recommended_for": [
-        "sr"
-      ],
-      "license": "ODbL 1.0 (map data), CC BY 4.0 (place search)",
-      "attribution": "© OpenStreetMap contributors (ODbL); tiles by OpenFreeMap, © OpenMapTiles; place search © GeoNames (CC BY 4.0); ZIM file by Kiwix",
-      "source": "https://www.openstreetmap.org",
-      "offer": "auto",
-      "files": [
-        {
-          "path": "zim/maps_en_serbia_2026-06.zim",
-          "urls": [
-            "https://lb.download.kiwix.org/zim/maps/maps_en_serbia_2026-06.zim",
-            "https://mirrors.dotsrc.org/kiwix/zim/maps/maps_en_serbia_2026-06.zim",
-            "https://mirror.accum.se/mirror/kiwix.org/zim/maps/maps_en_serbia_2026-06.zim"
-          ],
-          "sha256": "a39a61af9c7773743b9f8c806ff95bfb1f2424573cff5d3a7053651cdac96f32",
-          "size": 462267717
-        }
-      ]
-    },
-    {
-      "id": "kiwix-map-balkans",
-      "title": {
-        "en": "Map of the Balkans with place search (Library)",
-        "sr": "Mapa Balkana sa pretragom mesta (Biblioteka)"
-      },
-      "description": {
-        "en": "A map of the Balkans (Serbia, its neighbors and the rest of the peninsula) that opens in the Library, on the laptop and on phones: roads and landmarks, and finding a place by its name. It gives no directions. Large (1.5 GB).",
-        "sr": "Mapa Balkana (Srbija, susedne zemlje i ostatak poluostrva) koja se otvara u Biblioteci, na laptopu i na telefonima: putevi i znamenitosti, i traženje mesta po imenu. Ne vodi do cilja. Veliko (1,5 GB)."
-      },
-      "category": "knowledge",
-      "topics": [
-        "maps"
-      ],
-      "version": "2026-08",
-      "size": 1541283658,
-      "languages": [
-        "eng"
-      ],
-      "recommended_for": [],
-      "license": "ODbL 1.0 (map data), CC BY 4.0 (place search)",
-      "attribution": "© OpenStreetMap contributors (ODbL); tiles by OpenFreeMap, © OpenMapTiles; place search © GeoNames (CC BY 4.0); ZIM file by Kiwix",
-      "source": "https://www.openstreetmap.org",
-      "offer": "auto",
-      "files": [
-        {
-          "path": "zim/maps_en_balkans_2026-08.zim",
-          "urls": [
-            "https://lb.download.kiwix.org/zim/maps/maps_en_balkans_2026-08.zim",
-            "https://mirrors.dotsrc.org/kiwix/zim/maps/maps_en_balkans_2026-08.zim",
-            "https://mirror.accum.se/mirror/kiwix.org/zim/maps/maps_en_balkans_2026-08.zim"
-          ],
-          "sha256": "498380c6b6e5147bfc824bd0058def8fe7b4cb702c8599c1ce8fd8086152f32a",
-          "size": 1541283658
-        }
-      ]
-    },
-    {
-      "id": "kiwix-map-montenegro",
-      "title": {
-        "en": "Map of Montenegro with place search (Library)",
-        "sr": "Mapa Crne Gore sa pretragom mesta (Biblioteka)"
-      },
-      "description": {
-        "en": "A map of Montenegro that opens in the Library, on the laptop and on phones: roads and landmarks, and finding a place by its name. It gives no directions.",
-        "sr": "Mapa Crne Gore koja se otvara u Biblioteci, na laptopu i na telefonima: putevi i znamenitosti, i traženje mesta po imenu. Ne vodi do cilja."
-      },
-      "category": "knowledge",
-      "topics": [
-        "maps"
-      ],
-      "version": "2026-06",
-      "size": 198341170,
-      "languages": [
-        "eng"
-      ],
-      "recommended_for": [],
-      "license": "ODbL 1.0 (map data), CC BY 4.0 (place search)",
-      "attribution": "© OpenStreetMap contributors (ODbL); tiles by OpenFreeMap, © OpenMapTiles; place search © GeoNames (CC BY 4.0); ZIM file by Kiwix",
-      "source": "https://www.openstreetmap.org",
-      "offer": "auto",
-      "files": [
-        {
-          "path": "zim/maps_en_montenegro_2026-06.zim",
-          "urls": [
-            "https://lb.download.kiwix.org/zim/maps/maps_en_montenegro_2026-06.zim",
-            "https://mirrors.dotsrc.org/kiwix/zim/maps/maps_en_montenegro_2026-06.zim",
-            "https://mirror.accum.se/mirror/kiwix.org/zim/maps/maps_en_montenegro_2026-06.zim"
-          ],
-          "sha256": "98b09ae36d42eb7c073792e02268f24cb0b4b0f32424f4501caef740e1981ba2",
-          "size": 198341170
-        }
-      ]
-    },
-    {
-      "id": "kiwix-map-bosnia-herzegovina",
-      "title": {
-        "en": "Map of Bosnia and Herzegovina with place search (Library)",
-        "sr": "Mapa Bosne i Hercegovine sa pretragom mesta (Biblioteka)"
-      },
-      "description": {
-        "en": "A map of Bosnia and Herzegovina that opens in the Library, on the laptop and on phones: roads and landmarks, and finding a place by its name. It gives no directions.",
-        "sr": "Mapa Bosne i Hercegovine koja se otvara u Biblioteci, na laptopu i na telefonima: putevi i znamenitosti, i traženje mesta po imenu. Ne vodi do cilja."
-      },
-      "category": "knowledge",
-      "topics": [
-        "maps"
-      ],
-      "version": "2026-06",
-      "size": 367521252,
-      "languages": [
-        "eng"
-      ],
-      "recommended_for": [],
-      "license": "ODbL 1.0 (map data), CC BY 4.0 (place search)",
-      "attribution": "© OpenStreetMap contributors (ODbL); tiles by OpenFreeMap, © OpenMapTiles; place search © GeoNames (CC BY 4.0); ZIM file by Kiwix",
-      "source": "https://www.openstreetmap.org",
-      "offer": "auto",
-      "files": [
-        {
-          "path": "zim/maps_en_bosnia-herzegovina_2026-06.zim",
-          "urls": [
-            "https://lb.download.kiwix.org/zim/maps/maps_en_bosnia-herzegovina_2026-06.zim",
-            "https://mirrors.dotsrc.org/kiwix/zim/maps/maps_en_bosnia-herzegovina_2026-06.zim",
-            "https://mirror.accum.se/mirror/kiwix.org/zim/maps/maps_en_bosnia-herzegovina_2026-06.zim"
-          ],
-          "sha256": "9c5c0d1eb6f7e7977e036033d31a6b713c1b5a30a0bb1aca15ef2f97ecaf37d3",
-          "size": 367521252
         }
       ]
     },
