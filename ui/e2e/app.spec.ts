@@ -877,8 +877,13 @@ test("add-ons: the starter set holds only packs offered to everyone", async ({ p
   await expect(panel).toContainText("First aid and field medicine manuals (English)");
   await expect(panel).not.toContainText("iFixit");
   await expect(panel).not.toContainText("Safe water");
+  await expect(panel.getByRole("button", { name: "Download all" })).toBeEnabled();
+  const lines = await panel.getByRole("listitem").count();
   await panel.getByRole("button", { name: "Download all" }).click();
-  await expect.poll(() => asked).toContain("/api/packs/military-medicine-en/download");
+  // Every line of the set asked for (the AI model last), before the made-up answers stop:
+  // a request after that would reach the real hub and really download.
+  await expect.poll(() => asked.length).toBe(lines);
+  expect(asked).toContain("/api/packs/military-medicine-en/download");
   expect(asked.filter((p) => /ifixit|zimgit/.test(p))).toEqual([]);
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
