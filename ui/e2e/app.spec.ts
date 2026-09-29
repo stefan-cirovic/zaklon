@@ -817,7 +817,9 @@ test("add-ons: packs people download themselves are apart, say why, and ask to c
 
   // Download asks first, naming the license; Cancel asks nothing of the hub.
   await ifixit.getByRole("button", { name: "Download: iFixit repair guides (English)" }).click();
-  const question = ifixit.getByRole("group").filter({ hasText: "CC BY-NC-SA 3.0" });
+  const question = ifixit.locator(".license-ask");
+  await expect(question).toHaveAttribute("role", "group");
+  await expect(question).toContainText("CC BY-NC-SA 3.0");
   await expect(question).toContainText("free for non-commercial use only");
   await expect(question.getByRole("button", { name: "Accept and download: iFixit repair guides (English)" })).toBeFocused();
   await noHorizontalScroll(page);
@@ -839,7 +841,7 @@ test("add-ons: packs people download themselves are apart, say why, and ask to c
   await page.getByRole("group", { name: "View" }).getByRole("button", { name: "Details" }).click();
   const table = page.getByRole("table", { name: "You download these yourself" });
   await table.getByRole("button", { name: /^Download: iFixit/ }).click();
-  await expect(table.getByRole("group").filter({ hasText: "CC BY-NC-SA 3.0" })).toBeVisible();
+  await expect(table.locator(".license-ask")).toContainText("CC BY-NC-SA 3.0");
   await noHorizontalScroll(page);
   await page.getByRole("group", { name: "View" }).getByRole("button", { name: "Tiles" }).click();
   await setLanguage(page, "sr");
