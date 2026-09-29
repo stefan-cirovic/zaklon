@@ -78,6 +78,8 @@ pub fn world_map_pack() -> Option<Pack> {
         source: "https://protomaps.com".into(),
         languages: vec![],
         recommended_for: vec![],
+        offer: Offer::Auto,
+        offer_reason: String::new(),
     })
 }
 
